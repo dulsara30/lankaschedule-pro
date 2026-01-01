@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 interface Subject {
   _id: string;
   name: string;
+  color: string;
 }
 
 export default function SubjectsPage() {
@@ -21,6 +22,7 @@ export default function SubjectsPage() {
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
   const [formData, setFormData] = useState({
     name: '',
+    color: '#3B82F6',
   });
 
   useEffect(() => {
@@ -76,6 +78,7 @@ export default function SubjectsPage() {
     setEditingSubject(subject);
     setFormData({
       name: subject.name,
+      color: subject.color || '#3B82F6',
     });
     setDialogOpen(true);
   };
@@ -102,7 +105,7 @@ export default function SubjectsPage() {
   };
 
   const resetForm = () => {
-    setFormData({ name: '' });
+    setFormData({ name: '', color: '#3B82F6' });
     setEditingSubject(null);
   };
 
@@ -153,6 +156,33 @@ export default function SubjectsPage() {
                   required
                 />
               </div>
+              <div>
+                <label htmlFor="color" className="mb-2 block text-sm font-medium">
+                  Subject Color
+                </label>
+                <div className="flex gap-3 items-center">
+                  <input
+                    id="color"
+                    type="color"
+                    value={formData.color}
+                    onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                    className="h-10 w-20 rounded-md border border-zinc-200 cursor-pointer dark:border-zinc-800"
+                    required
+                  />
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="h-6 w-6 rounded-full border-2 border-zinc-300"
+                      style={{ backgroundColor: formData.color }}
+                    />
+                    <span className="text-sm text-zinc-600 dark:text-zinc-400">
+                      {formData.color}
+                    </span>
+                  </div>
+                </div>
+                <p className="mt-1 text-xs text-zinc-500">
+                  This color will be used to visually identify this subject in lessons and timetables
+                </p>
+              </div>
               <div className="flex justify-end gap-3">
                 <Button type="button" variant="outline" onClick={() => handleDialogClose(false)}>
                   Cancel
@@ -184,6 +214,7 @@ export default function SubjectsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Color</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -191,6 +222,13 @@ export default function SubjectsPage() {
               <TableBody>
                 {subjects.map((subject) => (
                   <TableRow key={subject._id}>
+                    <TableCell>
+                      <div
+                        className="h-6 w-6 rounded-full border-2 border-zinc-300"
+                        style={{ backgroundColor: subject.color || '#3B82F6' }}
+                        title={subject.color || '#3B82F6'}
+                      />
+                    </TableCell>
                     <TableCell className="font-medium">{subject.name}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">

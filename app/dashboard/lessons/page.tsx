@@ -13,6 +13,7 @@ import { useRouter } from 'next/navigation';
 interface Subject {
   _id: string;
   name: string;
+  color: string;
 }
 
 interface Teacher {
@@ -53,13 +54,14 @@ export default function LessonsPage() {
     lessonName: '',
     numberOfSingles: 0,
     numberOfDoubles: 0,
-    color: '#3B82F6',
     notes: '',
   });
 
   const [selectedClasses, setSelectedClasses] = useState<string[]>([]);
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
   const [selectedTeachers, setSelectedTeachers] = useState<string[]>([]);
+  const [subjectSearchTerm, setSubjectSearchTerm] = useState('');
+  const [teacherSearchTerm, setTeacherSearchTerm] = useState('');
 
   useEffect(() => {
     fetchData();
@@ -163,7 +165,6 @@ export default function LessonsPage() {
       lessonName: lesson.lessonName,
       numberOfSingles: lesson.numberOfSingles,
       numberOfDoubles: lesson.numberOfDoubles,
-      color: lesson.color || '#3B82F6',
       notes: lesson.notes || '',
     });
     setSelectedClasses(lesson.classIds.map(c => c._id));
@@ -223,12 +224,13 @@ export default function LessonsPage() {
       lessonName: '',
       numberOfSingles: 0,
       numberOfDoubles: 0,
-      color: '#3B82F6',
       notes: '',
     });
     setSelectedClasses([]);
     setSelectedSubjects([]);
     setSelectedTeachers([]);
+    setSubjectSearchTerm('');
+    setTeacherSearchTerm('');
     setEditingLesson(null);
   };
 
@@ -318,22 +320,43 @@ export default function LessonsPage() {
                   Select Subjects (Multiple)
                 </label>
                 <Card className="p-4">
+                  {/* Search bar for subjects */}
+                  <div className="mb-3">
+                    <Input
+                      type="text"
+                      placeholder="🔍 Search subjects..."
+                      value={subjectSearchTerm}
+                      onChange={(e) => setSubjectSearchTerm(e.target.value)}
+                      className="w-full"
+                    />
+                  </div>
                   <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-                    {subjects.map((subject) => (
+                    {subjects
+                      .filter(subject => 
+                        subject.name.toLowerCase().includes(subjectSearchTerm.toLowerCase())
+                      )
+                      .map((subject) => (
                       <button
                         key={subject._id}
                         type="button"
                         onClick={() => toggleSubject(subject._id)}
-                        className={`rounded-lg border-2 px-3 py-2 text-sm font-medium transition-colors ${
+                        className={`rounded-lg border-2 px-3 py-2 text-sm font-medium transition-colors flex items-center gap-2 ${
                           selectedSubjects.includes(subject._id)
                             ? 'border-purple-600 bg-purple-50 text-purple-900 dark:bg-purple-900 dark:text-purple-50'
                             : 'border-zinc-200 bg-white hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-900'
                         }`}
                       >
+                        <div
+                          className="h-3 w-3 rounded-full border border-zinc-300 flex-shrink-0"
+                          style={{ backgroundColor: subject.color || '#3B82F6' }}
+                        />
                         {subject.name}
                       </button>
                     ))}
                   </div>
+                  {subjectSearchTerm && subjects.filter(s => s.name.toLowerCase().includes(subjectSearchTerm.toLowerCase())).length === 0 && (
+                    <div className="mt-3 text-sm text-zinc-500 text-center">No subjects found</div>
+                  )}
                   {selectedSubjects.length > 0 && (
                     <div className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
                       {selectedSubjects.length} subject{selectedSubjects.length !== 1 ? 's' : ''} selected
@@ -348,8 +371,23 @@ export default function LessonsPage() {
                   Select Teachers (Multiple)
                 </label>
                 <Card className="p-4">
+                  {/* Search bar for teachers */}
+                  <div className="mb-3">
+                    <Input
+                      type="text"
+                      placeholder="🔍 Search teachers..."
+                      value={teacherSearchTerm}
+                      onChange={(e) => setTeacherSearchTerm(e.target.value)}
+                      className="w-full"
+                    />
+                  </div>
                   <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                    {teachers.map((teacher) => (
+                    {teachers
+                      .filter(teacher => 
+                        teacher.name.toLowerCase().includes(teacherSearchTerm.toLowerCase()) ||
+                        teacher.email.toLowerCase().includes(teacherSearchTerm.toLowerCase())
+                      )
+                      .map((teacher) => (
                       <button
                         key={teacher._id}
                         type="button"
@@ -367,6 +405,9 @@ export default function LessonsPage() {
                       </button>
                     ))}
                   </div>
+                  {teacherSearchTerm && teachers.filter(t => t.name.toLowerCase().includes(teacherSearchTerm.toLowerCase()) || t.email.toLowerCase().includes(teacherSearchTerm.toLowerCase())).length === 0 && (
+                    <div className="mt-3 text-sm text-zinc-500 text-center">No teachers found</div>
+                  )}
                   {selectedTeachers.length > 0 && (
                     <div className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
                       {selectedTeachers.length} teacher{selectedTeachers.length !== 1 ? 's' : ''} selected
@@ -431,22 +472,6 @@ export default function LessonsPage() {
                 </Card>
               </div>
 
-              {/* Additional Settings */}
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <label htmlFor="color" className="mb-2 block text-sm font-medium">
-                    Color (Optional)
-                  </label>
-                  <Input
-                    id="color"
-                    type="color"
-                    value={formData.color}
-                    onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                    className="h-10"
-                  />
-                </div>
-              </div>
-
               {/* Notes */}
               <div>
                 <label htmlFor="notes" className="mb-2 block text-sm font-medium">
@@ -506,11 +531,25 @@ export default function LessonsPage() {
                 {lessons.map((lesson) => (
                   <TableRow key={lesson._id}>
                     <TableCell>
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="h-3 w-3 rounded-full"
-                          style={{ backgroundColor: lesson.color }}
-                        />
+                      <div className="space-y-1">
+                        {/* Rainbow gradient strip for subject colors */}
+                        {lesson.subjectIds.length > 0 && (
+                          <div 
+                            className="h-2 rounded-full overflow-hidden flex"
+                            style={{
+                              background: lesson.subjectIds.length === 1
+                                ? (subjects.find(s => s._id === lesson.subjectIds[0]._id)?.color || '#3B82F6')
+                                : `linear-gradient(to right, ${lesson.subjectIds.map((subject, idx) => {
+                                    const subjectData = subjects.find(s => s._id === subject._id);
+                                    const color = subjectData?.color || '#3B82F6';
+                                    const percentage = (idx / lesson.subjectIds.length) * 100;
+                                    const nextPercentage = ((idx + 1) / lesson.subjectIds.length) * 100;
+                                    return `${color} ${percentage}%, ${color} ${nextPercentage}%`;
+                                  }).join(', ')})`
+                            }}
+                            title={`Subjects: ${lesson.subjectIds.map(s => s.name).join(', ')}`}
+                          />
+                        )}
                         <span className="font-medium">{lesson.lessonName}</span>
                       </div>
                     </TableCell>

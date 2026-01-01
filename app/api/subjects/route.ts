@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name } = body;
+    const { name, color } = body;
 
     if (!name) {
       return NextResponse.json(
@@ -67,6 +67,7 @@ export async function POST(request: NextRequest) {
     const subject = await Subject.create({
       schoolId: school._id,
       name,
+      color: color || '#3B82F6',
     });
 
     // Revalidate lessons page to reflect changes
@@ -107,7 +108,7 @@ export async function PUT(request: NextRequest) {
     await dbConnect();
 
     const body = await request.json();
-    const { id, name } = body;
+    const { id, name, color } = body;
 
     if (!id || !name) {
       return NextResponse.json(
@@ -119,9 +120,14 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    const updateData: any = { name };
+    if (color) {
+      updateData.color = color;
+    }
+
     const subject = await Subject.findByIdAndUpdate(
       id,
-      { name },
+      updateData,
       { new: true, runValidators: true }
     );
 

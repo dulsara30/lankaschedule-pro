@@ -14,9 +14,10 @@ interface Teacher {
   name: string;
   email: string;
   subjectsTaught: string[];
-  minPeriods: number;
-  maxPeriods: number;
 }
+
+const TEACHER_MIN_PERIODS = 24;
+const TEACHER_MAX_PERIODS = 35;
 
 export default function TeachersPage() {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
@@ -27,8 +28,6 @@ export default function TeachersPage() {
     name: '',
     email: '',
     subjectsTaught: [] as string[],
-    minPeriods: 24,
-    maxPeriods: 35,
   });
   const [currentSubject, setCurrentSubject] = useState('');
 
@@ -87,8 +86,6 @@ export default function TeachersPage() {
       name: teacher.name,
       email: teacher.email,
       subjectsTaught: teacher.subjectsTaught,
-      minPeriods: teacher.minPeriods,
-      maxPeriods: teacher.maxPeriods,
     });
     setDialogOpen(true);
   };
@@ -143,8 +140,6 @@ export default function TeachersPage() {
       name: '',
       email: '',
       subjectsTaught: [],
-      minPeriods: 24,
-      maxPeriods: 35,
     });
     setCurrentSubject('');
     setEditingTeacher(null);
@@ -250,35 +245,10 @@ export default function TeachersPage() {
                 )}
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <label htmlFor="minPeriods" className="mb-2 block text-sm font-medium">
-                    Minimum Periods/Week
-                  </label>
-                  <Input
-                    id="minPeriods"
-                    type="number"
-                    min="0"
-                    max="45"
-                    value={formData.minPeriods}
-                    onChange={(e) => setFormData({ ...formData, minPeriods: parseInt(e.target.value) })}
-                    required
-                  />
-                </div>
-                <div>
-                  <label htmlFor="maxPeriods" className="mb-2 block text-sm font-medium">
-                    Maximum Periods/Week
-                  </label>
-                  <Input
-                    id="maxPeriods"
-                    type="number"
-                    min="0"
-                    max="45"
-                    value={formData.maxPeriods}
-                    onChange={(e) => setFormData({ ...formData, maxPeriods: parseInt(e.target.value) })}
-                    required
-                  />
-                </div>
+              <div className="rounded-md bg-zinc-50 p-3 dark:bg-zinc-900">
+                <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                  <strong>Period Requirements:</strong> All teachers must teach between {TEACHER_MIN_PERIODS} and {TEACHER_MAX_PERIODS} periods per week.
+                </p>
               </div>
 
               <div className="flex justify-end gap-3">
@@ -315,7 +285,6 @@ export default function TeachersPage() {
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Subjects</TableHead>
-                  <TableHead>Periods/Week</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -339,11 +308,6 @@ export default function TeachersPage() {
                           <span className="text-sm text-zinc-400">No subjects</span>
                         )}
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm">
-                        {teacher.minPeriods} - {teacher.maxPeriods}
-                      </span>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">

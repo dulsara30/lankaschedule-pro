@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, email, subjectsTaught, minPeriods, maxPeriods } = body;
+    const { name, email, subjectsTaught } = body;
 
     if (!name || !email) {
       return NextResponse.json(
@@ -67,8 +67,6 @@ export async function POST(request: NextRequest) {
       name,
       email: email.toLowerCase(),
       subjectsTaught: subjectsTaught || [],
-      minPeriods: minPeriods || 24,
-      maxPeriods: maxPeriods || 35,
     });
 
     return NextResponse.json({
@@ -105,7 +103,7 @@ export async function PUT(request: NextRequest) {
     await dbConnect();
 
     const body = await request.json();
-    const { id, name, email, subjectsTaught, minPeriods, maxPeriods } = body;
+    const { id, name, email, subjectsTaught } = body;
 
     if (!id || !name || !email) {
       return NextResponse.json(
@@ -123,8 +121,6 @@ export async function PUT(request: NextRequest) {
         name,
         email: email.toLowerCase(),
         subjectsTaught: subjectsTaught || [],
-        minPeriods: minPeriods || 24,
-        maxPeriods: maxPeriods || 35,
       },
       { new: true, runValidators: true }
     );

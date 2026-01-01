@@ -17,7 +17,7 @@ export async function GET() {
     }
 
     const classes = await Class.find({ schoolId: school._id })
-      .sort({ gradeLevel: 1, name: 1 })
+      .sort({ grade: 1, name: 1 })
       .lean();
 
     return NextResponse.json({
@@ -50,13 +50,13 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, gradeLevel, stream } = body;
+    const { name, grade, is13YearProgram, stream } = body;
 
-    if (!name || !gradeLevel) {
+    if (!name || !grade) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Name and grade level are required',
+          error: 'Name and grade are required',
         },
         { status: 400 }
       );
@@ -65,7 +65,8 @@ export async function POST(request: NextRequest) {
     const classData = await Class.create({
       schoolId: school._id,
       name,
-      gradeLevel,
+      grade,
+      is13YearProgram: is13YearProgram || false,
       stream: stream || '',
     });
 
@@ -103,13 +104,13 @@ export async function PUT(request: NextRequest) {
     await dbConnect();
 
     const body = await request.json();
-    const { id, name, gradeLevel, stream } = body;
+    const { id, name, grade, is13YearProgram, stream } = body;
 
-    if (!id || !name || !gradeLevel) {
+    if (!id || !name || !grade) {
       return NextResponse.json(
         {
           success: false,
-          error: 'ID, name, and grade level are required',
+          error: 'ID, name, and grade are required',
         },
         { status: 400 }
       );
@@ -117,7 +118,7 @@ export async function PUT(request: NextRequest) {
 
     const classData = await Class.findByIdAndUpdate(
       id,
-      { name, gradeLevel, stream: stream || '' },
+      { name, grade, is13YearProgram: is13YearProgram || false, stream: stream || '' },
       { new: true, runValidators: true }
     );
 

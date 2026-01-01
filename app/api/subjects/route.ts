@@ -51,13 +51,13 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, code, category } = body;
+    const { name } = body;
 
-    if (!name || !code || !category) {
+    if (!name) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Name, code, and category are required',
+          error: 'Name is required',
         },
         { status: 400 }
       );
@@ -66,8 +66,6 @@ export async function POST(request: NextRequest) {
     const subject = await Subject.create({
       schoolId: school._id,
       name,
-      code: code.toUpperCase(),
-      category,
     });
 
     return NextResponse.json({
@@ -83,7 +81,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Subject code already exists',
+          error: 'Subject name already exists',
         },
         { status: 400 }
       );
@@ -105,13 +103,13 @@ export async function PUT(request: NextRequest) {
     await dbConnect();
 
     const body = await request.json();
-    const { id, name, code, category } = body;
+    const { id, name } = body;
 
-    if (!id || !name || !code || !category) {
+    if (!id || !name) {
       return NextResponse.json(
         {
           success: false,
-          error: 'ID, name, code, and category are required',
+          error: 'ID and name are required',
         },
         { status: 400 }
       );
@@ -119,7 +117,7 @@ export async function PUT(request: NextRequest) {
 
     const subject = await Subject.findByIdAndUpdate(
       id,
-      { name, code: code.toUpperCase(), category },
+      { name },
       { new: true, runValidators: true }
     );
 

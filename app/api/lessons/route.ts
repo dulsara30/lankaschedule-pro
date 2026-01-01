@@ -20,9 +20,9 @@ export async function GET() {
     }
 
     const lessons = await Lesson.find({ schoolId: school._id })
-      .populate('subjectIds', 'name code category')
+      .populate('subjectIds', 'name')
       .populate('teacherIds', 'name email')
-      .populate('classIds', 'name gradeLevel')
+      .populate('classIds', 'name grade')
       .sort({ lessonName: 1 })
       .lean();
 
@@ -61,8 +61,8 @@ export async function POST(request: NextRequest) {
       subjectIds,
       teacherIds,
       classIds,
-      periodsPerWeek,
-      isDoublePeriod,
+      numberOfSingles,
+      numberOfDoubles,
       color,
       notes,
     } = body;
@@ -108,11 +108,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!periodsPerWeek || periodsPerWeek < 1) {
+    if (numberOfSingles === undefined || numberOfDoubles === undefined) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Periods per week must be at least 1',
+          error: 'Number of singles and doubles must be specified',
+        },
+        { status: 400 }
+      );
+    }
+
+    if (numberOfSingles === 0 && numberOfDoubles === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'At least one single or double period must be specified',
         },
         { status: 400 }
       );
@@ -161,17 +171,17 @@ export async function POST(request: NextRequest) {
       subjectIds,
       teacherIds,
       classIds,
-      periodsPerWeek: periodsPerWeek || 1,
-      isDoublePeriod: isDoublePeriod || false,
+      numberOfSingles: numberOfSingles || 0,
+      numberOfDoubles: numberOfDoubles || 0,
       color: color || '#3B82F6',
       notes: notes || '',
     });
 
     // Populate the created lesson
     const populatedLesson = await Lesson.findById(lesson._id)
-      .populate('subjectIds', 'name code category')
+      .populate('subjectIds', 'name')
       .populate('teacherIds', 'name email')
-      .populate('classIds', 'name gradeLevel');
+      .populate('classIds', 'name grade');
 
     return NextResponse.json({
       success: true,
@@ -202,8 +212,8 @@ export async function PUT(request: NextRequest) {
       subjectIds,
       teacherIds,
       classIds,
-      periodsPerWeek,
-      isDoublePeriod,
+      numberOfSingles,
+      numberOfDoubles,
       color,
       notes,
     } = body;
@@ -239,6 +249,16 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    if (!numberOfSingles && !numberOfDoubles) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'At least one of numberOfSingles or numberOfDoubles must be greater than 0',
+        },
+        { status: 400 }
+      );
+    }
+
     const lesson = await Lesson.findByIdAndUpdate(
       id,
       {
@@ -246,16 +266,16 @@ export async function PUT(request: NextRequest) {
         subjectIds,
         teacherIds,
         classIds,
-        periodsPerWeek: periodsPerWeek || 1,
-        isDoublePeriod: isDoublePeriod || false,
+        numberOfSingles: numberOfSingles || 0,
+        numberOfDoubles: numberOfDoubles || 0,
         color: color || '#3B82F6',
         notes: notes || '',
       },
       { new: true, runValidators: true }
     )
-      .populate('subjectIds', 'name code category')
+      .populate('subjectIds', 'name')
       .populate('teacherIds', 'name email')
-      .populate('classIds', 'name gradeLevel');
+      .populate('classIds', 'name grade');
 
     if (!lesson) {
       return NextResponse.json(

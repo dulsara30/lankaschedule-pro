@@ -1,12 +1,14 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
+// Teacher workload constants for Sri Lankan schools
+export const TEACHER_MIN_PERIODS = 24;
+export const TEACHER_MAX_PERIODS = 35;
+
 export interface ITeacher extends Document {
   schoolId: mongoose.Types.ObjectId;
   name: string;
   email: string;
-  subjectsTaught: string[]; // Array of subject names or IDs
-  minPeriods: number;
-  maxPeriods: number;
+  subjectsTaught: string[]; // Array of subject names
   createdAt: Date;
   updatedAt: Date;
 }
@@ -34,16 +36,6 @@ const TeacherSchema = new Schema<ITeacher>(
       type: [String],
       default: [],
     },
-    minPeriods: {
-      type: Number,
-      default: 24,
-      min: [0, 'Minimum periods cannot be negative'],
-    },
-    maxPeriods: {
-      type: Number,
-      default: 35,
-      min: [0, 'Maximum periods cannot be negative'],
-    },
   },
   {
     timestamps: true,
@@ -53,12 +45,5 @@ const TeacherSchema = new Schema<ITeacher>(
 // Compound indexes for multi-tenant queries
 TeacherSchema.index({ schoolId: 1, email: 1 }, { unique: true });
 TeacherSchema.index({ schoolId: 1, name: 1 });
-
-// Validation: maxPeriods should be >= minPeriods
-TeacherSchema.pre('save', function () {
-  if (this.maxPeriods < this.minPeriods) {
-    throw new Error('Maximum periods must be greater than or equal to minimum periods');
-  }
-});
 
 export default mongoose.models.Teacher || mongoose.model<ITeacher>('Teacher', TeacherSchema);

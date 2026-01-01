@@ -12,11 +12,7 @@ import { toast } from 'sonner';
 interface Subject {
   _id: string;
   name: string;
-  code: string;
-  category: 'Core' | 'Aesthetic' | 'Optional' | 'Extra-Curricular';
 }
-
-const CATEGORIES = ['Core', 'Aesthetic', 'Optional', 'Extra-Curricular'] as const;
 
 export default function SubjectsPage() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -25,8 +21,6 @@ export default function SubjectsPage() {
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
   const [formData, setFormData] = useState({
     name: '',
-    code: '',
-    category: 'Core' as Subject['category'],
   });
 
   useEffect(() => {
@@ -82,8 +76,6 @@ export default function SubjectsPage() {
     setEditingSubject(subject);
     setFormData({
       name: subject.name,
-      code: subject.code,
-      category: subject.category,
     });
     setDialogOpen(true);
   };
@@ -110,23 +102,13 @@ export default function SubjectsPage() {
   };
 
   const resetForm = () => {
-    setFormData({ name: '', code: '', category: 'Core' });
+    setFormData({ name: '' });
     setEditingSubject(null);
   };
 
   const handleDialogClose = (open: boolean) => {
     setDialogOpen(open);
     if (!open) resetForm();
-  };
-
-  const getCategoryColor = (category: string) => {
-    const colors: Record<string, string> = {
-      Core: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-      Aesthetic: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
-      Optional: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-      'Extra-Curricular': 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
-    };
-    return colors[category] || 'bg-gray-100 text-gray-800';
   };
 
   return (
@@ -137,7 +119,7 @@ export default function SubjectsPage() {
             Subjects
           </h1>
           <p className="mt-2 text-zinc-600 dark:text-zinc-400">
-            Manage subjects and their categories
+            Manage your school subjects
           </p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={handleDialogClose}>
@@ -171,36 +153,6 @@ export default function SubjectsPage() {
                   required
                 />
               </div>
-              <div>
-                <label htmlFor="code" className="mb-2 block text-sm font-medium">
-                  Subject Code
-                </label>
-                <Input
-                  id="code"
-                  value={formData.code}
-                  onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
-                  placeholder="e.g., MATH"
-                  required
-                />
-              </div>
-              <div>
-                <label htmlFor="category" className="mb-2 block text-sm font-medium">
-                  Category
-                </label>
-                <select
-                  id="category"
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value as Subject['category'] })}
-                  className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-950 dark:ring-offset-zinc-950 dark:focus-visible:ring-zinc-300"
-                  required
-                >
-                  {CATEGORIES.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
-                  ))}
-                </select>
-              </div>
               <div className="flex justify-end gap-3">
                 <Button type="button" variant="outline" onClick={() => handleDialogClose(false)}>
                   Cancel
@@ -232,22 +184,14 @@ export default function SubjectsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Code</TableHead>
                   <TableHead>Name</TableHead>
-                  <TableHead>Category</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {subjects.map((subject) => (
                   <TableRow key={subject._id}>
-                    <TableCell className="font-mono font-semibold">{subject.code}</TableCell>
-                    <TableCell>{subject.name}</TableCell>
-                    <TableCell>
-                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${getCategoryColor(subject.category)}`}>
-                        {subject.category}
-                      </span>
-                    </TableCell>
+                    <TableCell className="font-medium">{subject.name}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         <Button

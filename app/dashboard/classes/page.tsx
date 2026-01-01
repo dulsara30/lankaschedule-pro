@@ -12,11 +12,12 @@ import { toast } from 'sonner';
 interface Class {
   _id: string;
   name: string;
-  gradeLevel: number;
+  grade: number;
+  is13YearProgram: boolean;
   stream?: string;
 }
 
-const STREAMS = ['', 'Science', 'Arts', 'Commerce', 'Technology'] as const;
+const STREAMS = ['Bio', 'Maths', 'Arts', 'Commerce', 'Technology'] as const;
 
 export default function ClassesPage() {
   const [classes, setClasses] = useState<Class[]>([]);
@@ -25,7 +26,8 @@ export default function ClassesPage() {
   const [editingClass, setEditingClass] = useState<Class | null>(null);
   const [formData, setFormData] = useState({
     name: '',
-    gradeLevel: 6,
+    grade: 6,
+    is13YearProgram: false,
     stream: '',
   });
 
@@ -82,7 +84,8 @@ export default function ClassesPage() {
     setEditingClass(classItem);
     setFormData({
       name: classItem.name,
-      gradeLevel: classItem.gradeLevel,
+      grade: classItem.grade,
+      is13YearProgram: classItem.is13YearProgram,
       stream: classItem.stream || '',
     });
     setDialogOpen(true);
@@ -110,7 +113,7 @@ export default function ClassesPage() {
   };
 
   const resetForm = () => {
-    setFormData({ name: '', gradeLevel: 6, stream: '' });
+    setFormData({ name: '', grade: 6, is13YearProgram: false, stream: '' });
     setEditingClass(null);
   };
 
@@ -172,20 +175,34 @@ export default function ClassesPage() {
                 </p>
               </div>
               <div>
-                <label htmlFor="gradeLevel" className="mb-2 block text-sm font-medium">
+                <label htmlFor="grade" className="mb-2 block text-sm font-medium">
                   Grade Level
                 </label>
                 <Input
-                  id="gradeLevel"
+                  id="grade"
                   type="number"
                   min="1"
                   max="13"
-                  value={formData.gradeLevel}
-                  onChange={(e) => setFormData({ ...formData, gradeLevel: parseInt(e.target.value) })}
+                  value={formData.grade}
+                  onChange={(e) => setFormData({ ...formData, grade: parseInt(e.target.value) })}
                   required
                 />
                 <p className="mt-1 text-xs text-zinc-500">
                   Grade 1-13 for Sri Lankan schools
+                </p>
+              </div>
+              <div>
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <input
+                    type="checkbox"
+                    checked={formData.is13YearProgram}
+                    onChange={(e) => setFormData({ ...formData, is13YearProgram: e.target.checked })}
+                    className="h-4 w-4 rounded border-zinc-300"
+                  />
+                  13-Year Program
+                </label>
+                <p className="mt-1 text-xs text-zinc-500">
+                  Check if this class is part of the 13-year program
                 </p>
               </div>
               <div>
@@ -199,14 +216,14 @@ export default function ClassesPage() {
                   className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-950 dark:ring-offset-zinc-950 dark:focus-visible:ring-zinc-300"
                 >
                   <option value="">No Stream</option>
-                  {STREAMS.slice(1).map((stream) => (
+                  {STREAMS.map((stream) => (
                     <option key={stream} value={stream}>
                       {stream}
                     </option>
                   ))}
                 </select>
                 <p className="mt-1 text-xs text-zinc-500">
-                  For higher grades (10-13), select applicable stream
+                  For higher grades (12-13), select applicable stream
                 </p>
               </div>
               <div className="flex justify-end gap-3">
@@ -242,6 +259,7 @@ export default function ClassesPage() {
                 <TableRow>
                   <TableHead>Class Name</TableHead>
                   <TableHead>Grade Level</TableHead>
+                  <TableHead>Program</TableHead>
                   <TableHead>Stream</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -251,8 +269,13 @@ export default function ClassesPage() {
                   <TableRow key={classItem._id}>
                     <TableCell className="font-medium">{classItem.name}</TableCell>
                     <TableCell>
-                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${getGradeBadgeColor(classItem.gradeLevel)}`}>
-                        Grade {classItem.gradeLevel}
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${getGradeBadgeColor(classItem.grade)}`}>
+                        Grade {classItem.grade}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-sm text-zinc-600 dark:text-zinc-400">
+                        {classItem.is13YearProgram ? '13-Year' : '12-Year'}
                       </span>
                     </TableCell>
                     <TableCell>

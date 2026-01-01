@@ -12,8 +12,6 @@ import { toast } from 'sonner';
 interface Subject {
   _id: string;
   name: string;
-  code: string;
-  category: string;
 }
 
 interface Teacher {
@@ -25,7 +23,7 @@ interface Teacher {
 interface Class {
   _id: string;
   name: string;
-  gradeLevel: number;
+  grade: number;
 }
 
 interface SubjectTeacherPair {
@@ -38,11 +36,11 @@ interface SubjectTeacherPair {
 interface Lesson {
   _id: string;
   lessonName: string;
-  subjectIds: Array<{ _id: string; name: string; code: string; category: string }>;
+  subjectIds: Array<{ _id: string; name: string }>;
   teacherIds: Array<{ _id: string; name: string; email: string }>;
-  classIds: Array<{ _id: string; name: string; gradeLevel: number }>;
-  periodsPerWeek: number;
-  isDoublePeriod: boolean;
+  classIds: Array<{ _id: string; name: string; grade: number }>;
+  numberOfSingles: number;
+  numberOfDoubles: number;
   color?: string;
   notes?: string;
 }
@@ -58,8 +56,8 @@ export default function LessonsPage() {
 
   const [formData, setFormData] = useState({
     lessonName: '',
-    periodsPerWeek: 1,
-    isDoublePeriod: false,
+    numberOfSingles: 0,
+    numberOfDoubles: 0,
     color: '#3B82F6',
     notes: '',
   });
@@ -149,8 +147,8 @@ export default function LessonsPage() {
     setEditingLesson(lesson);
     setFormData({
       lessonName: lesson.lessonName,
-      periodsPerWeek: lesson.periodsPerWeek,
-      isDoublePeriod: lesson.isDoublePeriod,
+      numberOfSingles: lesson.numberOfSingles,
+      numberOfDoubles: lesson.numberOfDoubles,
       color: lesson.color || '#3B82F6',
       notes: lesson.notes || '',
     });
@@ -233,8 +231,8 @@ export default function LessonsPage() {
   const resetForm = () => {
     setFormData({
       lessonName: '',
-      periodsPerWeek: 1,
-      isDoublePeriod: false,
+      numberOfSingles: 0,
+      numberOfDoubles: 0,
       color: '#3B82F6',
       notes: '',
     });
@@ -312,7 +310,7 @@ export default function LessonsPage() {
                       >
                         {classItem.name}
                         <span className="ml-1 text-xs text-zinc-500">
-                          (Grade {classItem.gradeLevel})
+                          (Grade {classItem.grade})
                         </span>
                       </button>
                     ))}
@@ -345,7 +343,7 @@ export default function LessonsPage() {
                         <option value="">Select Subject</option>
                         {subjects.map((subject) => (
                           <option key={subject._id} value={subject._id}>
-                            {subject.name} ({subject.code})
+                            {subject.name}
                           </option>
                         ))}
                       </select>
@@ -412,18 +410,36 @@ export default function LessonsPage() {
               {/* Periods and Settings */}
               <div className="grid gap-4 md:grid-cols-3">
                 <div>
-                  <label htmlFor="periodsPerWeek" className="mb-2 block text-sm font-medium">
-                    Periods per Week
+                  <label htmlFor="numberOfSingles" className="mb-2 block text-sm font-medium">
+                    Single Periods
                   </label>
                   <Input
-                    id="periodsPerWeek"
+                    id="numberOfSingles"
                     type="number"
-                    min="1"
+                    min="0"
                     max="35"
-                    value={formData.periodsPerWeek}
-                    onChange={(e) => setFormData({ ...formData, periodsPerWeek: parseInt(e.target.value) })}
-                    required
+                    value={formData.numberOfSingles}
+                    onChange={(e) => setFormData({ ...formData, numberOfSingles: parseInt(e.target.value) })}
                   />
+                  <p className="mt-1 text-xs text-zinc-500">
+                    Number of single periods per week
+                  </p>
+                </div>
+                <div>
+                  <label htmlFor="numberOfDoubles" className="mb-2 block text-sm font-medium">
+                    Double Periods
+                  </label>
+                  <Input
+                    id="numberOfDoubles"
+                    type="number"
+                    min="0"
+                    max="17"
+                    value={formData.numberOfDoubles}
+                    onChange={(e) => setFormData({ ...formData, numberOfDoubles: parseInt(e.target.value) })}
+                  />
+                  <p className="mt-1 text-xs text-zinc-500">
+                    Number of double periods per week
+                  </p>
                 </div>
                 <div>
                   <label htmlFor="color" className="mb-2 block text-sm font-medium">
@@ -435,17 +451,6 @@ export default function LessonsPage() {
                     value={formData.color}
                     onChange={(e) => setFormData({ ...formData, color: e.target.value })}
                   />
-                </div>
-                <div className="flex items-end">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={formData.isDoublePeriod}
-                      onChange={(e) => setFormData({ ...formData, isDoublePeriod: e.target.checked })}
-                      className="h-4 w-4 rounded border-zinc-300"
-                    />
-                    <span className="text-sm font-medium">Double Period</span>
-                  </label>
                 </div>
               </div>
 
@@ -514,11 +519,6 @@ export default function LessonsPage() {
                           style={{ backgroundColor: lesson.color }}
                         />
                         <span className="font-medium">{lesson.lessonName}</span>
-                        {lesson.isDoublePeriod && (
-                          <span className="rounded bg-purple-100 px-1.5 py-0.5 text-xs font-medium text-purple-800 dark:bg-purple-900 dark:text-purple-200">
-                            2x
-                          </span>
-                        )}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -551,7 +551,18 @@ export default function LessonsPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <span className="text-sm font-medium">{lesson.periodsPerWeek}</span>
+                      <div className="flex gap-2 text-sm">
+                        {lesson.numberOfSingles > 0 && (
+                          <span className="rounded bg-blue-100 px-2 py-0.5 font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                            {lesson.numberOfSingles} Single{lesson.numberOfSingles > 1 ? 's' : ''}
+                          </span>
+                        )}
+                        {lesson.numberOfDoubles > 0 && (
+                          <span className="rounded bg-purple-100 px-2 py-0.5 font-medium text-purple-800 dark:bg-purple-900 dark:text-purple-200">
+                            {lesson.numberOfDoubles} Double{lesson.numberOfDoubles > 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">

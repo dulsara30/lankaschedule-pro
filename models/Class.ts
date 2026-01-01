@@ -3,8 +3,9 @@ import mongoose, { Document, Schema } from 'mongoose';
 export interface IClass extends Document {
   schoolId: mongoose.Types.ObjectId;
   name: string; // e.g., "6-A", "12-Maths-Olu"
-  gradeLevel: number; // 1-13 for Sri Lankan schools
-  stream?: string; // e.g., "Science", "Arts", "Commerce" (for higher grades)
+  grade: number; // 1-13 for Sri Lankan schools
+  is13YearProgram: boolean; // True if Grade 13 is offered
+  stream?: string; // e.g., "Bio", "Maths", "Arts", "Commerce" (for higher grades)
   createdAt: Date;
   updatedAt: Date;
 }
@@ -22,16 +23,20 @@ const ClassSchema = new Schema<IClass>(
       required: [true, 'Class name is required'],
       trim: true,
     },
-    gradeLevel: {
+    grade: {
       type: Number,
-      required: [true, 'Grade level is required'],
-      min: [1, 'Grade level must be between 1 and 13'],
-      max: [13, 'Grade level must be between 1 and 13'],
+      required: [true, 'Grade is required'],
+      min: [1, 'Grade must be between 1 and 13'],
+      max: [13, 'Grade must be between 1 and 13'],
+    },
+    is13YearProgram: {
+      type: Boolean,
+      default: false,
     },
     stream: {
       type: String,
       trim: true,
-      enum: ['Science', 'Arts', 'Commerce', 'Technology', ''],
+      enum: ['Bio', 'Maths', 'Arts', 'Commerce', 'Technology', ''],
       default: '',
     },
   },
@@ -42,6 +47,6 @@ const ClassSchema = new Schema<IClass>(
 
 // Compound indexes for multi-tenant queries
 ClassSchema.index({ schoolId: 1, name: 1 }, { unique: true });
-ClassSchema.index({ schoolId: 1, gradeLevel: 1 });
+ClassSchema.index({ schoolId: 1, grade: 1 });
 
 export default mongoose.models.Class || mongoose.model<IClass>('Class', ClassSchema);

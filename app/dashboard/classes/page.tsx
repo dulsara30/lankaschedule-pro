@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Info } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Class {
@@ -25,11 +25,34 @@ export default function ClassesPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingClass, setEditingClass] = useState<Class | null>(null);
   const [formData, setFormData] = useState({
-    name: '',
     grade: 6,
     is13YearProgram: false,
     stream: '',
+    numberOfParallelClasses: 1,
+    customPrefix: '',
   });
+
+  // Generate class names in real-time
+  const generatedClassNames = useMemo(() => {
+    const count = formData.numberOfParallelClasses;
+    if (count < 1 || count > 26) return [];
+    
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+    const names: string[] = [];
+    
+    for (let i = 0; i < count; i++) {
+      let name = `${formData.grade}-${letters[i]}`;
+      if (formData.stream) {
+        name = `${formData.grade}-${formData.stream}-${letters[i]}`;
+      }
+      if (formData.customPrefix) {
+        name = `${formData.customPrefix}-${letters[i]}`;
+      }
+      names.push(name);
+    }
+    
+    return names;
+  }, [formData.grade, formData.stream, formData.numberOfParallelClasses, formData.customPrefix]);
 
   useEffect(() => {
     fetchClasses();
@@ -54,27 +77,66 @@ export default function ClassesPage() {
 
     try {
       const url = '/api/classes';
-      const method = editingClass ? 'PUT' : 'POST';
-      const body = editingClass
-        ? { id: editingClass._id, ...formData }
-        : formData;
+      
+      // When editing, update single class
+      if (editingClass) {
+        const response = await fetch(url, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: editingClass._id,
+            name: generatedClassNames[0], // Use first generated name for single edit
+            grade: formData.grade,
+            is13YearProgram: formData.is13YearProgram,
+            stream: formData.stream || undefined,
+          }),
+        });
 
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
+        const data = await response.json();
 
-      const data = await response.json();
-
-      if (data.success) {
-        toast.success(data.message);
-        setDialogOpen(false);
-        resetForm();
-        fetchClasses();
-      } else {
-        toast.error(data.error);
+        if (data.success) {
+          toast.success(data.message);
+          setDialogOpen(false);
+          resetForm();
+          fetchClasses();
+        } else {
+          toast.error(data.error);
+        }
+        return;
       }
+
+      // When creating, create multiple parallel classes
+      const classesToCreate = generatedClassNames.map(name => ({
+        name,
+        grade: formData.grade,
+        is13YearProgram: formData.is13YearProgram,
+        stream: formData.stream || undefined,
+      }));
+
+      // Create all classes
+      const results = await Promise.all(
+        classesToCreate.map(classData =>
+          fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(classData),
+          }).then(res => res.json())
+        )
+      );
+
+      const failed = results.filter(r => !r.success);
+      const succeeded = results.filter(r => r.success);
+
+      if (succeeded.length > 0) {
+        toast.success(`Successfully created ${succeeded.length} class${succeeded.length > 1 ? 'es' : ''}`);
+      }
+      if (failed.length > 0) {
+        toast.error(`Failed to create ${failed.length} class${failed.length > 1 ? 'es' : ''}`);
+      }
+
+      setDialogOpen(false);
+      resetForm();
+      fetchClasses();
     } catch (error) {
       toast.error('An error occurred');
     }
@@ -83,10 +145,11 @@ export default function ClassesPage() {
   const handleEdit = (classItem: Class) => {
     setEditingClass(classItem);
     setFormData({
-      name: classItem.name,
       grade: classItem.grade,
       is13YearProgram: classItem.is13YearProgram,
       stream: classItem.stream || '',
+      numberOfParallelClasses: 1,
+      customPrefix: classItem.name.split('-')[0] + '-' + (classItem.stream || ''),
     });
     setDialogOpen(true);
   };
@@ -113,7 +176,13 @@ export default function ClassesPage() {
   };
 
   const resetForm = () => {
-    setFormData({ name: '', grade: 6, is13YearProgram: false, stream: '' });
+    setFormData({ 
+      grade: 6, 
+      is13YearProgram: false, 
+      stream: '',
+      numberOfParallelClasses: 1,
+      customPrefix: '',
+    });
     setEditingClass(null);
   };
 
@@ -160,37 +229,24 @@ export default function ClassesPage() {
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label htmlFor="name" className="mb-2 block text-sm font-medium">
-                  Class Name
-                </label>
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="e.g., 6-A, 12-Maths-Olu"
-                  required
-                />
-                <p className="mt-1 text-xs text-zinc-500">
-                  Examples: 6-A, 6-B, 10-Science, 12-Arts-Colombo
-                </p>
-              </div>
-              <div>
                 <label htmlFor="grade" className="mb-2 block text-sm font-medium">
-                  Grade Level
+                  Grade
                 </label>
-                <Input
+                <select
                   id="grade"
-                  type="number"
-                  min="1"
-                  max="13"
                   value={formData.grade}
                   onChange={(e) => setFormData({ ...formData, grade: parseInt(e.target.value) })}
+                  className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-950 dark:ring-offset-zinc-950 dark:focus-visible:ring-zinc-300"
                   required
-                />
-                <p className="mt-1 text-xs text-zinc-500">
-                  Grade 1-13 for Sri Lankan schools
-                </p>
+                >
+                  {Array.from({ length: 13 }, (_, i) => i + 1).map((grade) => (
+                    <option key={grade} value={grade}>
+                      Grade {grade}
+                    </option>
+                  ))}
+                </select>
               </div>
+
               <div>
                 <label className="flex items-center gap-2 text-sm font-medium">
                   <input
@@ -199,39 +255,104 @@ export default function ClassesPage() {
                     onChange={(e) => setFormData({ ...formData, is13YearProgram: e.target.checked })}
                     className="h-4 w-4 rounded border-zinc-300"
                   />
-                  13-Year Program
+                  13 Years Guaranteed Education
                 </label>
                 <p className="mt-1 text-xs text-zinc-500">
                   Check if this class is part of the 13-year program
                 </p>
               </div>
-              <div>
-                <label htmlFor="stream" className="mb-2 block text-sm font-medium">
-                  Stream (Optional)
-                </label>
-                <select
-                  id="stream"
-                  value={formData.stream}
-                  onChange={(e) => setFormData({ ...formData, stream: e.target.value })}
-                  className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-950 dark:ring-offset-zinc-950 dark:focus-visible:ring-zinc-300"
-                >
-                  <option value="">No Stream</option>
-                  {STREAMS.map((stream) => (
-                    <option key={stream} value={stream}>
-                      {stream}
-                    </option>
-                  ))}
-                </select>
-                <p className="mt-1 text-xs text-zinc-500">
-                  For higher grades (12-13), select applicable stream
-                </p>
-              </div>
+
+              {formData.grade >= 12 && (
+                <div>
+                  <label htmlFor="stream" className="mb-2 block text-sm font-medium">
+                    Stream (for Higher Grades)
+                  </label>
+                  <select
+                    id="stream"
+                    value={formData.stream}
+                    onChange={(e) => setFormData({ ...formData, stream: e.target.value })}
+                    className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-950 dark:ring-offset-zinc-950 dark:focus-visible:ring-zinc-300"
+                  >
+                    <option value="">No Stream</option>
+                    {STREAMS.map((stream) => (
+                      <option key={stream} value={stream}>
+                        {stream}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-zinc-500">
+                    Select applicable stream for grades 12-13
+                  </p>
+                </div>
+              )}
+
+              {!editingClass && (
+                <>
+                  <div>
+                    <label htmlFor="numberOfParallelClasses" className="mb-2 block text-sm font-medium">
+                      Number of Parallel Classes
+                    </label>
+                    <Input
+                      id="numberOfParallelClasses"
+                      type="number"
+                      min="1"
+                      max="26"
+                      value={formData.numberOfParallelClasses}
+                      onChange={(e) => setFormData({ ...formData, numberOfParallelClasses: parseInt(e.target.value) || 1 })}
+                      required
+                    />
+                    <p className="mt-1 text-xs text-zinc-500">
+                      Enter number of parallel classes (1-26). System will auto-generate with suffixes A, B, C, etc.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label htmlFor="customPrefix" className="mb-2 block text-sm font-medium">
+                      Custom Prefix (Optional)
+                    </label>
+                    <Input
+                      id="customPrefix"
+                      value={formData.customPrefix}
+                      onChange={(e) => setFormData({ ...formData, customPrefix: e.target.value })}
+                      placeholder="e.g., 6-Colombo (leave empty for default)"
+                    />
+                    <p className="mt-1 text-xs text-zinc-500">
+                      Override default naming. Default format: Grade-Letter or Grade-Stream-Letter
+                    </p>
+                  </div>
+
+                  {/* Real-time Preview */}
+                  {generatedClassNames.length > 0 && (
+                    <div className="rounded-lg border-2 border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950">
+                      <div className="flex items-start gap-2">
+                        <Info className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+                        <div>
+                          <div className="font-medium text-blue-900 dark:text-blue-100 mb-2">
+                            Classes to be created ({generatedClassNames.length}):
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {generatedClassNames.map((name, index) => (
+                              <span
+                                key={index}
+                                className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-200"
+                              >
+                                {name}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
               <div className="flex justify-end gap-3">
                 <Button type="button" variant="outline" onClick={() => handleDialogClose(false)}>
                   Cancel
                 </Button>
                 <Button type="submit">
-                  {editingClass ? 'Update' : 'Create'}
+                  {editingClass ? 'Update' : `Create ${generatedClassNames.length} Class${generatedClassNames.length > 1 ? 'es' : ''}`}
                 </Button>
               </div>
             </form>

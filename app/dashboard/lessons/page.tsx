@@ -6,8 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2, X } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Info } from 'lucide-react';
 import { toast } from 'sonner';
+import { useRouter } from 'next/navigation';
 
 interface Subject {
   _id: string;
@@ -26,13 +27,6 @@ interface Class {
   grade: number;
 }
 
-interface SubjectTeacherPair {
-  subjectId: string;
-  teacherId: string;
-  subjectName?: string;
-  teacherName?: string;
-}
-
 interface Lesson {
   _id: string;
   lessonName: string;
@@ -46,6 +40,7 @@ interface Lesson {
 }
 
 export default function LessonsPage() {
+  const router = useRouter();
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
@@ -63,21 +58,38 @@ export default function LessonsPage() {
   });
 
   const [selectedClasses, setSelectedClasses] = useState<string[]>([]);
-  const [subjectTeacherPairs, setSubjectTeacherPairs] = useState<SubjectTeacherPair[]>([]);
-  const [currentSubject, setCurrentSubject] = useState('');
-  const [currentTeacher, setCurrentTeacher] = useState('');
+  const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
+  const [selectedTeachers, setSelectedTeachers] = useState<string[]>([]);
 
   useEffect(() => {
     fetchData();
-  }, []);
+
+    // Set up real-time updates - refetch when coming back to the page
+    const handleFocus = () => {
+      router.refresh();
+      fetchData();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    
+    // Refetch periodically (every 10 seconds)
+    const interval = setInterval(() => {
+      fetchData();
+    }, 10000);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      clearInterval(interval);
+    };
+  }, [router]);
 
   const fetchData = async () => {
     try {
       const [lessonsRes, subjectsRes, teachersRes, classesRes] = await Promise.all([
-        fetch('/api/lessons'),
-        fetch('/api/subjects'),
-        fetch('/api/teachers'),
-        fetch('/api/classes'),
+        fetch('/api/lessons', { cache: 'no-store' }),
+        fetch('/api/subjects', { cache: 'no-store' }),
+        fetch('/api/teachers', { cache: 'no-store' }),
+        fetch('/api/classes', { cache: 'no-store' }),
       ]);
 
       const [lessonsData, subjectsData, teachersData, classesData] = await Promise.all([
@@ -106,21 +118,23 @@ export default function LessonsPage() {
       return;
     }
 
-    if (subjectTeacherPairs.length === 0) {
-      toast.error('Please add at least one subject-teacher pair');
+    if (selectedSubjects.length === 0 || selectedTeachers.length === 0) {
+      toast.error('Please select at least one subject and one teacher');
+      return;
+    }
+
+    if (formData.numberOfSingles === 0 && formData.numberOfDoubles === 0) {
+      toast.error('Please specify at least one single or double period');
       return;
     }
 
     try {
       const url = '/api/lessons';
       const method = editingLesson ? 'PUT' : 'POST';
-      
-      const subjectIds = subjectTeacherPairs.map(pair => pair.subjectId);
-      const teacherIds = subjectTeacherPairs.map(pair => pair.teacherId);
 
       const body = editingLesson
-        ? { id: editingLesson._id, ...formData, subjectIds, teacherIds, classIds: selectedClasses }
-        : { ...formData, subjectIds, teacherIds, classIds: selectedClasses };
+        ? { id: editingLesson._id, ...formData, subjectIds: selectedSubjects, teacherIds: selectedTeachers, classIds: selectedClasses }
+        : { ...formData, subjectIds: selectedSubjects, teacherIds: selectedTeachers, classIds: selectedClasses };
 
       const response = await fetch(url, {
         method,
@@ -153,15 +167,8 @@ export default function LessonsPage() {
       notes: lesson.notes || '',
     });
     setSelectedClasses(lesson.classIds.map(c => c._id));
-    
-    // Reconstruct subject-teacher pairs
-    const pairs = lesson.subjectIds.map((subject, index) => ({
-      subjectId: subject._id,
-      teacherId: lesson.teacherIds[index]?._id || '',
-      subjectName: subject.name,
-      teacherName: lesson.teacherIds[index]?.name || '',
-    }));
-    setSubjectTeacherPairs(pairs);
+    setSelectedSubjects(lesson.subjectIds.map(s => s._id));
+    setSelectedTeachers(lesson.teacherIds.map(t => t._id));
     
     setDialogOpen(true);
   };
@@ -195,37 +202,20 @@ export default function LessonsPage() {
     );
   };
 
-  const addSubjectTeacherPair = () => {
-    if (!currentSubject || !currentTeacher) {
-      toast.error('Please select both a subject and a teacher');
-      return;
-    }
-
-    // Check if subject already exists
-    if (subjectTeacherPairs.some(pair => pair.subjectId === currentSubject)) {
-      toast.error('This subject has already been added');
-      return;
-    }
-
-    const subject = subjects.find(s => s._id === currentSubject);
-    const teacher = teachers.find(t => t._id === currentTeacher);
-
-    setSubjectTeacherPairs([
-      ...subjectTeacherPairs,
-      {
-        subjectId: currentSubject,
-        teacherId: currentTeacher,
-        subjectName: subject?.name,
-        teacherName: teacher?.name,
-      },
-    ]);
-
-    setCurrentSubject('');
-    setCurrentTeacher('');
+  const toggleSubject = (subjectId: string) => {
+    setSelectedSubjects(prev =>
+      prev.includes(subjectId)
+        ? prev.filter(id => id !== subjectId)
+        : [...prev, subjectId]
+    );
   };
 
-  const removeSubjectTeacherPair = (index: number) => {
-    setSubjectTeacherPairs(pairs => pairs.filter((_, i) => i !== index));
+  const toggleTeacher = (teacherId: string) => {
+    setSelectedTeachers(prev =>
+      prev.includes(teacherId)
+        ? prev.filter(id => id !== teacherId)
+        : [...prev, teacherId]
+    );
   };
 
   const resetForm = () => {
@@ -237,9 +227,8 @@ export default function LessonsPage() {
       notes: '',
     });
     setSelectedClasses([]);
-    setSubjectTeacherPairs([]);
-    setCurrentSubject('');
-    setCurrentTeacher('');
+    setSelectedSubjects([]);
+    setSelectedTeachers([]);
     setEditingLesson(null);
   };
 
@@ -323,124 +312,127 @@ export default function LessonsPage() {
                 </Card>
               </div>
 
-              {/* Subject-Teacher Pairs */}
+              {/* Subject Selection */}
               <div>
                 <label className="mb-2 block text-sm font-medium">
-                  Assign Subjects and Teachers
+                  Select Subjects (Multiple)
                 </label>
                 <Card className="p-4">
-                  <div className="grid gap-3 md:grid-cols-[1fr,1fr,auto]">
-                    <div>
-                      <label htmlFor="subject" className="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                        Subject
-                      </label>
-                      <select
-                        id="subject"
-                        value={currentSubject}
-                        onChange={(e) => setCurrentSubject(e.target.value)}
-                        className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 dark:border-zinc-800 dark:bg-zinc-950"
+                  <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+                    {subjects.map((subject) => (
+                      <button
+                        key={subject._id}
+                        type="button"
+                        onClick={() => toggleSubject(subject._id)}
+                        className={`rounded-lg border-2 px-3 py-2 text-sm font-medium transition-colors ${
+                          selectedSubjects.includes(subject._id)
+                            ? 'border-purple-600 bg-purple-50 text-purple-900 dark:bg-purple-900 dark:text-purple-50'
+                            : 'border-zinc-200 bg-white hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-900'
+                        }`}
                       >
-                        <option value="">Select Subject</option>
-                        {subjects.map((subject) => (
-                          <option key={subject._id} value={subject._id}>
-                            {subject.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label htmlFor="teacher" className="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                        Teacher
-                      </label>
-                      <select
-                        id="teacher"
-                        value={currentTeacher}
-                        onChange={(e) => setCurrentTeacher(e.target.value)}
-                        className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 dark:border-zinc-800 dark:bg-zinc-950"
-                      >
-                        <option value="">Select Teacher</option>
-                        {teachers.map((teacher) => (
-                          <option key={teacher._id} value={teacher._id}>
-                            {teacher.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="flex items-end">
-                      <Button type="button" onClick={addSubjectTeacherPair} className="w-full md:w-auto">
-                        Add
-                      </Button>
-                    </div>
+                        {subject.name}
+                      </button>
+                    ))}
                   </div>
-
-                  {/* Display added pairs */}
-                  {subjectTeacherPairs.length > 0 && (
-                    <div className="mt-4 space-y-2">
-                      <div className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                        Subject-Teacher Assignments:
-                      </div>
-                      {subjectTeacherPairs.map((pair, index) => (
-                        <div
-                          key={index}
-                          className="flex items-center justify-between rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-800"
-                        >
-                          <div className="flex items-center gap-2 text-sm">
-                            <span className="font-medium text-zinc-900 dark:text-zinc-50">
-                              {pair.subjectName}
-                            </span>
-                            <span className="text-zinc-400">→</span>
-                            <span className="text-zinc-600 dark:text-zinc-300">
-                              {pair.teacherName}
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => removeSubjectTeacherPair(index)}
-                            className="text-red-600 hover:text-red-700"
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
-                        </div>
-                      ))}
+                  {selectedSubjects.length > 0 && (
+                    <div className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
+                      {selectedSubjects.length} subject{selectedSubjects.length !== 1 ? 's' : ''} selected
                     </div>
                   )}
                 </Card>
               </div>
 
-              {/* Periods and Settings */}
-              <div className="grid gap-4 md:grid-cols-3">
-                <div>
-                  <label htmlFor="numberOfSingles" className="mb-2 block text-sm font-medium">
-                    Single Periods
-                  </label>
-                  <Input
-                    id="numberOfSingles"
-                    type="number"
-                    min="0"
-                    max="35"
-                    value={formData.numberOfSingles}
-                    onChange={(e) => setFormData({ ...formData, numberOfSingles: parseInt(e.target.value) })}
-                  />
-                  <p className="mt-1 text-xs text-zinc-500">
-                    Number of single periods per week
-                  </p>
-                </div>
-                <div>
-                  <label htmlFor="numberOfDoubles" className="mb-2 block text-sm font-medium">
-                    Double Periods
-                  </label>
-                  <Input
-                    id="numberOfDoubles"
-                    type="number"
-                    min="0"
-                    max="17"
-                    value={formData.numberOfDoubles}
-                    onChange={(e) => setFormData({ ...formData, numberOfDoubles: parseInt(e.target.value) })}
-                  />
-                  <p className="mt-1 text-xs text-zinc-500">
-                    Number of double periods per week
-                  </p>
-                </div>
+              {/* Teacher Selection */}
+              <div>
+                <label className="mb-2 block text-sm font-medium">
+                  Select Teachers (Multiple)
+                </label>
+                <Card className="p-4">
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                    {teachers.map((teacher) => (
+                      <button
+                        key={teacher._id}
+                        type="button"
+                        onClick={() => toggleTeacher(teacher._id)}
+                        className={`rounded-lg border-2 px-3 py-2 text-sm font-medium transition-colors ${
+                          selectedTeachers.includes(teacher._id)
+                            ? 'border-green-600 bg-green-50 text-green-900 dark:bg-green-900 dark:text-green-50'
+                            : 'border-zinc-200 bg-white hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-900'
+                        }`}
+                      >
+                        <div className="text-left">
+                          <div>{teacher.name}</div>
+                          <div className="text-xs text-zinc-500">{teacher.email}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  {selectedTeachers.length > 0 && (
+                    <div className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
+                      {selectedTeachers.length} teacher{selectedTeachers.length !== 1 ? 's' : ''} selected
+                    </div>
+                  )}
+                </Card>
+              </div>
+
+              {/* Period Configuration */}
+              <div>
+                <label className="mb-2 block text-sm font-medium">
+                  Period Configuration
+                </label>
+                <Card className="p-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label htmlFor="numberOfSingles" className="mb-2 block text-sm font-medium">
+                        Single Periods per Week
+                      </label>
+                      <Input
+                        id="numberOfSingles"
+                        type="number"
+                        min="0"
+                        max="35"
+                        value={formData.numberOfSingles}
+                        onChange={(e) => setFormData({ ...formData, numberOfSingles: parseInt(e.target.value) || 0 })}
+                      />
+                      <p className="mt-1 text-xs text-zinc-500">
+                        Number of single periods (50 min each)
+                      </p>
+                    </div>
+                    <div>
+                      <label htmlFor="numberOfDoubles" className="mb-2 block text-sm font-medium">
+                        Double Periods per Week
+                      </label>
+                      <Input
+                        id="numberOfDoubles"
+                        type="number"
+                        min="0"
+                        max="17"
+                        value={formData.numberOfDoubles}
+                        onChange={(e) => setFormData({ ...formData, numberOfDoubles: parseInt(e.target.value) || 0 })}
+                      />
+                      <p className="mt-1 text-xs text-zinc-500">
+                        Number of double periods (100 min each)
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Real-time calculation */}
+                  {(formData.numberOfSingles > 0 || formData.numberOfDoubles > 0) && (
+                    <div className="mt-4 rounded-lg border-2 border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950">
+                      <div className="flex items-center gap-2">
+                        <Info className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                        <div className="text-sm text-blue-900 dark:text-blue-100">
+                          <strong>Total Periods Required:</strong> {formData.numberOfSingles + formData.numberOfDoubles * 2} periods per week
+                          ({formData.numberOfSingles} singles + {formData.numberOfDoubles} doubles)
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </Card>
+              </div>
+
+              {/* Additional Settings */}
+              <div className="grid gap-4 md:grid-cols-2">
                 <div>
                   <label htmlFor="color" className="mb-2 block text-sm font-medium">
                     Color (Optional)
@@ -450,6 +442,7 @@ export default function LessonsPage() {
                     type="color"
                     value={formData.color}
                     onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                    className="h-10"
                   />
                 </div>
               </div>

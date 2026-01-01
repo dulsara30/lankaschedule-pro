@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/dbConnect';
 import Teacher from '@/models/Teacher';
 import School from '@/models/School';
@@ -69,6 +70,9 @@ export async function POST(request: NextRequest) {
       subjectsTaught: subjectsTaught || [],
     });
 
+    // Revalidate lessons page to reflect changes
+    revalidatePath('/dashboard/lessons');
+
     return NextResponse.json({
       success: true,
       data: teacher,
@@ -135,6 +139,8 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    revalidatePath('/dashboard/lessons');
+
     return NextResponse.json({
       success: true,
       data: teacher,
@@ -192,6 +198,8 @@ export async function DELETE(request: NextRequest) {
         { status: 404 }
       );
     }
+
+    revalidatePath('/dashboard/lessons');
 
     return NextResponse.json({
       success: true,

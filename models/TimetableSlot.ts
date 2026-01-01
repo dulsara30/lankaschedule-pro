@@ -99,26 +99,18 @@ TimetableSlotSchema.index({ schoolId: 1, lessonId: 1, academicYear: 1, term: 1 }
 TimetableSlotSchema.index({ schoolId: 1, day: 1, periodNumber: 1 });
 
 // Pre-save validation: Check if periodNumber is within school's configured range
-TimetableSlotSchema.pre('save', async function (next) {
-  try {
-    const School = mongoose.model('School');
-    const school = await School.findById(this.schoolId);
-    
-    if (!school) {
-      return next(new Error('School not found'));
-    }
-    
-    if (this.periodNumber > school.config.numberOfPeriods) {
-      return next(
-        new Error(
-          `Period number ${this.periodNumber} exceeds school's configured periods (${school.config.numberOfPeriods})`
-        )
-      );
-    }
-    
-    next();
-  } catch (error) {
-    next(error as Error);
+TimetableSlotSchema.pre('save', async function () {
+  const School = mongoose.model('School');
+  const school = await School.findById(this.schoolId);
+  
+  if (!school) {
+    throw new Error('School not found');
+  }
+  
+  if (this.periodNumber > school.config.numberOfPeriods) {
+    throw new Error(
+      `Period number ${this.periodNumber} exceeds school's configured periods (${school.config.numberOfPeriods})`
+    );
   }
 });
 

@@ -55,11 +55,9 @@ TeacherSchema.index({ schoolId: 1, email: 1 }, { unique: true });
 TeacherSchema.index({ schoolId: 1, name: 1 });
 
 // Validation: maxPeriods should be >= minPeriods
-TeacherSchema.pre('save', function (next) {
+TeacherSchema.pre('save', function () {
   if (this.maxPeriods < this.minPeriods) {
-    next(new Error('Maximum periods must be greater than or equal to minimum periods'));
-  } else {
-    next();
+    throw new Error('Maximum periods must be greater than or equal to minimum periods');
   }
 });
 

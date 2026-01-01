@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/dbConnect';
 import School from '@/models/School';
 
@@ -87,6 +88,10 @@ export async function POST(request: NextRequest) {
         config,
       });
     }
+
+    // Revalidate the school setup page to reflect changes
+    revalidatePath('/dashboard/school-setup');
+    revalidatePath('/dashboard');
 
     return NextResponse.json({
       success: true,

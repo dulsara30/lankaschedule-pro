@@ -17,7 +17,7 @@ interface Class {
   stream?: string;
 }
 
-const STREAMS = ['Bio', 'Maths', 'Arts', 'Commerce', 'Technology'] as const;
+const STREAMS = ['Bio', 'Maths', 'Arts', 'Commerce', 'Technology', 'Vocational'] as const;
 
 export default function ClassesPage() {
   const [classes, setClasses] = useState<Class[]>([]);
@@ -35,8 +35,21 @@ export default function ClassesPage() {
   // Generate class names in real-time
   const generatedClassNames = useMemo(() => {
     const count = formData.numberOfParallelClasses;
-    if (count < 1 || count > 26) return [];
+    if (count < 0 || count > 26) return [];
     
+    // If count is 0 or 1, no suffix - just "Grade 6"
+    if (count <= 1) {
+      let name = `Grade ${formData.grade}`;
+      if (formData.stream) {
+        name = `Grade ${formData.grade} - ${formData.stream}`;
+      }
+      if (formData.customPrefix) {
+        name = formData.customPrefix;
+      }
+      return [name];
+    }
+    
+    // For count > 1, add suffixes A, B, C, etc.
     const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
     const names: string[] = [];
     
@@ -262,10 +275,10 @@ export default function ClassesPage() {
                 </p>
               </div>
 
-              {formData.grade >= 12 && (
+              {formData.grade >= 10 && (
                 <div>
                   <label htmlFor="stream" className="mb-2 block text-sm font-medium">
-                    Stream (for Higher Grades)
+                    Stream (for Grades 10-13)
                   </label>
                   <select
                     id="stream"
@@ -281,7 +294,7 @@ export default function ClassesPage() {
                     ))}
                   </select>
                   <p className="mt-1 text-xs text-zinc-500">
-                    Select applicable stream for grades 12-13
+                    Select applicable stream for grades 10-13 (Bio, Maths, Arts, Commerce, Tech, Vocational)
                   </p>
                 </div>
               )}
@@ -295,14 +308,14 @@ export default function ClassesPage() {
                     <Input
                       id="numberOfParallelClasses"
                       type="number"
-                      min="1"
+                      min="0"
                       max="26"
                       value={formData.numberOfParallelClasses}
-                      onChange={(e) => setFormData({ ...formData, numberOfParallelClasses: parseInt(e.target.value) || 1 })}
+                      onChange={(e) => setFormData({ ...formData, numberOfParallelClasses: parseInt(e.target.value) || 0 })}
                       required
                     />
                     <p className="mt-1 text-xs text-zinc-500">
-                      Enter number of parallel classes (1-26). System will auto-generate with suffixes A, B, C, etc.
+                      Enter 0 or 1 for a single class (no suffix). Enter 2+ to auto-generate with suffixes A, B, C, etc.
                     </p>
                   </div>
 

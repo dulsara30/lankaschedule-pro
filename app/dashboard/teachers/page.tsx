@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2, X } from 'lucide-react';
+import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Teacher {
@@ -16,11 +16,17 @@ interface Teacher {
   subjectsTaught: string[];
 }
 
+interface Subject {
+  _id: string;
+  name: string;
+}
+
 const TEACHER_MIN_PERIODS = 24;
 const TEACHER_MAX_PERIODS = 35;
 
 export default function TeachersPage() {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTeacher, setEditingTeacher] = useState<Teacher | null>(null);
@@ -29,15 +35,15 @@ export default function TeachersPage() {
     email: '',
     subjectsTaught: [] as string[],
   });
-  const [currentSubject, setCurrentSubject] = useState('');
 
   useEffect(() => {
     fetchTeachers();
+    fetchSubjects();
   }, []);
 
   const fetchTeachers = async () => {
     try {
-      const response = await fetch('/api/teachers');
+      const response = await fetch('/api/teachers', { cache: 'no-store' });
       const data = await response.json();
       if (data.success) {
         setTeachers(data.data);
@@ -46,6 +52,18 @@ export default function TeachersPage() {
       toast.error('Failed to load teachers');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchSubjects = async () => {
+    try {
+      const response = await fetch('/api/subjects', { cache: 'no-store' });
+      const data = await response.json();
+      if (data.success) {
+        setSubjects(data.data);
+      }
+    } catch (error) {
+      console.error('Failed to load subjects:', error);
     }
   };
 
@@ -111,28 +129,13 @@ export default function TeachersPage() {
     }
   };
 
-  const addSubject = () => {
-    if (currentSubject.trim() && !formData.subjectsTaught.includes(currentSubject.trim())) {
-      setFormData({
-        ...formData,
-        subjectsTaught: [...formData.subjectsTaught, currentSubject.trim()],
-      });
-      setCurrentSubject('');
-    }
-  };
-
-  const removeSubject = (subject: string) => {
-    setFormData({
-      ...formData,
-      subjectsTaught: formData.subjectsTaught.filter((s) => s !== subject),
-    });
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      addSubject();
-    }
+  const toggleSubject = (subjectName: string) => {
+    setFormData(prev => ({
+      ...prev,
+      subjectsTaught: prev.subjectsTaught.includes(subjectName)
+        ? prev.subjectsTaught.filter(s => s !== subjectName)
+        : [...prev.subjectsTaught, subjectName]
+    }));
   };
 
   const resetForm = () => {
@@ -141,7 +144,6 @@ export default function TeachersPage() {
       email: '',
       subjectsTaught: [],
     });
-    setCurrentSubject('');
     setEditingTeacher(null);
   };
 
@@ -212,42 +214,36 @@ export default function TeachersPage() {
                 <label htmlFor="subjects" className="mb-2 block text-sm font-medium">
                   Subjects Taught
                 </label>
-                <div className="flex gap-2">
-                  <Input
-                    id="subjects"
-                    value={currentSubject}
-                    onChange={(e) => setCurrentSubject(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    placeholder="Enter subject name and press Enter"
-                  />
-                  <Button type="button" onClick={addSubject}>
-                    Add
-                  </Button>
-                </div>
-                {formData.subjectsTaught.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {formData.subjectsTaught.map((subject) => (
-                      <span
-                        key={subject}
-                        className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-200"
+                {subjects.length === 0 ? (
+                  <div className="rounded-md border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
+                    No subjects available. Please add subjects first in the Subjects page.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3 rounded-md border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900">
+                    {subjects.map((subject) => (
+                      <label
+                        key={subject._id}
+                        className="flex items-center gap-2 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md p-2 transition-colors"
                       >
-                        {subject}
-                        <button
-                          type="button"
-                          onClick={() => removeSubject(subject)}
-                          className="ml-1 hover:text-blue-600"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
+                        <input
+                          type="checkbox"
+                          checked={formData.subjectsTaught.includes(subject.name)}
+                          onChange={() => toggleSubject(subject.name)}
+                          className="h-4 w-4 rounded border-zinc-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                        />
+                        <span className="text-sm">{subject.name}</span>
+                      </label>
                     ))}
                   </div>
                 )}
+                <p className="mt-1 text-xs text-zinc-500">
+                  Select one or more subjects this teacher can teach
+                </p>
               </div>
 
-              <div className="rounded-md bg-zinc-50 p-3 dark:bg-zinc-900">
-                <p className="text-sm text-zinc-600 dark:text-zinc-400">
-                  <strong>Period Requirements:</strong> All teachers must teach between {TEACHER_MIN_PERIODS} and {TEACHER_MAX_PERIODS} periods per week.
+              <div className="rounded-md bg-amber-50 border border-amber-200 p-3 dark:bg-amber-950 dark:border-amber-800">
+                <p className="text-sm text-amber-800 dark:text-amber-200">
+                  <strong>💡 Workload Guideline:</strong> Teacher workload should ideally be between {TEACHER_MIN_PERIODS} and {TEACHER_MAX_PERIODS} periods per week for optimal scheduling.
                 </p>
               </div>
 

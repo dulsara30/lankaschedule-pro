@@ -1,0 +1,278 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
+
+interface Subject {
+  _id: string;
+  name: string;
+  code: string;
+  category: 'Core' | 'Aesthetic' | 'Optional' | 'Extra-Curricular';
+}
+
+const CATEGORIES = ['Core', 'Aesthetic', 'Optional', 'Extra-Curricular'] as const;
+
+export default function SubjectsPage() {
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
+  const [formData, setFormData] = useState({
+    name: '',
+    code: '',
+    category: 'Core' as Subject['category'],
+  });
+
+  useEffect(() => {
+    fetchSubjects();
+  }, []);
+
+  const fetchSubjects = async () => {
+    try {
+      const response = await fetch('/api/subjects');
+      const data = await response.json();
+      if (data.success) {
+        setSubjects(data.data);
+      }
+    } catch (error) {
+      toast.error('Failed to load subjects');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    try {
+      const url = '/api/subjects';
+      const method = editingSubject ? 'PUT' : 'POST';
+      const body = editingSubject
+        ? { id: editingSubject._id, ...formData }
+        : formData;
+
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success(data.message);
+        setDialogOpen(false);
+        resetForm();
+        fetchSubjects();
+      } else {
+        toast.error(data.error);
+      }
+    } catch (error) {
+      toast.error('An error occurred');
+    }
+  };
+
+  const handleEdit = (subject: Subject) => {
+    setEditingSubject(subject);
+    setFormData({
+      name: subject.name,
+      code: subject.code,
+      category: subject.category,
+    });
+    setDialogOpen(true);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this subject?')) return;
+
+    try {
+      const response = await fetch(`/api/subjects?id=${id}`, {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success('Subject deleted successfully');
+        fetchSubjects();
+      } else {
+        toast.error(data.error);
+      }
+    } catch (error) {
+      toast.error('Failed to delete subject');
+    }
+  };
+
+  const resetForm = () => {
+    setFormData({ name: '', code: '', category: 'Core' });
+    setEditingSubject(null);
+  };
+
+  const handleDialogClose = (open: boolean) => {
+    setDialogOpen(open);
+    if (!open) resetForm();
+  };
+
+  const getCategoryColor = (category: string) => {
+    const colors: Record<string, string> = {
+      Core: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+      Aesthetic: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
+      Optional: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+      'Extra-Curricular': 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
+    };
+    return colors[category] || 'bg-gray-100 text-gray-800';
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-50">
+            Subjects
+          </h1>
+          <p className="mt-2 text-zinc-600 dark:text-zinc-400">
+            Manage subjects and their categories
+          </p>
+        </div>
+        <Dialog open={dialogOpen} onOpenChange={handleDialogClose}>
+          <DialogTrigger asChild>
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Subject
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                {editingSubject ? 'Edit Subject' : 'Add New Subject'}
+              </DialogTitle>
+              <DialogDescription>
+                {editingSubject
+                  ? 'Update the subject details below'
+                  : 'Enter the details for the new subject'}
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label htmlFor="name" className="mb-2 block text-sm font-medium">
+                  Subject Name
+                </label>
+                <Input
+                  id="name"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="e.g., Mathematics"
+                  required
+                />
+              </div>
+              <div>
+                <label htmlFor="code" className="mb-2 block text-sm font-medium">
+                  Subject Code
+                </label>
+                <Input
+                  id="code"
+                  value={formData.code}
+                  onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
+                  placeholder="e.g., MATH"
+                  required
+                />
+              </div>
+              <div>
+                <label htmlFor="category" className="mb-2 block text-sm font-medium">
+                  Category
+                </label>
+                <select
+                  id="category"
+                  value={formData.category}
+                  onChange={(e) => setFormData({ ...formData, category: e.target.value as Subject['category'] })}
+                  className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-950 dark:ring-offset-zinc-950 dark:focus-visible:ring-zinc-300"
+                  required
+                >
+                  {CATEGORIES.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex justify-end gap-3">
+                <Button type="button" variant="outline" onClick={() => handleDialogClose(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit">
+                  {editingSubject ? 'Update' : 'Create'}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>All Subjects</CardTitle>
+          <CardDescription>
+            {subjects.length} subject{subjects.length !== 1 ? 's' : ''} registered
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="py-8 text-center text-zinc-500">Loading...</div>
+          ) : subjects.length === 0 ? (
+            <div className="py-8 text-center text-zinc-500">
+              No subjects found. Add your first subject to get started.
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Code</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {subjects.map((subject) => (
+                  <TableRow key={subject._id}>
+                    <TableCell className="font-mono font-semibold">{subject.code}</TableCell>
+                    <TableCell>{subject.name}</TableCell>
+                    <TableCell>
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${getCategoryColor(subject.category)}`}>
+                        {subject.category}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleEdit(subject)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDelete(subject._id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-red-600" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

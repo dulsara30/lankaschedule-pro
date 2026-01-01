@@ -36,4 +36,7 @@ const SubjectSchema = new Schema<ISubject>(
 // Compound indexes for multi-tenant queries
 SubjectSchema.index({ schoolId: 1, name: 1 }, { unique: true });
 
+// Note: If you encounter "E11000 duplicate key error" for schoolId_1_code_1,
+// it's an old index. Drop it using: db.subjects.dropIndex("schoolId_1_code_1")
+
 export default mongoose.models.Subject || mongoose.model<ISubject>('Subject', SubjectSchema);

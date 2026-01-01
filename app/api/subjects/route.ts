@@ -3,6 +3,7 @@ import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/dbConnect';
 import Subject from '@/models/Subject';
 import School from '@/models/School';
+import { generateBrightColor } from '@/lib/utils';
 
 // GET: Fetch all subjects
 export async function GET() {
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, color } = body;
+    const { name } = body;
 
     if (!name) {
       return NextResponse.json(
@@ -64,14 +65,37 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const subject = await Subject.create({
+    // Trim and normalize the name
+    const trimmedName = name.trim();
+
+    // Check for case-insensitive duplicate within the same school
+    const existingSubject = await Subject.findOne({
       schoolId: school._id,
-      name,
-      color: color || '#3B82F6',
+      name: { $regex: new RegExp(`^${trimmedName}$`, 'i') }
     });
 
-    // Revalidate lessons page to reflect changes
+    if (existingSubject) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Subject name already exists',
+        },
+        { status: 400 }
+      );
+    }
+
+    // Auto-generate a bright color
+    const autoColor = generateBrightColor();
+
+    const subject = await Subject.create({
+      schoolId: school._id,
+      name: trimmedName,
+      color: autoColor,
+    });
+
+    // Revalidate pages to reflect changes
     revalidatePath('/dashboard/lessons');
+    revalidatePath('/dashboard/subjects');
 
     return NextResponse.json({
       success: true,
@@ -81,7 +105,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error('Error creating subject:', error);
     
-    // Handle duplicate key error
+    // Handle duplicate key error (fallback)
     if (error.code === 11000) {
       return NextResponse.json(
         {
@@ -120,7 +144,39 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const updateData: any = { name };
+    // Trim and normalize the name
+    const trimmedName = name.trim();
+
+    // Get the subject being updated to check its schoolId
+    const currentSubject = await Subject.findById(id);
+    if (!currentSubject) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Subject not found',
+        },
+        { status: 404 }
+      );
+    }
+
+    // Check for case-insensitive duplicate within the same school (excluding current subject)
+    const existingSubject = await Subject.findOne({
+      _id: { $ne: id },
+      schoolId: currentSubject.schoolId,
+      name: { $regex: new RegExp(`^${trimmedName}$`, 'i') }
+    });
+
+    if (existingSubject) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Subject name already exists',
+        },
+        { status: 400 }
+      );
+    }
+
+    const updateData: any = { name: trimmedName };
     if (color) {
       updateData.color = color;
     }
@@ -131,18 +187,9 @@ export async function PUT(request: NextRequest) {
       { new: true, runValidators: true }
     );
 
-    if (!subject) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Subject not found',
-        },
-        { status: 404 }
-      );
-    }
-
-    // Revalidate lessons page to reflect changes
+    // Revalidate pages to reflect changes
     revalidatePath('/dashboard/lessons');
+    revalidatePath('/dashboard/subjects');
 
     return NextResponse.json({
       success: true,
@@ -156,7 +203,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Subject code already exists',
+          error: 'Subject name already exists',
         },
         { status: 400 }
       );
@@ -202,8 +249,9 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Revalidate lessons page to reflect changes
+    // Revalidate pages to reflect changes
     revalidatePath('/dashboard/lessons');
+    revalidatePath('/dashboard/subjects');
 
     return NextResponse.json({
       success: true,

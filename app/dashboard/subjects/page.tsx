@@ -22,7 +22,6 @@ export default function SubjectsPage() {
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
   const [formData, setFormData] = useState({
     name: '',
-    color: '#3B82F6',
   });
 
   useEffect(() => {
@@ -78,7 +77,6 @@ export default function SubjectsPage() {
     setEditingSubject(subject);
     setFormData({
       name: subject.name,
-      color: subject.color || '#3B82F6',
     });
     setDialogOpen(true);
   };
@@ -105,7 +103,7 @@ export default function SubjectsPage() {
   };
 
   const resetForm = () => {
-    setFormData({ name: '', color: '#3B82F6' });
+    setFormData({ name: '' });
     setEditingSubject(null);
   };
 
@@ -155,33 +153,11 @@ export default function SubjectsPage() {
                   placeholder="e.g., Mathematics"
                   required
                 />
-              </div>
-              <div>
-                <label htmlFor="color" className="mb-2 block text-sm font-medium">
-                  Subject Color
-                </label>
-                <div className="flex gap-3 items-center">
-                  <input
-                    id="color"
-                    type="color"
-                    value={formData.color}
-                    onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                    className="h-10 w-20 rounded-md border border-zinc-200 cursor-pointer dark:border-zinc-800"
-                    required
-                  />
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="h-6 w-6 rounded-full border-2 border-zinc-300"
-                      style={{ backgroundColor: formData.color }}
-                    />
-                    <span className="text-sm text-zinc-600 dark:text-zinc-400">
-                      {formData.color}
-                    </span>
-                  </div>
-                </div>
-                <p className="mt-1 text-xs text-zinc-500">
-                  This color will be used to visually identify this subject in lessons and timetables
-                </p>
+                {!editingSubject && (
+                  <p className="mt-1 text-xs text-zinc-500">
+                    🎨 A unique color will be automatically assigned to this subject
+                  </p>
+                )}
               </div>
               <div className="flex justify-end gap-3">
                 <Button type="button" variant="outline" onClick={() => handleDialogClose(false)}>

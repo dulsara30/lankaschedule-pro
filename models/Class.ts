@@ -2,9 +2,8 @@ import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IClass extends Document {
   schoolId: mongoose.Types.ObjectId;
-  name: string; // e.g., "6-A", "12-Maths-Olu"
-  grade: number; // 1-13 for Sri Lankan schools
-  is13YearProgram: boolean; // True if Grade 13 is offered
+  name: string; // e.g., "Grade 6", "6-A", "13 Years", "13Y-A"
+  grade: number | string; // 1-13 for regular grades, '13-years' for 13 Years program
   stream?: string; // e.g., "Bio", "Maths", "Arts", "Commerce" (for higher grades)
   createdAt: Date;
   updatedAt: Date;
@@ -24,19 +23,13 @@ const ClassSchema = new Schema<IClass>(
       trim: true,
     },
     grade: {
-      type: Number,
+      type: Schema.Types.Mixed,
       required: [true, 'Grade is required'],
-      min: [1, 'Grade must be between 1 and 13'],
-      max: [13, 'Grade must be between 1 and 13'],
-    },
-    is13YearProgram: {
-      type: Boolean,
-      default: false,
     },
     stream: {
       type: String,
       trim: true,
-      enum: ['Bio', 'Maths', 'Arts', 'Commerce', 'Technology', ''],
+      enum: ['Bio', 'Maths', 'Arts', 'Commerce', 'Technology', 'Vocational', ''],
       default: '',
     },
   },

@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, grade, is13YearProgram, stream } = body;
+    const { name, grade, stream } = body;
 
     if (!name || !grade) {
       return NextResponse.json(
@@ -67,7 +67,6 @@ export async function POST(request: NextRequest) {
       schoolId: school._id,
       name,
       grade,
-      is13YearProgram: is13YearProgram || false,
       stream: stream || '',
     });
 
@@ -108,7 +107,7 @@ export async function PUT(request: NextRequest) {
     await dbConnect();
 
     const body = await request.json();
-    const { id, name, grade, is13YearProgram, stream } = body;
+    const { id, name, grade, stream } = body;
 
     if (!id || !name || !grade) {
       return NextResponse.json(
@@ -122,7 +121,7 @@ export async function PUT(request: NextRequest) {
 
     const classData = await Class.findByIdAndUpdate(
       id,
-      { name, grade, is13YearProgram: is13YearProgram || false, stream: stream || '' },
+      { name, grade, stream: stream || '' },
       { new: true, runValidators: true }
     );
 

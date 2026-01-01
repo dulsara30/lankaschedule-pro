@@ -12,8 +12,7 @@ import { toast } from 'sonner';
 interface Class {
   _id: string;
   name: string;
-  grade: number;
-  is13YearProgram: boolean;
+  grade: number | string;
   stream?: string;
 }
 
@@ -25,8 +24,7 @@ export default function ClassesPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingClass, setEditingClass] = useState<Class | null>(null);
   const [formData, setFormData] = useState({
-    grade: 6,
-    is13YearProgram: false,
+    grade: 6 as number | string,
     stream: '',
     numberOfParallelClasses: 1,
     customPrefix: '',
@@ -37,11 +35,15 @@ export default function ClassesPage() {
     const count = formData.numberOfParallelClasses;
     if (count < 0 || count > 26) return [];
     
-    // If count is 0 or 1, no suffix - just "Grade 6"
+    // Get grade display text
+    const gradeText = formData.grade === '13-years' ? '13 Years' : `Grade ${formData.grade}`;
+    const gradeShort = formData.grade === '13-years' ? '13Y' : String(formData.grade);
+    
+    // If count is 0 or 1, no suffix - just "Grade 6" or "13 Years"
     if (count <= 1) {
-      let name = `Grade ${formData.grade}`;
+      let name = gradeText;
       if (formData.stream) {
-        name = `Grade ${formData.grade} - ${formData.stream}`;
+        name = `${gradeText} - ${formData.stream}`;
       }
       if (formData.customPrefix) {
         name = formData.customPrefix;
@@ -54,9 +56,9 @@ export default function ClassesPage() {
     const names: string[] = [];
     
     for (let i = 0; i < count; i++) {
-      let name = `${formData.grade}-${letters[i]}`;
+      let name = `${gradeShort}-${letters[i]}`;
       if (formData.stream) {
-        name = `${formData.grade}-${formData.stream}-${letters[i]}`;
+        name = `${gradeShort}-${formData.stream}-${letters[i]}`;
       }
       if (formData.customPrefix) {
         name = `${formData.customPrefix}-${letters[i]}`;
@@ -100,7 +102,6 @@ export default function ClassesPage() {
             id: editingClass._id,
             name: generatedClassNames[0], // Use first generated name for single edit
             grade: formData.grade,
-            is13YearProgram: formData.is13YearProgram,
             stream: formData.stream || undefined,
           }),
         });
@@ -122,7 +123,6 @@ export default function ClassesPage() {
       const classesToCreate = generatedClassNames.map(name => ({
         name,
         grade: formData.grade,
-        is13YearProgram: formData.is13YearProgram,
         stream: formData.stream || undefined,
       }));
 
@@ -159,7 +159,6 @@ export default function ClassesPage() {
     setEditingClass(classItem);
     setFormData({
       grade: classItem.grade,
-      is13YearProgram: classItem.is13YearProgram,
       stream: classItem.stream || '',
       numberOfParallelClasses: 1,
       customPrefix: classItem.name.split('-')[0] + '-' + (classItem.stream || ''),
@@ -190,8 +189,7 @@ export default function ClassesPage() {
 
   const resetForm = () => {
     setFormData({ 
-      grade: 6, 
-      is13YearProgram: false, 
+      grade: 6 as number | string, 
       stream: '',
       numberOfParallelClasses: 1,
       customPrefix: '',
@@ -248,7 +246,10 @@ export default function ClassesPage() {
                 <select
                   id="grade"
                   value={formData.grade}
-                  onChange={(e) => setFormData({ ...formData, grade: parseInt(e.target.value) })}
+                  onChange={(e) => {
+                    const value = e.target.value === '13-years' ? '13-years' : parseInt(e.target.value);
+                    setFormData({ ...formData, grade: value });
+                  }}
                   className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-950 dark:ring-offset-zinc-950 dark:focus-visible:ring-zinc-300"
                   required
                 >
@@ -257,25 +258,11 @@ export default function ClassesPage() {
                       Grade {grade}
                     </option>
                   ))}
+                  <option value="13-years">13 Years</option>
                 </select>
               </div>
 
-              <div>
-                <label className="flex items-center gap-2 text-sm font-medium">
-                  <input
-                    type="checkbox"
-                    checked={formData.is13YearProgram}
-                    onChange={(e) => setFormData({ ...formData, is13YearProgram: e.target.checked })}
-                    className="h-4 w-4 rounded border-zinc-300"
-                  />
-                  13 Years Guaranteed Education
-                </label>
-                <p className="mt-1 text-xs text-zinc-500">
-                  Check if this class is part of the 13-year program
-                </p>
-              </div>
-
-              {formData.grade >= 10 && (
+              {((typeof formData.grade === 'number' && formData.grade >= 10) || formData.grade === '13-years') && (
                 <div>
                   <label htmlFor="stream" className="mb-2 block text-sm font-medium">
                     Stream (for Grades 10-13)
@@ -393,7 +380,6 @@ export default function ClassesPage() {
                 <TableRow>
                   <TableHead>Class Name</TableHead>
                   <TableHead>Grade Level</TableHead>
-                  <TableHead>Program</TableHead>
                   <TableHead>Stream</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -403,13 +389,10 @@ export default function ClassesPage() {
                   <TableRow key={classItem._id}>
                     <TableCell className="font-medium">{classItem.name}</TableCell>
                     <TableCell>
-                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${getGradeBadgeColor(classItem.grade)}`}>
-                        Grade {classItem.grade}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm text-zinc-600 dark:text-zinc-400">
-                        {classItem.is13YearProgram ? '13-Year' : '12-Year'}
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                        typeof classItem.grade === 'number' ? getGradeBadgeColor(classItem.grade) : 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200'
+                      }`}>
+                        {classItem.grade === '13-years' ? '13 Years' : `Grade ${classItem.grade}`}
                       </span>
                     </TableCell>
                     <TableCell>

@@ -14,7 +14,7 @@ interface SchoolConfig {
 
 const navItems = [
   { href: '/dashboard', icon: Calendar, label: 'Dashboard' },
-  { href: '/dashboard/setup', icon: Settings, label: 'School Setup' },
+  { href: '/dashboard/school-setup', icon: Settings, label: 'School Setup' },
   { href: '/dashboard/teachers', icon: Users, label: 'Teachers' },
   { href: '/dashboard/subjects', icon: BookOpen, label: 'Subjects' },
   { href: '/dashboard/classes', icon: GraduationCap, label: 'Classes' },

@@ -159,26 +159,47 @@ export default function TeacherDashboard() {
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg font-bold text-black dark:text-white">{title}</CardTitle>
             {/* Download Button */}
-            {isTeacherSchedule && showPDFDownload && schoolInfo && (
+            {isTeacherSchedule && showPDFDownload && schoolInfo && session?.user.name && (
               <PDFDownloadLink
                 document={
                   <TimetablePDF
+                    type="teacher"
+                    entities={[{
+                      id: session.user.id,
+                      name: session.user.name,
+                    }]}
                     slots={mySchedule.map(slot => ({
-                      ...slot,
-                      lessonName: slot.subject,
-                      classNames: [slot.className],
+                      _id: slot._id,
+                      day: slot.day,
+                      periodNumber: slot.periodNumber,
+                      isDoubleStart: slot.isDoubleStart,
+                      isDoubleEnd: slot.isDoubleEnd,
+                      classId: {
+                        _id: '',
+                        name: slot.className,
+                        grade: '',
+                      },
+                      lessonId: {
+                        _id: '',
+                        lessonName: slot.subject,
+                        subjectIds: [],
+                        teacherIds: [{ _id: session.user.id, name: session.user.name }],
+                        classIds: [],
+                      },
                     }))}
-                    schoolName={schoolInfo.name}
                     versionName={versionName}
                     config={{
                       startTime: schoolInfo.startTime,
                       periodDuration: schoolInfo.periodDuration,
                       numberOfPeriods: schoolInfo.numberOfPeriods,
+                      intervalSlots: [],
                     }}
-                    title={`${session?.user.name}'s Teaching Schedule`}
+                    lessonNameMap={{}}
+                    schoolName={schoolInfo.name}
+                    showTimeColumn={true}
                   />
                 }
-                fileName={`${session?.user.name}-schedule.pdf`}
+                fileName={`${session.user.name}-schedule.pdf`}
               >
                 {({ loading }) => (
                   <Button
@@ -197,19 +218,40 @@ export default function TeacherDashboard() {
               <PDFDownloadLink
                 document={
                   <TimetablePDF
+                    type="class"
+                    entities={[{
+                      id: selectedClass,
+                      name: classes.find(c => c._id === selectedClass)?.name || 'Class',
+                    }]}
                     slots={classSchedule.map(slot => ({
-                      ...slot,
-                      lessonName: slot.subject,
-                      classNames: [classes.find(c => c._id === selectedClass)?.name || 'Class'],
+                      _id: slot._id,
+                      day: slot.day,
+                      periodNumber: slot.periodNumber,
+                      isDoubleStart: slot.isDoubleStart,
+                      isDoubleEnd: slot.isDoubleEnd,
+                      classId: {
+                        _id: selectedClass,
+                        name: classes.find(c => c._id === selectedClass)?.name || 'Class',
+                        grade: classes.find(c => c._id === selectedClass)?.grade || '',
+                      },
+                      lessonId: {
+                        _id: '',
+                        lessonName: slot.subject,
+                        subjectIds: [],
+                        teacherIds: [],
+                        classIds: [],
+                      },
                     }))}
-                    schoolName={schoolInfo.name}
                     versionName={versionName}
                     config={{
                       startTime: schoolInfo.startTime,
                       periodDuration: schoolInfo.periodDuration,
                       numberOfPeriods: schoolInfo.numberOfPeriods,
+                      intervalSlots: [],
                     }}
-                    title={`${classes.find(c => c._id === selectedClass)?.name} Timetable`}
+                    lessonNameMap={{}}
+                    schoolName={schoolInfo.name}
+                    showTimeColumn={true}
                   />
                 }
                 fileName={`${classes.find(c => c._id === selectedClass)?.name}-timetable.pdf`}

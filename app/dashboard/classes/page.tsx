@@ -16,7 +16,7 @@ interface Class {
   stream?: string;
 }
 
-const STREAMS = ['Bio', 'Maths', 'Arts', 'Commerce', 'Technology', 'Vocational'] as const;
+const STREAMS = ['Science', 'Arts', 'Commerce', 'Technology'] as const;
 
 export default function ClassesPage() {
   const [classes, setClasses] = useState<Class[]>([]);
@@ -102,7 +102,7 @@ export default function ClassesPage() {
             id: editingClass._id,
             name: generatedClassNames[0], // Use first generated name for single edit
             grade: formData.grade,
-            stream: formData.stream || undefined,
+            stream: formData.stream || '',
           }),
         });
 
@@ -123,7 +123,7 @@ export default function ClassesPage() {
       const classesToCreate = generatedClassNames.map(name => ({
         name,
         grade: formData.grade,
-        stream: formData.stream || undefined,
+        stream: formData.stream || '',
       }));
 
       // Create all classes
@@ -262,10 +262,10 @@ export default function ClassesPage() {
                 </select>
               </div>
 
-              {((typeof formData.grade === 'number' && formData.grade >= 10) || formData.grade === '13-years') && (
+              {((typeof formData.grade === 'number' && formData.grade >= 12) || formData.grade === '13-years') && (
                 <div>
                   <label htmlFor="stream" className="mb-2 block text-sm font-medium">
-                    Stream (for Grades 10-13)
+                    Stream (for Grades 12-13)
                   </label>
                   <select
                     id="stream"
@@ -281,7 +281,7 @@ export default function ClassesPage() {
                     ))}
                   </select>
                   <p className="mt-1 text-xs text-zinc-500">
-                    Select applicable stream for grades 10-13 (Bio, Maths, Arts, Commerce, Tech, Vocational)
+                    Select applicable stream for grades 10-13 (Science, Arts, Commerce, Technology)
                   </p>
                 </div>
               )}

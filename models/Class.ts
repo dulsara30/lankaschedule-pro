@@ -4,7 +4,7 @@ export interface IClass extends Document {
   schoolId: mongoose.Types.ObjectId;
   name: string; // e.g., "Grade 6", "6-A", "13 Years", "13Y-A"
   grade: number | string; // 1-13 for regular grades, '13-years' for 13 Years program
-  stream?: string; // e.g., "Bio", "Maths", "Arts", "Commerce" (for higher grades)
+  stream?: string; // e.g., "Science", "Arts", "Commerce", "Technology" (for higher grades)
   createdAt: Date;
   updatedAt: Date;
 }
@@ -29,7 +29,7 @@ const ClassSchema = new Schema<IClass>(
     stream: {
       type: String,
       trim: true,
-      enum: ['Bio', 'Maths', 'Arts', 'Commerce', 'Technology', 'Vocational', ''],
+      enum: ['Science', 'Arts', 'Commerce', 'Technology', ''],
       default: '',
     },
   },

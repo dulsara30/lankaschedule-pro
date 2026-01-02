@@ -23,7 +23,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 
 export interface ILesson extends Document {
   schoolId: mongoose.Types.ObjectId;
-  lessonName: string; // Display name, e.g., "Grade 6 Aesthetic Arts" or "10-Maths"
+  lessonName: string; // Display name, e.g., "Grade 6 Aesthetic Arts" or "10-Science"
   subjectIds: mongoose.Types.ObjectId[]; // Can be one or multiple subjects
   teacherIds: mongoose.Types.ObjectId[]; // Can be one or multiple teachers
   classIds: mongoose.Types.ObjectId[]; // Can be one or multiple classes (parallel teaching)

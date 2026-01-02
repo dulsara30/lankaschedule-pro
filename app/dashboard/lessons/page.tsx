@@ -6,9 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2, X, Info } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Info, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
+import { generateTimetableAction } from '@/app/actions/generateTimetable';
 
 interface Subject {
   _id: string;
@@ -49,6 +50,7 @@ export default function LessonsPage() {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const [formData, setFormData] = useState({
     lessonName: '',
@@ -239,6 +241,46 @@ export default function LessonsPage() {
     if (!open) resetForm();
   };
 
+  const handleGenerateTimetable = async () => {
+    if (lessons.length === 0) {
+      toast.error('No lessons found. Please create lessons first.');
+      return;
+    }
+
+    setIsGenerating(true);
+    toast.info('Starting AI timetable generation...');
+
+    try {
+      const result = await generateTimetableAction();
+
+      if (result.success) {
+        toast.success(result.message);
+        
+        if (result.stats) {
+          toast.info(
+            `Stats: ${result.stats.totalSlots} slots, ${result.stats.scheduledLessons} lessons, ${result.stats.recursions} iterations`,
+            { duration: 5000 }
+          );
+        }
+
+        if (result.failedLessons && result.failedLessons.length > 0) {
+          toast.warning(
+            `Failed to schedule: ${result.failedLessons.map(f => f.lessonName).join(', ')}`,
+            { duration: 8000 }
+          );
+        }
+
+        router.push('/dashboard/timetable');
+      } else {
+        toast.error(result.message);
+      }
+    } catch (error: any) {
+      toast.error(`Error: ${error.message}`);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -250,13 +292,32 @@ export default function LessonsPage() {
             Create lesson units with multiple subjects, teachers, and parallel classes
           </p>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={handleDialogClose}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Create Lesson
-            </Button>
-          </DialogTrigger>
+        <div className="flex gap-3">
+          <Button
+            onClick={handleGenerateTimetable}
+            disabled={isGenerating || lessons.length === 0}
+            variant="outline"
+            className="bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 border-0"
+          >
+            {isGenerating ? (
+              <>
+                <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+                Generating...
+              </>
+            ) : (
+              <>
+                <Sparkles className="mr-2 h-4 w-4" />
+                Generate Timetable
+              </>
+            )}
+          </Button>
+          <Dialog open={dialogOpen} onOpenChange={handleDialogClose}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                Create Lesson
+              </Button>
+            </DialogTrigger>
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>
@@ -276,7 +337,7 @@ export default function LessonsPage() {
                   id="lessonName"
                   value={formData.lessonName}
                   onChange={(e) => setFormData({ ...formData, lessonName: e.target.value })}
-                  placeholder="e.g., Grade 6 Aesthetic Block, 10-Maths"
+                  placeholder="e.g., Grade 6 Aesthetic Block, 10-Science"
                   required
                 />
               </div>
@@ -499,6 +560,7 @@ export default function LessonsPage() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <Card>

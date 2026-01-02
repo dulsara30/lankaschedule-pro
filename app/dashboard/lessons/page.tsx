@@ -342,17 +342,17 @@ export default function LessonsPage() {
                 Create Lesson
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-w-[95vw] max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>
                   {editingLesson ? 'Edit Lesson' : 'Create New Lesson'}
                 </DialogTitle>
                 <DialogDescription>
-                  Build a lesson unit with subjects, teachers, and classes in a smart grid layout
+                  Build a lesson unit with subjects, teachers, and classes in a smart horizontal layout
                 </DialogDescription>
               </DialogHeader>
               
-              <form onSubmit={handleSubmit} className="space-y-6">
+              <form onSubmit={handleSubmit} className="space-y-5">
                 {/* Row 1: Lesson Name */}
                 <div>
                   <label htmlFor="lessonName" className="mb-2 block text-sm font-medium">
@@ -368,53 +368,54 @@ export default function LessonsPage() {
                   />
                 </div>
 
-                {/* Row 2: Select Classes */}
-                <div>
-                  <label className="mb-2 block text-sm font-medium">
-                    Select Classes (Parallel Classes)
-                  </label>
-                  <Card className="p-4">
-                    <div className="grid grid-cols-3 gap-2 md:grid-cols-5 lg:grid-cols-6">
-                      {classes.map((classItem) => (
-                        <button
-                          key={classItem._id}
-                          type="button"
-                          onClick={() => toggleClass(classItem._id)}
-                          className={`rounded-lg border-2 px-3 py-2 text-sm font-medium transition-all ${
-                            selectedClasses.includes(classItem._id)
-                              ? 'border-blue-600 bg-blue-50 text-blue-900 shadow-md dark:bg-blue-900 dark:text-blue-50'
-                              : 'border-zinc-200 bg-white hover:border-zinc-300 hover:shadow-sm dark:border-zinc-700 dark:bg-zinc-900'
-                          }`}
-                        >
-                          {classItem.name}
-                        </button>
-                      ))}
-                    </div>
-                    {selectedClasses.length > 0 && (
-                      <div className="mt-3 text-sm font-medium text-blue-600">
-                        ✓ {selectedClasses.length} class{selectedClasses.length !== 1 ? 'es' : ''} selected
+                {/* Row 2: Classes, Subjects, and Teachers (3 Columns Side-by-Side) */}
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                  {/* Classes Selection */}
+                  <div>
+                    <label className="mb-2 block text-sm font-medium">
+                      Classes
+                    </label>
+                    <Card className="p-3 h-[320px] overflow-y-auto">
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {classes.map((classItem) => (
+                          <button
+                            key={classItem._id}
+                            type="button"
+                            onClick={() => toggleClass(classItem._id)}
+                            className={`rounded-md border-2 px-2 py-1.5 text-xs font-medium transition-all ${
+                              selectedClasses.includes(classItem._id)
+                                ? 'border-blue-600 bg-blue-50 text-blue-900 shadow-sm dark:bg-blue-900 dark:text-blue-50'
+                                : 'border-zinc-200 bg-white hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-900'
+                            }`}
+                          >
+                            {classItem.name}
+                          </button>
+                        ))}
                       </div>
-                    )}
-                  </Card>
-                </div>
+                      {selectedClasses.length > 0 && (
+                        <div className="mt-2 pt-2 border-t text-xs font-medium text-blue-600">
+                          ✓ {selectedClasses.length} selected
+                        </div>
+                      )}
+                    </Card>
+                  </div>
 
-                {/* Row 3: Subject and Teacher Selection (Side-by-Side) */}
-                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                   {/* Subject Selection */}
                   <div>
                     <label className="mb-2 block text-sm font-medium">
-                      Select Subjects
+                      Subjects
                     </label>
-                    <Card className="p-4">
-                      <div className="mb-3">
+                    <Card className="p-3 h-[320px] flex flex-col">
+                      <div className="mb-2">
                         <Input
                           type="text"
-                          placeholder="🔍 Search subjects..."
+                          placeholder="🔍 Search..."
                           value={subjectSearchTerm}
                           onChange={(e) => setSubjectSearchTerm(e.target.value)}
+                          className="h-8 text-sm"
                         />
                       </div>
-                      <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto">
+                      <div className="flex-1 overflow-y-auto space-y-1.5">
                         {subjects
                           .filter(subject => 
                             subject.name.toLowerCase().includes(subjectSearchTerm.toLowerCase())
@@ -424,23 +425,23 @@ export default function LessonsPage() {
                             key={subject._id}
                             type="button"
                             onClick={() => toggleSubject(subject._id)}
-                            className={`flex items-center gap-2 rounded-lg border-2 px-3 py-2 text-sm font-medium transition-all text-left ${
+                            className={`w-full flex items-center gap-2 rounded-md border-2 px-2 py-1.5 text-xs font-medium transition-all text-left ${
                               selectedSubjects.includes(subject._id)
-                                ? 'border-blue-600 bg-blue-50 text-blue-900 shadow-md dark:bg-blue-900 dark:text-blue-50'
-                                : 'border-zinc-200 bg-white hover:border-zinc-300 hover:shadow-sm dark:border-zinc-700 dark:bg-zinc-900'
+                                ? 'border-blue-600 bg-blue-50 text-blue-900 shadow-sm dark:bg-blue-900 dark:text-blue-50'
+                                : 'border-zinc-200 bg-white hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-900'
                             }`}
                           >
                             <div 
-                              className="h-4 w-4 rounded-full flex-shrink-0" 
+                              className="h-3 w-3 rounded-full flex-shrink-0" 
                               style={{ backgroundColor: subject.color }}
                             />
-                            {subject.name}
+                            <span className="truncate">{subject.name}</span>
                           </button>
                         ))}
                       </div>
                       {selectedSubjects.length > 0 && (
-                        <div className="mt-3 text-sm font-medium text-blue-600">
-                          ✓ {selectedSubjects.length} subject{selectedSubjects.length !== 1 ? 's' : ''} selected
+                        <div className="mt-2 pt-2 border-t text-xs font-medium text-blue-600">
+                          ✓ {selectedSubjects.length} selected
                         </div>
                       )}
                     </Card>
@@ -449,18 +450,19 @@ export default function LessonsPage() {
                   {/* Teacher Selection */}
                   <div>
                     <label className="mb-2 block text-sm font-medium">
-                      Select Teachers
+                      Teachers
                     </label>
-                    <Card className="p-4">
-                      <div className="mb-3">
+                    <Card className="p-3 h-[320px] flex flex-col">
+                      <div className="mb-2">
                         <Input
                           type="text"
-                          placeholder="🔍 Search teachers..."
+                          placeholder="🔍 Search..."
                           value={teacherSearchTerm}
                           onChange={(e) => setTeacherSearchTerm(e.target.value)}
+                          className="h-8 text-sm"
                         />
                       </div>
-                      <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto">
+                      <div className="flex-1 overflow-y-auto space-y-1.5">
                         {teachers
                           .filter(teacher => 
                             teacher.name.toLowerCase().includes(teacherSearchTerm.toLowerCase())
@@ -470,30 +472,30 @@ export default function LessonsPage() {
                             key={teacher._id}
                             type="button"
                             onClick={() => toggleTeacher(teacher._id)}
-                            className={`rounded-lg border-2 px-3 py-2 text-sm font-medium transition-all text-left ${
+                            className={`w-full rounded-md border-2 px-2 py-1.5 text-xs font-medium transition-all text-left ${
                               selectedTeachers.includes(teacher._id)
-                                ? 'border-blue-600 bg-blue-50 text-blue-900 shadow-md dark:bg-blue-900 dark:text-blue-50'
-                                : 'border-zinc-200 bg-white hover:border-zinc-300 hover:shadow-sm dark:border-zinc-700 dark:bg-zinc-900'
+                                ? 'border-blue-600 bg-blue-50 text-blue-900 shadow-sm dark:bg-blue-900 dark:text-blue-50'
+                                : 'border-zinc-200 bg-white hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-900'
                             }`}
                           >
-                            {teacher.name}
+                            <div className="truncate">{teacher.name}</div>
                           </button>
                         ))}
                       </div>
                       {selectedTeachers.length > 0 && (
-                        <div className="mt-3 text-sm font-medium text-blue-600">
-                          ✓ {selectedTeachers.length} teacher{selectedTeachers.length !== 1 ? 's' : ''} selected
+                        <div className="mt-2 pt-2 border-t text-xs font-medium text-blue-600">
+                          ✓ {selectedTeachers.length} selected
                         </div>
                       )}
                     </Card>
                   </div>
                 </div>
 
-                {/* Row 4: Period Inputs (Side-by-Side) */}
-                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                {/* Row 3: Period Inputs and Notes (Side-by-Side) */}
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                   <div>
                     <label htmlFor="numberOfSingles" className="mb-2 block text-sm font-medium">
-                      Single Periods per Week
+                      Single Periods/Week
                     </label>
                     <Input
                       id="numberOfSingles"
@@ -507,7 +509,7 @@ export default function LessonsPage() {
                   </div>
                   <div>
                     <label htmlFor="numberOfDoubles" className="mb-2 block text-sm font-medium">
-                      Double Periods per Week
+                      Double Periods/Week
                     </label>
                     <Input
                       id="numberOfDoubles"
@@ -519,19 +521,22 @@ export default function LessonsPage() {
                       className="text-lg"
                     />
                   </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium">
+                      Total Periods
+                    </label>
+                    <div className="h-[42px] rounded-md bg-blue-50 dark:bg-blue-900/20 px-3 flex items-center justify-between border-2 border-blue-200 dark:border-blue-800">
+                      <span className="text-lg font-bold text-blue-900 dark:text-blue-100">
+                        {totalPeriods}
+                      </span>
+                      <span className="text-xs text-blue-700 dark:text-blue-300">
+                        / 35 max
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Period Summary */}
-                <div className="rounded-lg bg-blue-50 p-4 dark:bg-blue-900/20">
-                  <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
-                    Total Periods: {totalPeriods} / 35 weekly max
-                  </p>
-                  <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
-                    ({formData.numberOfSingles} singles + {formData.numberOfDoubles} doubles × 2)
-                  </p>
-                </div>
-
-                {/* Row 5: Notes (Full Width) */}
+                {/* Row 4: Notes */}
                 <div>
                   <label htmlFor="notes" className="mb-2 block text-sm font-medium">
                     Notes (Optional)
@@ -541,7 +546,7 @@ export default function LessonsPage() {
                     value={formData.notes}
                     onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                     placeholder="Additional information about this lesson..."
-                    rows={3}
+                    rows={2}
                     className="flex w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm ring-offset-white placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-950 dark:ring-offset-zinc-950 dark:placeholder:text-zinc-400 dark:focus-visible:ring-zinc-300"
                   />
                 </div>

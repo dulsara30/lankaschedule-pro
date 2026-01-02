@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Plus, Pencil, Trash2, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Teacher {
@@ -14,6 +15,8 @@ interface Teacher {
   name: string;
   email: string;
   subjectsTaught: string[];
+  lessonCount?: number;
+  totalPeriods?: number;
 }
 
 interface Subject {
@@ -23,6 +26,7 @@ interface Subject {
 
 const TEACHER_MIN_PERIODS = 24;
 const TEACHER_MAX_PERIODS = 35;
+const ITEMS_PER_PAGE = 10;
 
 export default function TeachersPage() {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
@@ -30,6 +34,12 @@ export default function TeachersPage() {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTeacher, setEditingTeacher] = useState<Teacher | null>(null);
+  
+  // Search and filter states
+  const [searchTerm, setSearchTerm] = useState('');
+  const [subjectFilter, setSubjectFilter] = useState<string>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -66,7 +76,34 @@ export default function TeachersPage() {
       console.error('Failed to load subjects:', error);
     }
   };
+  // Filtered and paginated teachers
+  const filteredTeachers = useMemo(() => {
+    return teachers.filter(teacher => {
+      // Search filter
+      const searchLower = searchTerm.toLowerCase();
+      const matchesSearch = 
+        teacher.name.toLowerCase().includes(searchLower) ||
+        teacher.email.toLowerCase().includes(searchLower) ||
+        teacher.subjectsTaught.some(subject => subject.toLowerCase().includes(searchLower));
 
+      // Subject filter
+      const matchesSubject = subjectFilter === 'all' || 
+        teacher.subjectsTaught.includes(subjectFilter);
+
+      return matchesSearch && matchesSubject;
+    });
+  }, [teachers, searchTerm, subjectFilter]);
+
+  const totalPages = Math.ceil(filteredTeachers.length / ITEMS_PER_PAGE);
+  const paginatedTeachers = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredTeachers.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [filteredTeachers, currentPage]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, subjectFilter]);
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -150,6 +187,17 @@ export default function TeachersPage() {
   const handleDialogClose = (open: boolean) => {
     setDialogOpen(open);
     if (!open) resetForm();
+  };
+
+  const getWorkloadColor = (periods: number) => {
+    if (periods === 0) return 'text-zinc-400';
+    if (periods < TEACHER_MIN_PERIODS) return 'text-yellow-600 dark:text-yellow-500';
+    if (periods > TEACHER_MAX_PERIODS) return 'text-red-600 dark:text-red-500';
+    return 'text-green-600 dark:text-green-500';
+  };
+
+  const getWorkloadPercentage = (periods: number) => {
+    return Math.min((periods / TEACHER_MAX_PERIODS) * 100, 100);
   };
 
   return (
@@ -263,69 +311,184 @@ export default function TeachersPage() {
         <CardHeader>
           <CardTitle>All Teachers</CardTitle>
           <CardDescription>
-            {teachers.length} teacher{teachers.length !== 1 ? 's' : ''} registered
+            {filteredTeachers.length} teacher{filteredTeachers.length !== 1 ? 's' : ''} 
+            {searchTerm || subjectFilter !== 'all' ? ' (filtered)' : ''} 
+            {' '}of {teachers.length} total
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {/* Search and Filter Bar */}
+          <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+              <Input
+                placeholder="Search by name, email, or subject..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <div className="flex gap-2">
+              <Select value={subjectFilter} onValueChange={setSubjectFilter}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="Filter by subject" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Subjects</SelectItem>
+                  {subjects.map((subject) => (
+                    <SelectItem key={subject._id} value={subject.name}>
+                      {subject.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
           {loading ? (
             <div className="py-8 text-center text-zinc-500">Loading...</div>
-          ) : teachers.length === 0 ? (
+          ) : filteredTeachers.length === 0 ? (
             <div className="py-8 text-center text-zinc-500">
-              No teachers found. Add your first teacher to get started.
+              {searchTerm || subjectFilter !== 'all' 
+                ? 'No teachers found matching your filters.'
+                : 'No teachers found. Add your first teacher to get started.'}
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Subjects</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {teachers.map((teacher) => (
-                  <TableRow key={teacher._id}>
-                    <TableCell className="font-medium">{teacher.name}</TableCell>
-                    <TableCell className="text-zinc-600 dark:text-zinc-400">{teacher.email}</TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {teacher.subjectsTaught.length > 0 ? (
-                          teacher.subjectsTaught.map((subject) => (
-                            <span
-                              key={subject}
-                              className="inline-flex items-center rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200"
-                            >
-                              {subject}
+            <>
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Subjects</TableHead>
+                      <TableHead className="text-center">Assigned Lessons</TableHead>
+                      <TableHead className="text-center">Workload</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedTeachers.map((teacher) => {
+                      const workloadPercentage = getWorkloadPercentage(teacher.totalPeriods || 0);
+                      const workloadColor = getWorkloadColor(teacher.totalPeriods || 0);
+
+                      return (
+                        <TableRow key={teacher._id}>
+                          <TableCell className="font-medium">{teacher.name}</TableCell>
+                          <TableCell className="text-sm text-zinc-600 dark:text-zinc-400">
+                            {teacher.email}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-1">
+                              {teacher.subjectsTaught.length > 0 ? (
+                                teacher.subjectsTaught.map((subject) => (
+                                  <span
+                                    key={subject}
+                                    className="inline-flex items-center rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200"
+                                  >
+                                    {subject}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-sm text-zinc-400">No subjects</span>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <span className="inline-flex items-center justify-center rounded-full bg-blue-100 px-3 py-1 text-sm font-semibold text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                              {teacher.lessonCount || 0}
                             </span>
-                          ))
-                        ) : (
-                          <span className="text-sm text-zinc-400">No subjects</span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-col items-center gap-1">
+                              <span className={`text-sm font-semibold ${workloadColor}`}>
+                                {teacher.totalPeriods || 0} / 35
+                              </span>
+                              <div className="w-24 h-2 bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full transition-all ${
+                                    workloadPercentage === 0
+                                      ? 'bg-zinc-400'
+                                      : workloadPercentage < (TEACHER_MIN_PERIODS / TEACHER_MAX_PERIODS) * 100
+                                      ? 'bg-yellow-500'
+                                      : workloadPercentage > 100
+                                      ? 'bg-red-500'
+                                      : 'bg-green-500'
+                                  }`}
+                                  style={{ width: `${workloadPercentage}%` }}
+                                />
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleEdit(teacher)}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleDelete(teacher._id)}
+                              >
+                                <Trash2 className="h-4 w-4 text-red-600" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="mt-4 flex items-center justify-between">
+                  <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                    Showing {((currentPage - 1) * ITEMS_PER_PAGE) + 1} to{' '}
+                    {Math.min(currentPage * ITEMS_PER_PAGE, filteredTeachers.length)} of{' '}
+                    {filteredTeachers.length} results
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4 mr-1" />
+                      Previous
+                    </Button>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
                         <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleEdit(teacher)}
+                          key={page}
+                          variant={currentPage === page ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setCurrentPage(page)}
+                          className="w-10"
                         >
-                          <Pencil className="h-4 w-4" />
+                          {page}
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDelete(teacher._id)}
-                        >
-                          <Trash2 className="h-4 w-4 text-red-600" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                      ))}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>

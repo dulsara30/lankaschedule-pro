@@ -3,8 +3,9 @@ import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/dbConnect';
 import Teacher from '@/models/Teacher';
 import School from '@/models/School';
+import Lesson from '@/models/Lesson';
 
-// GET: Fetch all teachers
+// GET: Fetch all teachers with lesson counts and workload
 export async function GET() {
   try {
     await dbConnect();
@@ -21,9 +22,32 @@ export async function GET() {
       .sort({ name: 1 })
       .lean();
 
+    // Get all lessons to calculate workload for each teacher
+    const lessons = await Lesson.find({ schoolId: school._id }).lean();
+
+    // Enrich teachers with lesson count and workload
+    const enrichedTeachers = teachers.map(teacher => {
+      const teacherLessons = lessons.filter(lesson => 
+        lesson.teacherIds.some((id: any) => id.toString() === teacher._id.toString())
+      );
+
+      const lessonCount = teacherLessons.length;
+      
+      // Calculate total periods (singles + doubles*2)
+      const totalPeriods = teacherLessons.reduce((sum, lesson) => {
+        return sum + lesson.numberOfSingles + (lesson.numberOfDoubles * 2);
+      }, 0);
+
+      return {
+        ...teacher,
+        lessonCount,
+        totalPeriods,
+      };
+    });
+
     return NextResponse.json({
       success: true,
-      data: teachers,
+      data: enrichedTeachers,
     });
   } catch (error) {
     console.error('Error fetching teachers:', error);
@@ -72,6 +96,7 @@ export async function POST(request: NextRequest) {
 
     // Revalidate lessons page to reflect changes
     revalidatePath('/dashboard/lessons');
+    revalidatePath('/dashboard/teachers');
 
     return NextResponse.json({
       success: true,
@@ -140,6 +165,7 @@ export async function PUT(request: NextRequest) {
     }
 
     revalidatePath('/dashboard/lessons');
+    revalidatePath('/dashboard/teachers');
 
     return NextResponse.json({
       success: true,
@@ -200,6 +226,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     revalidatePath('/dashboard/lessons');
+    revalidatePath('/dashboard/teachers');
 
     return NextResponse.json({
       success: true,

@@ -7,12 +7,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Calendar, Clock, Users, Search, LogOut, Download } from 'lucide-react';
+import { Loader2, Calendar, Clock, Users, Search, LogOut, Download, Image as ImageIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { signOut } from 'next-auth/react';
 import Image from 'next/image';
 import { PDFDownloadLink } from '@react-pdf/renderer';
 import TimetablePDF from '@/components/timetable/TimetablePDF';
+import html2canvas from 'html2canvas';
 
 interface TimetableSlot {
   _id: string;
@@ -187,6 +188,48 @@ export default function TeacherDashboard() {
     await signOut({ callbackUrl: '/' });
   };
 
+  const handleDownloadImage = async () => {
+    const element = document.getElementById('timetable-to-capture');
+    if (!element) {
+      toast.error('Timetable not found');
+      return;
+    }
+
+    try {
+      // Temporarily hide download buttons during capture
+      const buttons = element.querySelectorAll('button');
+      buttons.forEach(btn => btn.style.visibility = 'hidden');
+
+      const canvas = await html2canvas(element, {
+        scale: 2, // High resolution
+        backgroundColor: '#ffffff',
+        logging: false,
+        useCORS: true,
+      });
+
+      // Restore buttons
+      buttons.forEach(btn => btn.style.visibility = 'visible');
+
+      // Convert to blob and download
+      canvas.toBlob((blob) => {
+        if (blob) {
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `${session?.user?.name || 'timetable'}-timetable.png`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          toast.success('Timetable image downloaded!');
+        }
+      });
+    } catch (error) {
+      console.error('Error generating image:', error);
+      toast.error('Failed to generate image');
+    }
+  };
+
   const calculatePeriodTime = (periodNumber: number) => {
     // Safety guard: prevent crash if schoolInfo or startTime is missing
     if (!schoolInfo?.config?.startTime) return '00:00';
@@ -261,20 +304,22 @@ export default function TeacherDashboard() {
         <CardHeader className="border-b-2 border-black dark:border-white">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg font-bold text-black dark:text-white">{title}</CardTitle>
-            {/* Download Button - Only show when data is ready */}
+            {/* Download Buttons - Only show when data is ready */}
             {isTeacherSchedule && (
-              // Strict PDF guard: verify ALL required data exists including startTime
-              status === 'authenticated' && 
-              mySchedule && 
-              mySchedule.length > 0 && 
-              versionName && 
-              schoolInfo && 
-              schoolInfo.config?.startTime && 
-              schoolInfo.config?.periodDuration && 
-              schoolInfo.config?.numberOfPeriods && 
-              session?.user?.name ? (
-                <PDFDownloadLink
-                  document={
+              <div className="flex gap-2">
+                {/* PDF Download Button */}
+                {status === 'authenticated' && 
+                mySchedule && 
+                mySchedule.length > 0 && 
+                versionName && 
+                schoolInfo && 
+                schoolInfo.config?.startTime && 
+                schoolInfo.config?.periodDuration && 
+                schoolInfo.config?.numberOfPeriods && 
+                session?.user?.name ? (
+                  <>
+                    <PDFDownloadLink
+                      document={
                     <TimetablePDF
                       type="teacher"
                       entities={[{
@@ -329,7 +374,19 @@ export default function TeacherDashboard() {
                     </Button>
                   )}
                 </PDFDownloadLink>
-              ) : mySchedule.length > 0 ? (
+                
+                {/* Image Download Button */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDownloadImage}
+                  className="border-2 border-black dark:border-white rounded-none hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black font-bold"
+                >
+                  <ImageIcon className="h-4 w-4 mr-2" />
+                  Download Image
+                </Button>
+              </>
+            ) : mySchedule.length > 0 ? (
                 <Button
                   variant="outline"
                   size="sm"
@@ -340,8 +397,10 @@ export default function TeacherDashboard() {
                   Preparing PDF...
                 </Button>
               ) : null
-            )}
-            {!isTeacherSchedule && (
+            }
+            </div>
+          )}
+          {!isTeacherSchedule && (
               // Strict PDF guard: verify ALL required data exists including startTime
               status === 'authenticated' && 
               classSchedule && 
@@ -421,7 +480,7 @@ export default function TeacherDashboard() {
         </CardHeader>
         <CardContent className="p-0">
           {/* Mobile Responsive: Horizontal scroll on small screens */}
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto" id="timetable-to-capture">
             <table className="w-full border-collapse min-w-[640px]">
               <thead>
                 <tr className="border-b-2 border-black dark:border-white bg-zinc-50 dark:bg-zinc-900">

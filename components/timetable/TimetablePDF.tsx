@@ -379,7 +379,7 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
           )}
           <Text style={styles.versionName}>Timetable Version: {versionName}</Text>
           <Text style={styles.mainTitle}>
-            {type === 'class' ? entity.name : `${entity.name} - Schedule`}
+            {type === 'class' ? entity.name : `${entity.name} - Timetable`}
           </Text>
         </View>
 

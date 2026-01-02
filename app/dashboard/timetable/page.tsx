@@ -416,10 +416,29 @@ export default function TimetablePage() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      const fileName = entities.length === 1 
-        ? `Timetable_${entities[0].name.replace(/\s+/g, '_')}`
-        : `Timetable_Bulk_${pdfType}_${entities.length}pages`;
-      link.download = `${fileName}_${new Date().toISOString().split('T')[0]}.pdf`;
+      
+      // Get academic year from current date
+      const currentYear = new Date().getFullYear();
+      const schoolName = schoolInfo.name || 'School';
+      
+      // Generate professional filename based on export type
+      let fileName: string;
+      
+      if (exportType === 'single') {
+        // Single Class Export: [School Name] - [Grade/Class Name] - [Year] - Class Timetable.pdf
+        fileName = `${schoolName} - ${entities[0].name} - ${currentYear} - Class Timetable.pdf`;
+      } else if (exportType === 'teacher') {
+        // Single Teacher Export: [School Name] - [Teacher Name] - [Year] - Teacher Timetable.pdf
+        fileName = `${schoolName} - ${entities[0].name} - ${currentYear} - Teacher Timetable.pdf`;
+      } else if (exportType === 'bulk-classes') {
+        // Bulk Classes Export: [School Name] - [Year] - All Classes Timetable.pdf
+        fileName = `${schoolName} - ${currentYear} - All Classes Timetable.pdf`;
+      } else {
+        // Bulk Teachers Export: [School Name] - [Year] - All Teachers Timetable.pdf
+        fileName = `${schoolName} - ${currentYear} - All Teachers Timetable.pdf`;
+      }
+      
+      link.download = fileName;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

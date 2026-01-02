@@ -197,9 +197,10 @@ export default function TimetablePage() {
         className={`p-2 rounded-md text-white h-full flex flex-col justify-between shadow-sm ${isDouble ? 'relative' : ''}`}
         style={backgroundStyle}
       >
+        {/* Double period indicator badge */}
         {isDouble && (
-          <div className="absolute top-1 right-1 bg-white/20 text-white text-xs px-2 py-0.5 rounded-full font-bold">
-            2×
+          <div className="absolute top-1 right-1 bg-white/30 text-white text-xs px-2 py-0.5 rounded-full font-bold shadow-sm">
+            DOUBLE
           </div>
         )}
         <div className="text-xs font-semibold leading-tight">
@@ -387,7 +388,8 @@ export default function TimetablePage() {
                               const isSecondPart = isSecondPartOfDouble(day, period);
                               const isDouble = slot?.isDoublePeriod || false;
                               
-                              // Skip rendering if this is the second part of a double period
+                              // CRITICAL: Skip rendering if this is the second part of a double period
+                              // Double periods use rowSpan=2 to merge cells visually
                               if (isSecondPart) {
                                 return null;
                               }
@@ -401,6 +403,7 @@ export default function TimetablePage() {
                                   slot => slot.afterPeriod === period
                                 );
                                 // Double period should span 2 rows only if no interval interrupts
+                                // This ensures proper visual merging of consecutive periods
                                 rowSpan = hasIntervalAfter ? 1 : 2;
                               }
                               
@@ -408,9 +411,13 @@ export default function TimetablePage() {
                                 <td
                                   key={`${day}-${period}`}
                                   rowSpan={rowSpan}
-                                  className={`border border-zinc-300 dark:border-zinc-700 p-2 min-w-37.5 ${
+                                  className={`border p-2 min-w-37.5 ${
                                     isDouble && rowSpan === 2 ? 'h-40' : 'h-20'
-                                  } ${isDouble ? 'bg-blue-50/10 dark:bg-blue-900/10 border-2 border-blue-400 dark:border-blue-600' : ''}`}
+                                  } ${
+                                    isDouble 
+                                      ? 'border-4 border-blue-500 dark:border-blue-400 bg-blue-50/20 dark:bg-blue-900/20' 
+                                      : 'border-zinc-300 dark:border-zinc-700'
+                                  }`}
                                 >
                                   {renderSlotContent(slot, isDouble)}
                                 </td>

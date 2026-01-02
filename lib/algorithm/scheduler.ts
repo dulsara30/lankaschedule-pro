@@ -56,8 +56,13 @@ export interface ScheduleResult {
   };
 }
 
-// Grid representation: Map<"classId-day-period", lessonId>
-type TimetableGrid = Map<string, string>;
+// Grid representation with EXPLICIT double block flagging
+// Map<"classId-day-period", { lessonId: string, isDoubleBlock: boolean }>
+interface GridSlot {
+  lessonId: string;
+  isDoubleBlock: boolean; // TRUE if this slot is part of a double period
+}
+type TimetableGrid = Map<string, GridSlot>;
 
 // Busy tracking: Map<"teacherId-day-period" | "classId-day-period", boolean>
 type BusyMap = Map<string, boolean>;
@@ -164,24 +169,23 @@ interface ScheduleTask {
 }
 
 function expandLessonsToTasks(lessons: ScheduleLesson[]): ScheduleTask[] {
-  const tasks: ScheduleTask[] = [];
+  const doubleTasks: ScheduleTask[] = [];
+  const singleTasks: ScheduleTask[] = [];
   
-  // CRITICAL FIX: Add DOUBLE period tasks FIRST (most constrained)
-  // Double periods need consecutive slots, so they must be placed before grid fills up
+  // CRITICAL: Separate doubles and singles
   for (const lesson of lessons) {
+    // Collect all double period tasks
     for (let i = 0; i < lesson.numberOfDoubles; i++) {
-      tasks.push({
+      doubleTasks.push({
         lesson,
         isDouble: true,
         taskId: `${lesson._id}-double-${i}`,
       });
     }
-  }
-  
-  // Then add single period tasks (more flexible)
-  for (const lesson of lessons) {
+    
+    // Collect all single period tasks
     for (let i = 0; i < lesson.numberOfSingles; i++) {
-      tasks.push({
+      singleTasks.push({
         lesson,
         isDouble: false,
         taskId: `${lesson._id}-single-${i}`,
@@ -189,7 +193,12 @@ function expandLessonsToTasks(lessons: ScheduleLesson[]): ScheduleTask[] {
     }
   }
   
-  console.log(`📋 Task Expansion: ${tasks.filter(t => t.isDouble).length} doubles, ${tasks.filter(t => !t.isDouble).length} singles`);
+  // PRIORITY ORDERING: ALL doubles FIRST, then ALL singles
+  // This ensures consecutive slots are claimed before grid fills up
+  const tasks = [...doubleTasks, ...singleTasks];
+  
+  console.log(`📋 Task Expansion: ${doubleTasks.length} doubles FIRST, then ${singleTasks.length} singles`);
+  console.log(`   Example: ITT (1S + 4D) = 4 double tasks + 1 single task`);
   
   return tasks;
 }
@@ -425,10 +434,13 @@ function placeLesson(
   const periods = isDouble ? [period, period + 1] : [period];
 
   for (const p of periods) {
-    // Mark grid slots for each class
+    // Mark grid slots for each class with EXPLICIT double block flag
     for (const classId of lesson.classIds) {
       const gridKey = `${classId}-${day}-${p}`;
-      grid.set(gridKey, lesson._id);
+      grid.set(gridKey, {
+        lessonId: lesson._id,
+        isDoubleBlock: isDouble, // EXPLICIT FLAG: both periods marked as double
+      });
       changes.push({ type: 'grid', key: gridKey });
     }
 
@@ -448,6 +460,7 @@ function placeLesson(
   }
 
   // Mark daily lesson tracking (once per day, not per period)
+  // STRICT: One appearance per day (single OR double counts as one)
   for (const classId of lesson.classIds) {
     const dailyKey = `${classId}-${day}-${lesson._id}`;
     dailyLessonMap.set(dailyKey, true);
@@ -479,32 +492,35 @@ function undoChanges(
 
 /**
  * Convert grid map to array of timetable slots
+ * Uses EXPLICIT isDoubleBlock metadata instead of comparing adjacent IDs
  */
 function gridToSlots(grid: TimetableGrid): TimetableSlot[] {
   const slots: TimetableSlot[] = [];
   const processed = new Set<string>();
 
-  for (const [key, lessonId] of grid.entries()) {
+  for (const [key, gridSlot] of grid.entries()) {
     if (processed.has(key)) continue;
 
     const [classId, day, periodStr] = key.split('-');
     const period = parseInt(periodStr);
 
-    // Check if this is part of a double period
-    const nextKey = `${classId}-${day}-${period + 1}`;
-    const isDoublePeriod = grid.get(nextKey) === lessonId;
+    // Use EXPLICIT isDoubleBlock flag from grid metadata
+    const isDoublePeriod = gridSlot.isDoubleBlock;
 
     slots.push({
       classId,
-      lessonId,
+      lessonId: gridSlot.lessonId,
       day,
       periodNumber: period,
       isDoublePeriod,
     });
 
     processed.add(key);
+    
+    // If this is a double block, skip the next period
     if (isDoublePeriod) {
-      processed.add(nextKey); // Skip next period
+      const nextKey = `${classId}-${day}-${period + 1}`;
+      processed.add(nextKey);
     }
   }
 

@@ -131,23 +131,17 @@ const styles = StyleSheet.create({
     color: '#000000',
     textAlign: 'center',
   },
-  cellTextSmall: {
-    fontSize: 8,
-    color: '#000000',
-    textAlign: 'center',
-  },
-  doublePeriodCell: {
-    padding: 5,
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  doublePeriodText: {
+  cellTextBold: {
     fontSize: 9,
     fontWeight: 'bold',
     color: '#000000',
     textAlign: 'center',
-    marginBottom: 1,
+    marginBottom: 2,
+  },
+  cellTextSmall: {
+    fontSize: 8,
+    color: '#000000',
+    textAlign: 'center',
   },
   doublePeriodLabel: {
     fontSize: 7,
@@ -436,37 +430,28 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
                     const slot = getSlotForPeriod(day, period, entity.id);
                     const isDoubleStart = slot?.isDoubleStart || false;
                     const isDoubleEnd = slot?.isDoubleEnd || false;
-
-                    if (isDoubleEnd) {
-                      return null;
-                    }
+                    const isDoublePeriod = isDoubleStart || isDoubleEnd;
 
                     const displayText = getSlotDisplayText(slot);
-                    
-                    // Calculate cell height: double periods get (24 * 2) + 1 = 49pt
-                    const baseHeight = 24;
-                    const cellHeight = isDoubleStart ? (baseHeight * 2) + 1 : baseHeight;
 
                     return (
                       <View 
                         key={`${day}-${period}`} 
                         style={[
                           dayIndex === DAYS.length - 1 ? styles.dayColLast : styles.dayCol,
-                          { 
-                            width: dayColWidth,
-                            minHeight: cellHeight,
-                            height: cellHeight
-                          }
+                          { width: dayColWidth }
                         ]}
                       >
-                        {isDoubleStart ? (
-                          <View style={styles.doublePeriodCell}>
-                            <Text style={styles.doublePeriodText}>{displayText}</Text>
-                            <Text style={styles.doublePeriodLabel}>(Double Period)</Text>
-                          </View>
-                        ) : (
-                          <Text style={styles.cellText}>{displayText}</Text>
-                        )}
+                        {displayText ? (
+                          isDoublePeriod ? (
+                            <>
+                              <Text style={styles.cellTextBold}>{displayText}</Text>
+                              <Text style={styles.doublePeriodLabel}>(Double Period)</Text>
+                            </>
+                          ) : (
+                            <Text style={styles.cellText}>{displayText}</Text>
+                          )
+                        ) : null}
                       </View>
                     );
                   })}

@@ -1,0 +1,341 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Calendar, Users, User } from 'lucide-react';
+import { toast } from 'sonner';
+
+interface Subject {
+  _id: string;
+  name: string;
+  color: string;
+}
+
+interface Teacher {
+  _id: string;
+  name: string;
+}
+
+interface Class {
+  _id: string;
+  name: string;
+  grade: number | string;
+}
+
+interface Lesson {
+  _id: string;
+  lessonName: string;
+  subjectIds: Subject[];
+  teacherIds: Teacher[];
+  classIds: Class[];
+}
+
+interface TimetableSlot {
+  _id: string;
+  classId: Class;
+  lessonId: Lesson;
+  day: string;
+  periodNumber: number;
+}
+
+interface SchoolConfig {
+  startTime: string;
+  periodDuration: number;
+  numberOfPeriods: number;
+  intervalSlots: Array<{ afterPeriod: number; duration: number }>;
+}
+
+const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+
+export default function TimetablePage() {
+  const [slots, setSlots] = useState<TimetableSlot[]>([]);
+  const [classes, setClasses] = useState<Class[]>([]);
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [config, setConfig] = useState<SchoolConfig | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<'class' | 'teacher'>('class');
+  const [selectedEntity, setSelectedEntity] = useState<string>('');
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [slotsRes, classesRes, teachersRes, configRes] = await Promise.all([
+        fetch('/api/timetable', { cache: 'no-store' }),
+        fetch('/api/classes', { cache: 'no-store' }),
+        fetch('/api/teachers', { cache: 'no-store' }),
+        fetch('/api/school/config', { cache: 'no-store' }),
+      ]);
+
+      const [slotsData, classesData, teachersData, configData] = await Promise.all([
+        slotsRes.json(),
+        classesRes.json(),
+        teachersRes.json(),
+        configRes.json(),
+      ]);
+
+      if (slotsData.success) setSlots(slotsData.data || []);
+      if (classesData.success) {
+        const classList = classesData.data || [];
+        setClasses(classList);
+        if (classList.length > 0) setSelectedEntity(classList[0]._id);
+      }
+      if (teachersData.success) setTeachers(teachersData.data || []);
+      if (configData.success) setConfig(configData.data);
+    } catch (error) {
+      toast.error('Failed to load timetable data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const calculateTime = (periodNumber: number): string => {
+    if (!config) return '';
+    
+    const [hours, minutes] = config.startTime.split(':').map(Number);
+    let totalMinutes = hours * 60 + minutes;
+    
+    // Add period durations and intervals
+    for (let i = 1; i < periodNumber; i++) {
+      totalMinutes += config.periodDuration;
+      
+      // Add interval time if applicable
+      const interval = config.intervalSlots.find(slot => slot.afterPeriod === i);
+      if (interval) {
+        totalMinutes += interval.duration;
+      }
+    }
+    
+    const resultHours = Math.floor(totalMinutes / 60);
+    const resultMinutes = totalMinutes % 60;
+    
+    return `${String(resultHours).padStart(2, '0')}:${String(resultMinutes).padStart(2, '0')}`;
+  };
+
+  const getSlotForPeriod = (day: string, period: number): TimetableSlot | undefined => {
+    if (viewMode === 'class') {
+      return slots.find(
+        slot => slot.day === day && 
+                slot.periodNumber === period && 
+                slot.classId._id === selectedEntity
+      );
+    } else {
+      // Teacher view: find any slot where this teacher is teaching
+      return slots.find(
+        slot => slot.day === day && 
+                slot.periodNumber === period && 
+                slot.lessonId.teacherIds.some(t => t._id === selectedEntity)
+      );
+    }
+  };
+
+  const renderSlotContent = (slot: TimetableSlot | undefined) => {
+    if (!slot) {
+      return <div className="text-xs text-zinc-400 italic">Free</div>;
+    }
+
+    const lesson = slot.lessonId;
+    const subjects = lesson.subjectIds;
+    
+    // Generate gradient background
+    const backgroundStyle = subjects.length === 1
+      ? { backgroundColor: subjects[0].color || '#3B82F6' }
+      : {
+          background: `linear-gradient(135deg, ${subjects.map((subject, idx) => {
+            const color = subject.color || '#3B82F6';
+            const percentage = (idx / subjects.length) * 100;
+            const nextPercentage = ((idx + 1) / subjects.length) * 100;
+            return `${color} ${percentage}%, ${color} ${nextPercentage}%`;
+          }).join(', ')})`,
+        };
+
+    return (
+      <div 
+        className="p-2 rounded-md text-white h-full flex flex-col justify-between shadow-sm"
+        style={backgroundStyle}
+      >
+        <div className="text-xs font-semibold leading-tight">
+          {lesson.lessonName}
+        </div>
+        <div className="text-xs opacity-90 mt-1">
+          {viewMode === 'class' 
+            ? lesson.teacherIds.map(t => t.name).join(', ')
+            : lesson.classIds.map(c => c.name).join(', ')
+          }
+        </div>
+      </div>
+    );
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-zinc-900 mx-auto"></div>
+          <p className="mt-4 text-zinc-600">Loading timetable...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!config) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-zinc-600">School configuration not found</p>
+      </div>
+    );
+  }
+
+  const intervalAfterPeriod = config.intervalSlots.find(slot => slot.afterPeriod === 3)?.afterPeriod || 3;
+  const intervalDuration = config.intervalSlots.find(slot => slot.afterPeriod === 3)?.duration || 15;
+
+  const entityList = viewMode === 'class' ? classes : teachers;
+  const selectedName = entityList.find(e => e._id === selectedEntity)?.name || '';
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-50">
+            Timetable
+          </h1>
+          <p className="mt-2 text-zinc-600 dark:text-zinc-400">
+            View class and teacher schedules
+          </p>
+        </div>
+        
+        <div className="flex gap-3">
+          <Button
+            variant={viewMode === 'class' ? 'default' : 'outline'}
+            onClick={() => {
+              setViewMode('class');
+              if (classes.length > 0) setSelectedEntity(classes[0]._id);
+            }}
+          >
+            <Users className="mr-2 h-4 w-4" />
+            By Class
+          </Button>
+          <Button
+            variant={viewMode === 'teacher' ? 'default' : 'outline'}
+            onClick={() => {
+              setViewMode('teacher');
+              if (teachers.length > 0) setSelectedEntity(teachers[0]._id);
+            }}
+          >
+            <User className="mr-2 h-4 w-4" />
+            By Teacher
+          </Button>
+        </div>
+      </div>
+
+      {slots.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <Calendar className="h-16 w-16 text-zinc-400 mb-4" />
+            <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50 mb-2">
+              No Timetable Generated Yet
+            </h3>
+            <p className="text-zinc-600 dark:text-zinc-400 text-center mb-4">
+              Generate your first timetable from the Lessons page
+            </p>
+            <Button onClick={() => window.location.href = '/dashboard/lessons'}>
+              Go to Lessons
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          {/* Entity Selector */}
+          <div className="flex items-center gap-3">
+            <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              {viewMode === 'class' ? 'Select Class:' : 'Select Teacher:'}
+            </label>
+            <select
+              value={selectedEntity}
+              onChange={(e) => setSelectedEntity(e.target.value)}
+              className="flex h-10 rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-950 dark:ring-offset-zinc-950 dark:focus-visible:ring-zinc-300"
+            >
+              {entityList.map((entity) => (
+                <option key={entity._id} value={entity._id}>
+                  {entity.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Timetable Grid */}
+          <Card>
+            <CardHeader>
+              <CardTitle>{selectedName} - Weekly Timetable</CardTitle>
+              <CardDescription>
+                {config.numberOfPeriods} periods per day • {config.periodDuration} minutes each
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr>
+                      <th className="border border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 p-3 text-left font-semibold">
+                        Period
+                      </th>
+                      <th className="border border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 p-3 text-left font-semibold">
+                        Time
+                      </th>
+                      {DAYS.map((day) => (
+                        <th
+                          key={day}
+                          className="border border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 p-3 text-center font-semibold"
+                        >
+                          {day}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Array.from({ length: config.numberOfPeriods }, (_, i) => i + 1).map((period) => (
+                      <>
+                        <tr key={period}>
+                          <td className="border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900 p-3 font-medium">
+                            Period {period}
+                          </td>
+                          <td className="border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900 p-3 text-sm text-zinc-600 dark:text-zinc-400">
+                            {calculateTime(period)}
+                          </td>
+                          {DAYS.map((day) => (
+                            <td
+                              key={`${day}-${period}`}
+                              className="border border-zinc-300 dark:border-zinc-700 p-2 min-w-[150px] h-20"
+                            >
+                              {renderSlotContent(getSlotForPeriod(day, period))}
+                            </td>
+                          ))}
+                        </tr>
+                        
+                        {/* Interval Row after period 3 */}
+                        {period === intervalAfterPeriod && (
+                          <tr>
+                            <td
+                              colSpan={7}
+                              className="border border-zinc-300 dark:border-zinc-700 bg-zinc-200 dark:bg-zinc-800 p-3 text-center font-semibold text-zinc-600 dark:text-zinc-400"
+                            >
+                              INTERVAL ({intervalDuration} minutes)
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
+    </div>
+  );
+}

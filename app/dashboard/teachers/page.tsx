@@ -205,7 +205,6 @@ export default function TeachersPage() {
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     placeholder="e.g., silva@school.lk"
-                    required
                   />
                 </div>
               </div>

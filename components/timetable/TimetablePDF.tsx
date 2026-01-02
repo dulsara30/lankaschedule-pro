@@ -268,6 +268,9 @@ interface TimetablePDFProps {
   lessonNameMap: Record<string, string>;
   schoolName?: string;
   schoolAddress?: string;
+  showTimeColumn?: boolean;
+  showPrincipalSignature?: boolean;
+  showClassTeacherSignature?: boolean;
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -281,12 +284,21 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
   lessonNameMap,
   schoolName = 'LankaSchedule Pro',
   schoolAddress = '',
+  showTimeColumn = true,
+  showPrincipalSignature = true,
+  showClassTeacherSignature = true,
 }) => {
   const currentDate = new Date().toLocaleDateString('en-US', { 
     year: 'numeric', 
     month: 'long', 
     day: 'numeric' 
   });
+
+  // Calculate column widths based on showTimeColumn
+  const periodColWidth = '8%';
+  const timeColWidth = showTimeColumn ? '12%' : '0%';
+  // When time column is hidden, redistribute its 12% to the 5 day columns (2.4% each)
+  const dayColWidth = showTimeColumn ? '16%' : '18.4%';
 
   // Calculate time for a given period
   const calculateTime = (periodNumber: number): string => {
@@ -373,14 +385,22 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
         <View style={styles.table}>
           {/* Header Row */}
           <View style={styles.tableRow}>
-            <View style={styles.periodCol}>
+            <View style={[styles.periodCol, { width: periodColWidth }]}>
               <Text style={styles.headerText}>Period</Text>
             </View>
-            <View style={styles.timeCol}>
-              <Text style={styles.headerText}>Time</Text>
-            </View>
+            {showTimeColumn && (
+              <View style={[styles.timeCol, { width: timeColWidth }]}>
+                <Text style={styles.headerText}>Time</Text>
+              </View>
+            )}
             {DAYS.map((day, index) => (
-              <View key={day} style={index === DAYS.length - 1 ? styles.tableColHeaderLast : styles.tableColHeader}>
+              <View 
+                key={day} 
+                style={[
+                  index === DAYS.length - 1 ? styles.tableColHeaderLast : styles.tableColHeader,
+                  { width: dayColWidth }
+                ]}
+              >
                 <Text style={styles.headerText}>{day}</Text>
               </View>
             ))}
@@ -395,14 +415,16 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
               <React.Fragment key={`period-${period}`}>
                 {/* Period Row */}
                 <View style={isLastPeriod ? styles.tableRowLast : styles.tableRow}>
-                  <View style={styles.periodCol}>
+                  <View style={[styles.periodCol, { width: periodColWidth }]}>
                     <Text style={styles.cellText}>{period}</Text>
                   </View>
-                  <View style={styles.timeCol}>
-                    <Text style={styles.cellTextSmall}>
-                      {calculateTime(period)}
-                    </Text>
-                  </View>
+                  {showTimeColumn && (
+                    <View style={[styles.timeCol, { width: timeColWidth }]}>
+                      <Text style={styles.cellTextSmall}>
+                        {calculateTime(period)}
+                      </Text>
+                    </View>
+                  )}
                   {DAYS.map((day, dayIndex) => {
                     const slot = getSlotForPeriod(day, period, entity.id);
                     const isDoubleStart = slot?.isDoubleStart || false;
@@ -417,7 +439,10 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
                     return (
                       <View 
                         key={`${day}-${period}`} 
-                        style={dayIndex === DAYS.length - 1 ? styles.dayColLast : styles.dayCol}
+                        style={[
+                          dayIndex === DAYS.length - 1 ? styles.dayColLast : styles.dayCol,
+                          { width: dayColWidth }
+                        ]}
                       >
                         {isDoubleStart ? (
                           <View style={styles.doublePeriodCell}>
@@ -448,18 +473,24 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
         </View>
 
         {/* Signature Section */}
-        <View style={styles.signatureSection}>
-          <View style={styles.signatureBox}>
-            <View style={styles.signatureLine}>
-              <Text style={styles.signatureText}>Principal Signature</Text>
-            </View>
+        {(showPrincipalSignature || showClassTeacherSignature) && (
+          <View style={styles.signatureSection}>
+            {showPrincipalSignature && (
+              <View style={styles.signatureBox}>
+                <View style={styles.signatureLine}>
+                  <Text style={styles.signatureText}>Principal Signature</Text>
+                </View>
+              </View>
+            )}
+            {showClassTeacherSignature && (
+              <View style={styles.signatureBox}>
+                <View style={styles.signatureLine}>
+                  <Text style={styles.signatureText}>Class Teacher Signature</Text>
+                </View>
+              </View>
+            )}
           </View>
-          <View style={styles.signatureBox}>
-            <View style={styles.signatureLine}>
-              <Text style={styles.signatureText}>Class Teacher Signature</Text>
-            </View>
-          </View>
-        </View>
+        )}
 
         {/* Footer */}
         <View style={styles.footer} fixed>

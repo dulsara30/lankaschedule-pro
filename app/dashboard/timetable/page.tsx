@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Calendar, Users, User, Save, History, Trash2, Check, ChevronsUpDown, ChevronDown, ChevronUp, Download, RotateCcw, FileDown, Eye, X } from 'lucide-react';
+import { Calendar, Users, User, Save, History, Trash2, Check, ChevronsUpDown, ChevronDown, ChevronUp, Download, RotateCcw, FileDown, Eye, X, Square, CheckSquare2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import dynamic from 'next/dynamic';
@@ -98,6 +98,11 @@ export default function TimetablePage() {
   const [exportType, setExportType] = useState<'single' | 'bulk-classes' | 'bulk-teachers' | 'teacher'>('single');
   const [exportEntityId, setExportEntityId] = useState<string>('');
   const [exportEntityComboOpen, setExportEntityComboOpen] = useState(false);
+  
+  // PDF Customization toggles
+  const [showTimeColumn, setShowTimeColumn] = useState(true);
+  const [showPrincipalSignature, setShowPrincipalSignature] = useState(true);
+  const [showClassTeacherSignature, setShowClassTeacherSignature] = useState(true);
   
   // Resizable sidebar state
   const [sidebarWidth, setSidebarWidth] = useState(450);
@@ -402,6 +407,9 @@ export default function TimetablePage() {
           lessonNameMap={lessonNameMap}
           schoolName={schoolInfo.name}
           schoolAddress={schoolInfo.address}
+          showTimeColumn={showTimeColumn}
+          showPrincipalSignature={showPrincipalSignature}
+          showClassTeacherSignature={showClassTeacherSignature}
         />
       ).toBlob();
 
@@ -1117,6 +1125,48 @@ export default function TimetablePage() {
                 </div>
               )}
 
+              {/* PDF Customization Options */}
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide">
+                  PDF Options
+                </label>
+                <div className="space-y-2 border border-zinc-200 dark:border-zinc-700 rounded-md p-3 bg-white dark:bg-zinc-950">
+                  <div 
+                    className="flex items-center gap-2 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900 p-1.5 rounded transition-colors"
+                    onClick={() => setShowTimeColumn(!showTimeColumn)}
+                  >
+                    {showTimeColumn ? (
+                      <CheckSquare2 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    ) : (
+                      <Square className="h-4 w-4 text-zinc-400" />
+                    )}
+                    <span className="text-xs text-zinc-700 dark:text-zinc-300">Show Time Column</span>
+                  </div>
+                  <div 
+                    className="flex items-center gap-2 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900 p-1.5 rounded transition-colors"
+                    onClick={() => setShowPrincipalSignature(!showPrincipalSignature)}
+                  >
+                    {showPrincipalSignature ? (
+                      <CheckSquare2 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    ) : (
+                      <Square className="h-4 w-4 text-zinc-400" />
+                    )}
+                    <span className="text-xs text-zinc-700 dark:text-zinc-300">Show Principal Signature</span>
+                  </div>
+                  <div 
+                    className="flex items-center gap-2 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900 p-1.5 rounded transition-colors"
+                    onClick={() => setShowClassTeacherSignature(!showClassTeacherSignature)}
+                  >
+                    {showClassTeacherSignature ? (
+                      <CheckSquare2 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    ) : (
+                      <Square className="h-4 w-4 text-zinc-400" />
+                    )}
+                    <span className="text-xs text-zinc-700 dark:text-zinc-300">Show Class Teacher Signature</span>
+                  </div>
+                </div>
+              </div>
+
               {/* Lesson Name Mapping */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -1208,6 +1258,9 @@ export default function TimetablePage() {
                     lessonNameMap={lessonNameMap}
                     schoolName={schoolInfo.name}
                     schoolAddress={schoolInfo.address}
+                    showTimeColumn={showTimeColumn}
+                    showPrincipalSignature={showPrincipalSignature}
+                    showClassTeacherSignature={showClassTeacherSignature}
                   />
                 </PDFViewer>
               ) : exportEntityId ? (
@@ -1228,6 +1281,9 @@ export default function TimetablePage() {
                     lessonNameMap={lessonNameMap}
                     schoolName={schoolInfo.name}
                     schoolAddress={schoolInfo.address}
+                    showTimeColumn={showTimeColumn}
+                    showPrincipalSignature={showPrincipalSignature}
+                    showClassTeacherSignature={showClassTeacherSignature}
                   />
                 </PDFViewer>
               ) : (

@@ -366,10 +366,10 @@ export default function LessonsPage() {
 
                 {/* Modal Content */}
                 <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
-                  <div className="flex-1 overflow-hidden p-8 flex flex-col gap-6">
+                  <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-5">
                     
                     {/* Three-Column Selection Grid */}
-                    <div className="grid grid-cols-3 gap-6 h-[65vh]">
+                    <div className="grid grid-cols-3 gap-4 h-[45vh] min-h-[400px]">
                       
                       {/* Column 1: Classes */}
                       <div className="flex flex-col overflow-hidden border-2 border-blue-300 dark:border-blue-700 rounded-xl shadow-lg">
@@ -526,9 +526,9 @@ export default function LessonsPage() {
                     </div>
 
                     {/* Bottom Configuration Bar */}
-                    <div className="grid grid-cols-12 gap-4 border-2 border-zinc-300 dark:border-zinc-700 rounded-xl p-5 bg-zinc-50 dark:bg-zinc-800">
+                    <div className="grid grid-cols-12 gap-4 border-2 border-zinc-300 dark:border-zinc-700 rounded-xl p-4 bg-zinc-50 dark:bg-zinc-800">
                       {/* Lesson Name */}
-                      <div className="col-span-5">
+                      <div className="col-span-6">
                         <label className="mb-2 block text-sm font-bold text-zinc-900 dark:text-zinc-100">
                           Lesson Name
                           {selectedSubjects.length === 0 && <span className="text-zinc-500 font-normal ml-2">(Select subjects first)</span>}
@@ -542,7 +542,7 @@ export default function LessonsPage() {
                           placeholder="e.g., Grade 6 Aesthetic Block"
                           required={selectedSubjects.length !== 1}
                           readOnly={selectedSubjects.length === 1}
-                          className={`w-full px-4 py-3 border-2 rounded-lg text-base font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900 ${
+                          className={`w-full px-4 py-2.5 border-2 rounded-lg text-base font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900 ${
                             selectedSubjects.length === 1 
                               ? 'bg-green-50 border-green-300 text-green-900 cursor-not-allowed dark:bg-green-950 dark:border-green-700' 
                               : selectedSubjects.length > 1 && !formData.lessonName
@@ -563,7 +563,7 @@ export default function LessonsPage() {
                           max="35"
                           value={formData.numberOfSingles}
                           onChange={(e) => setFormData({ ...formData, numberOfSingles: parseInt(e.target.value) || 0 })}
-                          className="w-full px-4 py-3 border-2 border-zinc-300 dark:border-zinc-700 rounded-lg text-xl font-bold text-center focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900"
+                          className="w-full px-3 py-2.5 border-2 border-zinc-300 dark:border-zinc-700 rounded-lg text-lg font-bold text-center focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900"
                         />
                       </div>
 
@@ -578,16 +578,16 @@ export default function LessonsPage() {
                           max="17"
                           value={formData.numberOfDoubles}
                           onChange={(e) => setFormData({ ...formData, numberOfDoubles: parseInt(e.target.value) || 0 })}
-                          className="w-full px-4 py-3 border-2 border-zinc-300 dark:border-zinc-700 rounded-lg text-xl font-bold text-center focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900"
+                          className="w-full px-3 py-2.5 border-2 border-zinc-300 dark:border-zinc-700 rounded-lg text-lg font-bold text-center focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900"
                         />
                       </div>
 
                       {/* Total Load Display */}
-                      <div className="col-span-3">
+                      <div className="col-span-2">
                         <label className="mb-2 block text-xs font-bold text-zinc-700 dark:text-zinc-300">
                           📊 Total Weekly Load
                         </label>
-                        <div className={`h-[52px] rounded-lg px-4 flex items-center justify-center text-2xl font-black border-2 transition-all ${
+                        <div className={`h-[44px] rounded-lg px-3 flex items-center justify-center text-xl font-black border-2 transition-all ${
                           totalPeriods > 35 
                             ? 'border-red-600 bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300 animate-pulse shadow-lg' 
                             : totalPeriods === 0

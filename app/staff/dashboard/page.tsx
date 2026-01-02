@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -32,9 +32,12 @@ interface ClassOption {
 
 interface SchoolInfo {
   name: string;
-  startTime: string;
-  periodDuration: number;
-  numberOfPeriods: number;
+  config: {
+    startTime: string;
+    periodDuration: number;
+    numberOfPeriods: number;
+    intervalSlots: Array<{ afterPeriod: number; duration: number }>;
+  };
 }
 
 export default function TeacherDashboard() {
@@ -186,11 +189,19 @@ export default function TeacherDashboard() {
 
   const calculatePeriodTime = (periodNumber: number) => {
     // Safety guard: prevent crash if schoolInfo or startTime is missing
-    if (!schoolInfo?.startTime) return '00:00';
+    if (!schoolInfo?.config?.startTime) return '00:00';
     
-    const [hours, minutes] = schoolInfo.startTime.split(':').map(Number);
-    const totalMinutes = hours * 60 + minutes + (periodNumber - 1) * schoolInfo.periodDuration;
-    const endMinutes = totalMinutes + schoolInfo.periodDuration;
+    const [hours, minutes] = schoolInfo.config.startTime.split(':').map(Number);
+    let totalMinutes = hours * 60 + minutes + (periodNumber - 1) * schoolInfo.config.periodDuration;
+    
+    // Add interval durations for intervals that occurred before this period
+    for (const interval of schoolInfo.config.intervalSlots || []) {
+      if (interval.afterPeriod < periodNumber) {
+        totalMinutes += interval.duration;
+      }
+    }
+    
+    const endMinutes = totalMinutes + schoolInfo.config.periodDuration;
     
     const startHours = Math.floor(totalMinutes / 60);
     const startMins = totalMinutes % 60;
@@ -198,6 +209,26 @@ export default function TeacherDashboard() {
     const endMins = endMinutes % 60;
     
     return `${String(startHours).padStart(2, '0')}:${String(startMins).padStart(2, '0')} - ${String(endHours).padStart(2, '0')}:${String(endMins).padStart(2, '0')}`;
+  };
+
+  const calculateIntervalTime = (afterPeriod: number): string => {
+    if (!schoolInfo?.config?.startTime) return '00:00';
+    
+    // Calculate end time of the period after which interval occurs
+    const [hours, minutes] = schoolInfo.config.startTime.split(':').map(Number);
+    let totalMinutes = hours * 60 + minutes + afterPeriod * schoolInfo.config.periodDuration;
+    
+    // Add all interval durations up to and including this interval
+    for (const interval of schoolInfo.config.intervalSlots || []) {
+      if (interval.afterPeriod <= afterPeriod) {
+        totalMinutes += interval.duration;
+      }
+    }
+    
+    const resultHours = Math.floor(totalMinutes / 60);
+    const resultMinutes = totalMinutes % 60;
+    
+    return `${String(resultHours).padStart(2, '0')}:${String(resultMinutes).padStart(2, '0')}`;
   };
 
   const renderScheduleGrid = (schedule: TimetableSlot[], title: string, isTeacherSchedule: boolean = false) => {
@@ -214,11 +245,11 @@ export default function TeacherDashboard() {
     }
 
     // Diagnostic log
-    console.log('DEBUG: School periods:', schoolInfo.numberOfPeriods, 'My slots count:', schedule.length);
+    console.log('DEBUG: School periods:', schoolInfo.config?.numberOfPeriods, 'My slots count:', schedule.length);
     
     // Fix NaN: Explicitly convert to Number with fallback to 8
     const periodsCount = Math.max(
-      Number(schoolInfo?.numberOfPeriods || 8),
+      Number(schoolInfo?.config?.numberOfPeriods || 8),
       ...schedule.map(s => Number(s.periodNumber) || 0)
     );
     
@@ -238,9 +269,9 @@ export default function TeacherDashboard() {
               mySchedule.length > 0 && 
               versionName && 
               schoolInfo && 
-              schoolInfo.startTime && 
-              schoolInfo.periodDuration && 
-              schoolInfo.numberOfPeriods && 
+              schoolInfo.config?.startTime && 
+              schoolInfo.config?.periodDuration && 
+              schoolInfo.config?.numberOfPeriods && 
               session?.user?.name ? (
                 <PDFDownloadLink
                   document={
@@ -274,10 +305,10 @@ export default function TeacherDashboard() {
                       }))}
                       versionName={versionName}
                       config={{
-                        startTime: schoolInfo.startTime || '08:00',
-                        periodDuration: schoolInfo.periodDuration || 40,
-                        numberOfPeriods: schoolInfo.numberOfPeriods || 8,
-                        intervalSlots: [],
+                        startTime: schoolInfo.config.startTime || '08:00',
+                        periodDuration: schoolInfo.config.periodDuration || 40,
+                        numberOfPeriods: schoolInfo.config.numberOfPeriods || 8,
+                        intervalSlots: schoolInfo.config.intervalSlots || [],
                       }}
                       lessonNameMap={{}}
                       schoolName={schoolInfo.name || 'School'}
@@ -317,9 +348,9 @@ export default function TeacherDashboard() {
               classSchedule.length > 0 && 
               versionName && 
               schoolInfo && 
-              schoolInfo.startTime && 
-              schoolInfo.periodDuration && 
-              schoolInfo.numberOfPeriods && 
+              schoolInfo.config?.startTime && 
+              schoolInfo.config?.periodDuration && 
+              schoolInfo.config?.numberOfPeriods && 
               selectedClass ? (
                 <PDFDownloadLink
                   document={
@@ -350,10 +381,10 @@ export default function TeacherDashboard() {
                     }))}
                     versionName={versionName}
                     config={{
-                      startTime: schoolInfo.startTime || '08:00',
-                      periodDuration: schoolInfo.periodDuration || 40,
-                      numberOfPeriods: schoolInfo.numberOfPeriods || 8,
-                      intervalSlots: [],
+                      startTime: schoolInfo.config.startTime || '08:00',
+                      periodDuration: schoolInfo.config.periodDuration || 40,
+                      numberOfPeriods: schoolInfo.config.numberOfPeriods || 8,
+                      intervalSlots: schoolInfo.config.intervalSlots || [],
                     }}
                     lessonNameMap={{}}
                     schoolName={schoolInfo.name || 'School'}
@@ -406,58 +437,102 @@ export default function TeacherDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {periods.map((period) => (
-                  <tr key={period} className="border-b-2 border-black dark:border-white last:border-b-0">
-                    <td className="border-r-2 border-black dark:border-white p-2 md:p-3 font-bold text-black dark:text-white text-xs md:text-sm bg-zinc-50 dark:bg-zinc-900">
-                      <div className="flex flex-col">
-                        <span>P{period}</span>
-                        <span className="text-[10px] md:text-xs text-zinc-500 dark:text-zinc-400 font-normal whitespace-nowrap">
-                          {calculatePeriodTime(period)}
-                        </span>
-                      </div>
-                    </td>
-                    {days.map((day) => {
-                      // Absolute comparison with String() wrapper to handle any type or hidden space issues
-                      const slot = schedule.find(
-                        (s) => String(s.day).trim().toLowerCase() === String(day).trim().toLowerCase() && 
-                               Number(s.periodNumber) === Number(period)
-                      );
-                      
-                      // Debug log for first few slots
-                      if (period === 1 && schedule.length > 0) {
-                        console.log(`Looking for ${day} P${period}, found:`, slot ? 'YES' : 'NO', 
-                                    `Slot data:`, slot ? `${slot.day} P${slot.periodNumber}` : 'N/A');
-                      }
-                      
-                      return (
-                        <td
-                          key={`${day}-${period}`}
-                          className="border-r-2 border-black dark:border-white p-1 md:p-2 text-xs last:border-r-0 align-top"
-                        >
-                          {slot ? (
-                            <div className={`p-1 md:p-2 ${slot.isDoubleStart ? 'border-2 border-blue-500 bg-blue-50 dark:bg-blue-950' : ''}`}>
-                              <div className="font-bold text-black dark:text-white truncate text-[10px] md:text-xs">
-                                {slot.subject}
-                              </div>
-                              {slot.className && (
-                                <div className="text-zinc-600 dark:text-zinc-400 truncate text-[9px] md:text-xs mt-0.5">
-                                  {slot.className}
-                                </div>
-                              )}
-                              {slot.isDoubleStart && (
-                                <div className="text-blue-600 dark:text-blue-400 text-[8px] md:text-[10px] mt-1">
-                                  Double Period
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <div className="p-1 md:p-2 text-zinc-400 dark:text-zinc-600 text-center">—</div>
-                          )}
+                {periods.map((period) => {
+                  // Check if there's an interval after this period
+                  const intervalAfterThisPeriod = schoolInfo.config?.intervalSlots?.find(
+                    (slot) => slot.afterPeriod === period
+                  );
+                  
+                  return (
+                    <React.Fragment key={period}>
+                      <tr className="border-b-2 border-black dark:border-white last:border-b-0">
+                        <td className="border-r-2 border-black dark:border-white p-2 md:p-3 font-bold text-black dark:text-white text-xs md:text-sm bg-zinc-50 dark:bg-zinc-900">
+                          <div className="flex flex-col">
+                            <span>P{period}</span>
+                            <span className="text-[10px] md:text-xs text-zinc-500 dark:text-zinc-400 font-normal whitespace-nowrap">
+                              {calculatePeriodTime(period)}
+                            </span>
+                          </div>
                         </td>
-                      );
-                    })}
-                  </tr>
-                ))}
+                        {days.map((day) => {
+                          // Absolute comparison with String() wrapper to handle any type or hidden space issues
+                          const slot = schedule.find(
+                            (s) => String(s.day).trim().toLowerCase() === String(day).trim().toLowerCase() && 
+                                   Number(s.periodNumber) === Number(period)
+                          );
+                          
+                          // Debug log for first few slots
+                          if (period === 1 && schedule.length > 0) {
+                            console.log(`Looking for ${day} P${period}, found:`, slot ? 'YES' : 'NO', 
+                                        `Slot data:`, slot ? `${slot.day} P${slot.periodNumber}` : 'N/A');
+                          }
+                          
+                          return (
+                            <td
+                              key={`${day}-${period}`}
+                              className="border-r-2 border-black dark:border-white p-2 md:p-3 text-xs last:border-r-0 align-middle"
+                            >
+                              {slot ? (
+                                <div 
+                                  className="h-20 w-full rounded-2xl flex flex-col justify-center items-center text-white relative shadow-lg hover:shadow-xl transition-all duration-200 overflow-hidden"
+                                  style={{
+                                    background: `linear-gradient(135deg, #3B82F6 0%, #3B82F6EE 100%)`,
+                                  }}
+                                >
+                                  {/* Subtle white overlay for text contrast */}
+                                  <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none" />
+                                  
+                                  {/* Modern double period badge */}
+                                  {slot.isDoubleStart && (
+                                    <div className="absolute top-1 right-1 bg-white/20 backdrop-blur-lg border border-white/30 text-white text-[9px] px-1.5 py-0.5 rounded-full font-bold shadow-lg z-10">
+                                      DOUBLE
+                                    </div>
+                                  )}
+                                  
+                                  <div className="relative z-10 flex flex-col justify-center items-center px-2">
+                                    <div className="text-xs md:text-sm font-bold leading-tight text-center drop-shadow-md">
+                                      {slot.subject}
+                                    </div>
+                                    {slot.className && (
+                                      <div className="text-[10px] md:text-xs opacity-90 mt-1 text-center font-medium">
+                                        {slot.className}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="h-20 flex items-center justify-center text-zinc-400 dark:text-zinc-600 text-xs italic">Free</div>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                      
+                      {/* Interval Row - appears immediately after the period */}
+                      {intervalAfterThisPeriod && (
+                        <tr className="bg-gradient-to-r from-amber-50 via-amber-100 to-amber-50 dark:from-amber-950/20 dark:via-amber-900/30 dark:to-amber-950/20">
+                          <td
+                            className="border border-zinc-200 dark:border-zinc-800 p-3 md:p-4 text-center font-bold text-xs md:text-sm uppercase tracking-wider text-amber-700 dark:text-amber-400"
+                            style={{
+                              backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(251, 191, 36, 0.1) 10px, rgba(251, 191, 36, 0.1) 20px)',
+                            }}
+                          >
+                            ☕ INTERVAL
+                          </td>
+                          <td
+                            colSpan={days.length}
+                            className="border border-zinc-200 dark:border-zinc-800 p-3 md:p-4 text-center text-xs md:text-sm text-amber-700 dark:text-amber-400 font-semibold"
+                            style={{
+                              backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(251, 191, 36, 0.1) 10px, rgba(251, 191, 36, 0.1) 20px)',
+                            }}
+                          >
+                            {intervalAfterThisPeriod.duration} minutes • {calculateIntervalTime(period)}
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -514,7 +589,7 @@ export default function TeacherDashboard() {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6 space-y-6">
         {/* School Configuration Warning */}
-        {schoolInfo && (!schoolInfo.startTime || !schoolInfo.periodDuration || !schoolInfo.numberOfPeriods) && (
+        {schoolInfo && (!schoolInfo.config?.startTime || !schoolInfo.config?.periodDuration || !schoolInfo.config?.numberOfPeriods) && (
           <Card className="border-2 border-yellow-500 dark:border-yellow-400 rounded-none bg-yellow-50 dark:bg-yellow-950">
             <CardHeader className="border-b-2 border-yellow-500 dark:border-yellow-400">
               <CardTitle className="text-lg font-bold text-yellow-900 dark:text-yellow-100 flex items-center gap-2">

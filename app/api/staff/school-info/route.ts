@@ -38,9 +38,12 @@ export async function GET() {
       success: true,
       school: {
         name: school.name,
-        startTime: school.startTime,
-        periodDuration: school.periodDuration,
-        numberOfPeriods: school.numberOfPeriods,
+        config: {
+          startTime: school.config?.startTime || school.startTime || '08:00',
+          periodDuration: school.config?.periodDuration || school.periodDuration || 40,
+          numberOfPeriods: school.config?.numberOfPeriods || school.numberOfPeriods || 8,
+          intervalSlots: school.config?.intervalSlots || [],
+        },
       },
     });
   } catch (error) {

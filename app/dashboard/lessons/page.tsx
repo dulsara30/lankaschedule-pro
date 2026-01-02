@@ -3,13 +3,17 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Pencil, Trash2, Sparkles, MoreVertical, X, Search, Lightbulb } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Plus, Pencil, Trash2, Sparkles, MoreVertical, X, Search, Lightbulb, Check, ChevronsUpDown, ChevronLeft, ChevronRight, FilterX } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { generateTimetableAction } from '@/app/actions/generateTimetable';
+import { cn } from '@/lib/utils';
 
 interface Subject {
   _id: string;
@@ -66,6 +70,20 @@ export default function LessonsPage() {
   const [classSearchTerm, setClassSearchTerm] = useState('');
   const [subjectSearchTerm, setSubjectSearchTerm] = useState('');
   const [teacherSearchTerm, setTeacherSearchTerm] = useState('');
+
+  // Advanced filtering state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterGrade, setFilterGrade] = useState<number | null>(null);
+  const [filterStream, setFilterStream] = useState<string | null>(null);
+  const [filterSubjectId, setFilterSubjectId] = useState<string | null>(null);
+  const [filterTeacherId, setFilterTeacherId] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [subjectComboOpen, setSubjectComboOpen] = useState(false);
+  const [teacherComboOpen, setTeacherComboOpen] = useState(false);
+  
+  const ITEMS_PER_PAGE = 10;
+  const GRADES = [6, 7, 8, 9, 10, 11, 12, 13];
+  const STREAMS = ['Science', 'Arts', 'Commerce', 'Technology', 'General'];
 
   // Smart lesson naming: Auto-fill if single subject selected
   useEffect(() => {
@@ -380,6 +398,88 @@ export default function LessonsPage() {
   };
 
   const totalPeriods = formData.numberOfSingles + (formData.numberOfDoubles * 2);
+
+  // Advanced filtering and pagination logic
+  const filteredAndPaginatedLessons = useMemo(() => {
+    let filtered = [...lessons];
+
+    // Search by lesson name
+    if (searchQuery.trim()) {
+      filtered = filtered.filter(lesson =>
+        lesson.lessonName.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+
+    // Filter by grade
+    if (filterGrade !== null) {
+      filtered = filtered.filter(lesson =>
+        lesson.classIds.some(cls => cls.grade === filterGrade)
+      );
+    }
+
+    // Filter by stream (check if any class name contains the stream)
+    if (filterStream) {
+      filtered = filtered.filter(lesson =>
+        lesson.classIds.some(cls => 
+          cls.name.toLowerCase().includes(filterStream.toLowerCase())
+        )
+      );
+    }
+
+    // Filter by subject
+    if (filterSubjectId) {
+      filtered = filtered.filter(lesson =>
+        lesson.subjectIds.some(subject => subject._id === filterSubjectId)
+      );
+    }
+
+    // Filter by teacher
+    if (filterTeacherId) {
+      filtered = filtered.filter(lesson =>
+        lesson.teacherIds.some(teacher => teacher._id === filterTeacherId)
+      );
+    }
+
+    // Calculate pagination
+    const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    const endIndex = startIndex + ITEMS_PER_PAGE;
+    const paginatedLessons = filtered.slice(startIndex, endIndex);
+
+    return {
+      lessons: paginatedLessons,
+      totalFiltered: filtered.length,
+      totalPages,
+      currentPage,
+    };
+  }, [lessons, searchQuery, filterGrade, filterStream, filterSubjectId, filterTeacherId, currentPage]);
+
+  // Calculate total periods for filtered lessons
+  const filteredStats = useMemo(() => {
+    const lessons = filteredAndPaginatedLessons.lessons;
+    const totalSingles = lessons.reduce((sum, lesson) => sum + lesson.numberOfSingles, 0);
+    const totalDoubles = lessons.reduce((sum, lesson) => sum + lesson.numberOfDoubles, 0);
+    const totalPeriods = totalSingles + (totalDoubles * 2);
+    return { totalSingles, totalDoubles, totalPeriods };
+  }, [filteredAndPaginatedLessons.lessons]);
+
+  // Clear all filters
+  const clearAllFilters = () => {
+    setSearchQuery('');
+    setFilterGrade(null);
+    setFilterStream(null);
+    setFilterSubjectId(null);
+    setFilterTeacherId(null);
+    setCurrentPage(1);
+  };
+
+  // Check if any filters are active
+  const hasActiveFilters = searchQuery || filterGrade !== null || filterStream || filterSubjectId || filterTeacherId;
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, filterGrade, filterStream, filterSubjectId, filterTeacherId]);
 
   const generationSteps = [
     'Fetching School Configuration & Lessons...',
@@ -839,12 +939,244 @@ export default function LessonsPage() {
         </div>
       </div>
 
+      {/* Advanced Filters Card */}
       <Card>
         <CardHeader>
-          <CardTitle>All Lessons</CardTitle>
-          <CardDescription>
-            {lessons.length} lesson{lessons.length !== 1 ? 's' : ''} configured
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Filters & Search</CardTitle>
+              <CardDescription>
+                Filter lessons by grade, stream, subject, or teacher
+              </CardDescription>
+            </div>
+            {hasActiveFilters && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={clearAllFilters}
+                className="text-zinc-600 dark:text-zinc-400"
+              >
+                <FilterX className="mr-2 h-4 w-4" />
+                Clear Filters
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            {/* Global Search */}
+            <div className="lg:col-span-2">
+              <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2 block">
+                Search Lessons
+              </label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-zinc-400" />
+                <Input
+                  placeholder="Search by lesson name..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            </div>
+
+            {/* Grade Filter */}
+            <div>
+              <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2 block">
+                Grade
+              </label>
+              <select
+                value={filterGrade ?? ''}
+                onChange={(e) => setFilterGrade(e.target.value ? Number(e.target.value) : null)}
+                className="flex h-10 w-full items-center justify-between rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm ring-offset-white focus:outline-none focus:ring-2 focus:ring-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-950 dark:ring-offset-zinc-950"
+              >
+                <option value="">All Grades</option>
+                {GRADES.map((grade) => (
+                  <option key={grade} value={grade}>
+                    Grade {grade}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Stream Filter */}
+            <div>
+              <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2 block">
+                Stream
+              </label>
+              <select
+                value={filterStream ?? ''}
+                onChange={(e) => setFilterStream(e.target.value || null)}
+                className="flex h-10 w-full items-center justify-between rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm ring-offset-white focus:outline-none focus:ring-2 focus:ring-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-950 dark:ring-offset-zinc-950"
+              >
+                <option value="">All Streams</option>
+                {STREAMS.map((stream) => (
+                  <option key={stream} value={stream}>
+                    {stream}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Subject Filter - Combobox */}
+            <div>
+              <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2 block">
+                Subject
+              </label>
+              <Popover open={subjectComboOpen} onOpenChange={setSubjectComboOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={subjectComboOpen}
+                    className="w-full justify-between"
+                  >
+                    {filterSubjectId
+                      ? subjects.find((subject) => subject._id === filterSubjectId)?.name
+                      : "All Subjects"}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[200px] p-0">
+                  <Command>
+                    <CommandInput placeholder="Search subject..." />
+                    <CommandList>
+                      <CommandEmpty>No subject found.</CommandEmpty>
+                      <CommandGroup>
+                        <CommandItem
+                          value="all-subjects"
+                          onSelect={() => {
+                            setFilterSubjectId(null);
+                            setSubjectComboOpen(false);
+                          }}
+                        >
+                          <Check
+                            className={cn(
+                              "mr-2 h-4 w-4",
+                              filterSubjectId === null ? "opacity-100" : "opacity-0"
+                            )}
+                          />
+                          All Subjects
+                        </CommandItem>
+                        {subjects.map((subject) => (
+                          <CommandItem
+                            key={subject._id}
+                            value={subject.name}
+                            onSelect={() => {
+                              setFilterSubjectId(subject._id);
+                              setSubjectComboOpen(false);
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                filterSubjectId === subject._id ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            <div
+                              className="w-3 h-3 rounded-full mr-2"
+                              style={{ backgroundColor: subject.color }}
+                            />
+                            {subject.name}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {/* Teacher Filter - Combobox */}
+            <div>
+              <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2 block">
+                Teacher
+              </label>
+              <Popover open={teacherComboOpen} onOpenChange={setTeacherComboOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={teacherComboOpen}
+                    className="w-full justify-between"
+                  >
+                    {filterTeacherId
+                      ? teachers.find((teacher) => teacher._id === filterTeacherId)?.name
+                      : "All Teachers"}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[250px] p-0">
+                  <Command>
+                    <CommandInput placeholder="Search teacher..." />
+                    <CommandList>
+                      <CommandEmpty>No teacher found.</CommandEmpty>
+                      <CommandGroup>
+                        <CommandItem
+                          value="all-teachers"
+                          onSelect={() => {
+                            setFilterTeacherId(null);
+                            setTeacherComboOpen(false);
+                          }}
+                        >
+                          <Check
+                            className={cn(
+                              "mr-2 h-4 w-4",
+                              filterTeacherId === null ? "opacity-100" : "opacity-0"
+                            )}
+                          />
+                          All Teachers
+                        </CommandItem>
+                        {teachers.map((teacher) => (
+                          <CommandItem
+                            key={teacher._id}
+                            value={teacher.name}
+                            onSelect={() => {
+                              setFilterTeacherId(teacher._id);
+                              setTeacherComboOpen(false);
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                filterTeacherId === teacher._id ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            {teacher.name}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>All Lessons</CardTitle>
+              <CardDescription>
+                {filteredAndPaginatedLessons.totalFiltered !== lessons.length ? (
+                  <>
+                    Showing {filteredAndPaginatedLessons.lessons.length} of {filteredAndPaginatedLessons.totalFiltered} filtered lessons
+                    <span className="text-zinc-400 mx-1">•</span>
+                    {filteredStats.totalPeriods} periods/week ({filteredStats.totalSingles}S + {filteredStats.totalDoubles}D)
+                  </>
+                ) : (
+                  <>
+                    {lessons.length} lesson{lessons.length !== 1 ? 's' : ''} configured
+                    <span className="text-zinc-400 mx-1">•</span>
+                    {filteredStats.totalPeriods} periods/week
+                  </>
+                )}
+              </CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
@@ -860,14 +1192,17 @@ export default function LessonsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {lessons.length === 0 ? (
+                {filteredAndPaginatedLessons.lessons.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center text-zinc-500 py-8">
-                      No lessons created yet. Click &quot;Create Lesson&quot; to get started.
+                      {hasActiveFilters ? 
+                        "No lessons match your filters. Try adjusting your search criteria." :
+                        "No lessons created yet. Click \"Create Lesson\" to get started."
+                      }
                     </TableCell>
                   </TableRow>
                 ) : (
-                  lessons.map((lesson) => {
+                  filteredAndPaginatedLessons.lessons.map((lesson) => {
                     const totalPeriods = lesson.numberOfSingles + (lesson.numberOfDoubles * 2);
                     return (
                       <TableRow key={lesson._id} className="hover:bg-zinc-50 dark:hover:bg-zinc-900">
@@ -955,6 +1290,38 @@ export default function LessonsPage() {
               </TableBody>
             </Table>
           </div>
+
+          {/* Pagination Controls */}
+          {filteredAndPaginatedLessons.totalFiltered > 0 && (
+            <div className="flex items-center justify-between pt-4 border-t border-zinc-200 dark:border-zinc-800">
+              <div className="text-sm text-zinc-600 dark:text-zinc-400">
+                Showing {((currentPage - 1) * ITEMS_PER_PAGE) + 1}-{Math.min(currentPage * ITEMS_PER_PAGE, filteredAndPaginatedLessons.totalFiltered)} of {filteredAndPaginatedLessons.totalFiltered} lessons
+              </div>
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(currentPage - 1)}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  Previous
+                </Button>
+                <div className="text-sm text-zinc-600 dark:text-zinc-400 px-3">
+                  Page {currentPage} of {filteredAndPaginatedLessons.totalPages}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(currentPage + 1)}
+                  disabled={currentPage === filteredAndPaginatedLessons.totalPages}
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

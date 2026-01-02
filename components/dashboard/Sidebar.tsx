@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Settings, Calendar, Users, BookOpen, GraduationCap, Clock, CalendarDays } from 'lucide-react';
+import { Settings, Calendar, Users, BookOpen, GraduationCap, Clock, CalendarDays, PanelLeftClose, PanelLeft } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { useEffect, useState } from 'react';
 
 interface SchoolConfig {
@@ -25,6 +26,7 @@ const navItems = [
 export function Sidebar() {
   const pathname = usePathname();
   const [config, setConfig] = useState<SchoolConfig | null>(null);
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   const fetchConfig = () => {
     fetch('/api/school/config')
@@ -52,16 +54,32 @@ export function Sidebar() {
   }, []);
 
   return (
-    <aside className="w-64 border-r border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+    <aside className={`border-r border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950 transition-all duration-300 ${isCollapsed ? 'w-20' : 'w-64'}`}>
       <div className="flex h-full flex-col">
         {/* Header */}
-        <div className="border-b border-zinc-200 p-6 dark:border-zinc-800">
-          <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">
-            LankaSchedule Pro
-          </h1>
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-            Timetable Management
-          </p>
+        <div className="border-b border-zinc-200 p-6 dark:border-zinc-800 flex items-center justify-between">
+          {!isCollapsed && (
+            <div>
+              <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">
+                LankaSchedule Pro
+              </h1>
+              <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+                Timetable Management
+              </p>
+            </div>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className={`h-8 w-8 p-0 ${isCollapsed ? 'mx-auto' : ''}`}
+          >
+            {isCollapsed ? (
+              <PanelLeft className="h-5 w-5" />
+            ) : (
+              <PanelLeftClose className="h-5 w-5" />
+            )}
+          </Button>
         </div>
 
         {/* Navigation */}
@@ -74,21 +92,22 @@ export function Sidebar() {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                title={isCollapsed ? item.label : undefined}
+                className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${isCollapsed ? 'justify-center' : ''} ${
                   isActive
                     ? 'bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-50'
                     : 'text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/50 dark:hover:text-zinc-50'
                 }`}
               >
                 <Icon className="h-5 w-5" />
-                {item.label}
+                {!isCollapsed && item.label}
               </Link>
             );
           })}
         </nav>
 
         {/* School Settings Summary */}
-        {config && (
+        {config && !isCollapsed && (
           <div className="border-t border-zinc-200 p-4 dark:border-zinc-800">
             <Card className="p-4">
               <h3 className="mb-3 text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400">

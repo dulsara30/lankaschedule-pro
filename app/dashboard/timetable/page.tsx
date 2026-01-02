@@ -6,8 +6,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Calendar, Users, User, Save, History, Trash2 } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Calendar, Users, User, Save, History, Trash2, Check, ChevronsUpDown, ChevronDown, ChevronUp } from 'lucide-react';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 interface Subject {
   _id: string;
@@ -69,6 +72,7 @@ export default function TimetablePage() {
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'class' | 'teacher'>('class');
   const [selectedEntity, setSelectedEntity] = useState<string>('');
+  const [entityComboOpen, setEntityComboOpen] = useState(false);
   
   // Version management state
   const [versions, setVersions] = useState<TimetableVersion[]>([]);
@@ -76,6 +80,7 @@ export default function TimetablePage() {
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [newVersionName, setNewVersionName] = useState('');
   const [savingVersion, setSavingVersion] = useState(false);
+  const [isVersionManagerExpanded, setIsVersionManagerExpanded] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -400,19 +405,31 @@ export default function TimetablePage() {
         </div>
       </div>
 
-      {/* Version Management Section */}
+      {/* Version Management Section - Collapsible */}
       {slots.length > 0 && versions.length > 0 && (
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <History className="h-5 w-5" />
-              Version Management
-            </CardTitle>
-            <CardDescription>
-              Save, switch between, and manage different timetable versions
-            </CardDescription>
+          <CardHeader className="cursor-pointer" onClick={() => setIsVersionManagerExpanded(!isVersionManagerExpanded)}>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <History className="h-5 w-5" />
+                  Version Management
+                </CardTitle>
+                <CardDescription>
+                  Save, switch between, and manage different timetable versions
+                </CardDescription>
+              </div>
+              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                {isVersionManagerExpanded ? (
+                  <ChevronUp className="h-5 w-5" />
+                ) : (
+                  <ChevronDown className="h-5 w-5" />
+                )}
+              </Button>
+            </div>
           </CardHeader>
-          <CardContent>
+          {isVersionManagerExpanded && (
+            <CardContent>
             <div className="flex flex-col lg:flex-row gap-4">
               {/* Current Version Info */}
               <div className="flex-1">
@@ -505,6 +522,7 @@ export default function TimetablePage() {
               )}
             </div>
           </CardContent>
+          )}
         </Card>
       )}
 
@@ -539,22 +557,60 @@ export default function TimetablePage() {
         </Card>
       ) : (
         <>
-          {/* Entity Selector */}
+          {/* Entity Selector - Searchable Combobox */}
           <div className="flex items-center gap-3">
             <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
               {viewMode === 'class' ? 'Select Class:' : 'Select Teacher:'}
             </label>
-            <select
-              value={selectedEntity}
-              onChange={(e) => setSelectedEntity(e.target.value)}
-              className="flex h-10 rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-950 dark:ring-offset-zinc-950 dark:focus-visible:ring-zinc-300"
-            >
-              {entityList.map((entity) => (
-                <option key={entity._id} value={entity._id}>
-                  {entity.name}
-                </option>
-              ))}
-            </select>
+            <Popover open={entityComboOpen} onOpenChange={setEntityComboOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={entityComboOpen}
+                  className="w-[300px] justify-between"
+                >
+                  {selectedEntity
+                    ? entityList.find((entity) => entity._id === selectedEntity)?.name
+                    : `Search ${viewMode === 'class' ? 'classes' : 'teachers'}...`}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[300px] p-0">
+                <Command>
+                  <CommandInput placeholder={`Search ${viewMode === 'class' ? 'class' : 'teacher'}...`} />
+                  <CommandList>
+                    <CommandEmpty>No {viewMode === 'class' ? 'class' : 'teacher'} found.</CommandEmpty>
+                    <CommandGroup>
+                      {entityList.map((entity) => {
+                        const entityAsClass = entity as Class;
+                        return (
+                          <CommandItem
+                            key={entity._id}
+                            value={entity.name}
+                            onSelect={() => {
+                              setSelectedEntity(entity._id);
+                              setEntityComboOpen(false);
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                selectedEntity === entity._id ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            {entity.name}
+                            {viewMode === 'class' && entityAsClass.grade && (
+                              <span className="ml-auto text-xs text-zinc-500">Grade {entityAsClass.grade}</span>
+                            )}
+                          </CommandItem>
+                        );
+                      })}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
           </div>
 
           {/* Timetable Grid */}

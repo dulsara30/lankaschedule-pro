@@ -5,13 +5,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Plus, Pencil, Trash2, Search, X, Check, ChevronsUpDown, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { deleteAndReassignTeacher, getTeacherLessonCount, getTeacherLessonsWithSlots, checkReassignmentConflicts, deleteAndReassignTeacherAction } from '@/app/actions/teacherActions';
+import { getTeacherLessonsWithSlots, checkReassignmentConflicts, deleteAndReassignTeacherAction } from '@/app/actions/teacherActions';
 
 interface LessonWithSlots {
   _id: string;
@@ -96,6 +96,19 @@ export default function TeachersPage() {
   const fetchCurrentVersion = async () => {
     try {
       const response = await fetch('/api/timetable-versions');
+      
+      // Check if response is ok and content-type is JSON
+      if (!response.ok) {
+        console.error('Failed to fetch timetable versions:', response.statusText);
+        return;
+      }
+      
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        console.error('Expected JSON response but got:', contentType);
+        return;
+      }
+      
       const data = await response.json();
       if (data.success && data.data.length > 0) {
         // Get the most recent version
@@ -790,10 +803,12 @@ export default function TeachersPage() {
               <AlertTriangle className="h-5 w-5 text-amber-500" />
               Delete Teacher - Reassign Lessons
             </DialogTitle>
-            <DialogDescription className="text-base pt-2">
+            <div className="text-muted-foreground text-base pt-2">
               {teacherToDelete && (
                 <>
-                  You are about to delete <span className="font-semibold text-zinc-900 dark:text-zinc-100">{teacherToDelete.name}</span>.
+                  <div className="mb-2">
+                    You are about to delete <span className="font-semibold text-zinc-900 dark:text-zinc-100">{teacherToDelete.name}</span>.
+                  </div>
                   {affectedLessons.length > 0 && (
                     <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg">
                       <p className="text-sm text-amber-800 dark:text-amber-200">
@@ -806,7 +821,7 @@ export default function TeachersPage() {
                   )}
                 </>
               )}
-            </DialogDescription>
+            </div>
           </DialogHeader>
 
           <div className="flex-1 overflow-y-auto py-4 space-y-4">

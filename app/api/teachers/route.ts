@@ -28,7 +28,7 @@ export async function GET() {
     // Enrich teachers with lesson count and workload
     const enrichedTeachers = teachers.map(teacher => {
       const teacherLessons = lessons.filter(lesson => 
-        lesson.teacherIds.some((id: any) => id.toString() === teacher._id.toString())
+        lesson.teacherIds.some((id: { toString: () => string }) => id.toString() === teacher._id.toString())
       );
 
       const lessonCount = teacherLessons.length;
@@ -75,13 +75,13 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, email, subjectsTaught } = body;
+    const { name, email, teacherGrade, subjectsTaught } = body;
 
-    if (!name || !email) {
+    if (!name) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Name and email are required',
+          error: 'Name is required',
         },
         { status: 400 }
       );
@@ -90,7 +90,8 @@ export async function POST(request: NextRequest) {
     const teacher = await Teacher.create({
       schoolId: school._id,
       name,
-      email: email.toLowerCase(),
+      email: email ? email.toLowerCase() : undefined,
+      teacherGrade: teacherGrade || 'SLTS 3 I',
       subjectsTaught: subjectsTaught || [],
     });
 
@@ -103,10 +104,10 @@ export async function POST(request: NextRequest) {
       data: teacher,
       message: 'Teacher created successfully',
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating teacher:', error);
 
-    if (error.code === 11000) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 11000) {
       return NextResponse.json(
         {
           success: false,
@@ -119,7 +120,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: error.message || 'Failed to create teacher',
+        error: error instanceof Error ? error.message : 'Failed to create teacher',
       },
       { status: 500 }
     );
@@ -132,25 +133,34 @@ export async function PUT(request: NextRequest) {
     await dbConnect();
 
     const body = await request.json();
-    const { id, name, email, subjectsTaught } = body;
+    const { id, name, email, teacherGrade, subjectsTaught } = body;
 
-    if (!id || !name || !email) {
+    if (!id || !name) {
       return NextResponse.json(
         {
           success: false,
-          error: 'ID, name, and email are required',
+          error: 'ID and name are required',
         },
         { status: 400 }
       );
     }
 
+    const updateData: { name: string; email?: string; teacherGrade?: string; subjectsTaught: string[] } = {
+      name,
+      subjectsTaught: subjectsTaught || [],
+    };
+
+    if (email) {
+      updateData.email = email.toLowerCase();
+    }
+
+    if (teacherGrade) {
+      updateData.teacherGrade = teacherGrade;
+    }
+
     const teacher = await Teacher.findByIdAndUpdate(
       id,
-      {
-        name,
-        email: email.toLowerCase(),
-        subjectsTaught: subjectsTaught || [],
-      },
+      updateData,
       { new: true, runValidators: true }
     );
 
@@ -172,10 +182,10 @@ export async function PUT(request: NextRequest) {
       data: teacher,
       message: 'Teacher updated successfully',
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error updating teacher:', error);
 
-    if (error.code === 11000) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 11000) {
       return NextResponse.json(
         {
           success: false,
@@ -188,7 +198,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: error.message || 'Failed to update teacher',
+        error: error instanceof Error ? error.message : 'Failed to update teacher',
       },
       { status: 500 }
     );

@@ -39,7 +39,7 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
     const config = school.config;
     
     // Find interval after period 3 (2026 reform)
-    const intervalAfterPeriod = config.intervalSlots.find((slot: any) => slot.afterPeriod === 3)?.afterPeriod || 3;
+    const intervalAfterPeriod = config.intervalSlots.find((slot: { afterPeriod: number }) => slot.afterPeriod === 3)?.afterPeriod || 3;
 
     // 2. Fetch all lessons
     const lessonsData = await Lesson.find({ schoolId: school._id })
@@ -66,18 +66,35 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
     }
 
     // 4. Transform data for algorithm
-    const lessons: ScheduleLesson[] = lessonsData.map((lesson: any) => ({
+    interface LessonData {
+      _id: { toString: () => string };
+      lessonName: string;
+      subjectIds: Array<{ _id: { toString: () => string } }>;
+      teacherIds: Array<{ _id: { toString: () => string } }>;
+      classIds: Array<{ _id: { toString: () => string } }>;
+      numberOfSingles?: number;
+      numberOfDoubles?: number;
+      color: string;
+    }
+
+    const lessons: ScheduleLesson[] = (lessonsData as LessonData[]).map((lesson) => ({
       _id: lesson._id.toString(),
       lessonName: lesson.lessonName,
-      subjectIds: lesson.subjectIds.map((s: any) => s._id.toString()),
-      teacherIds: lesson.teacherIds.map((t: any) => t._id.toString()),
-      classIds: lesson.classIds.map((c: any) => c._id.toString()),
+      subjectIds: lesson.subjectIds.map((s) => s._id.toString()),
+      teacherIds: lesson.teacherIds.map((t) => t._id.toString()),
+      classIds: lesson.classIds.map((c) => c._id.toString()),
       numberOfSingles: lesson.numberOfSingles || 0,
       numberOfDoubles: lesson.numberOfDoubles || 0,
       color: lesson.color,
     }));
 
-    const classes: ScheduleClass[] = classesData.map((cls: any) => ({
+    interface ClassData {
+      _id: { toString: () => string };
+      name: string;
+      grade: number;
+    }
+
+    const classes: ScheduleClass[] = (classesData as ClassData[]).map((cls) => ({
       _id: cls._id.toString(),
       name: cls.name,
       grade: cls.grade,
@@ -131,11 +148,11 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
       message: `Timetable generated successfully! Scheduled ${result.stats.scheduledLessons} lessons across ${result.stats.totalSlots} slots.`,
       stats: result.stats,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error generating timetable:', error);
     return {
       success: false,
-      message: `Failed to generate timetable: ${error.message}`,
+      message: `Failed to generate timetable: ${error instanceof Error ? error.message : 'Unknown error'}`,
     };
   }
 }

@@ -16,13 +16,13 @@ interface DataCounts {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [isConfigured, setIsConfigured] = useState(false);
   const [loading, setLoading] = useState(true);
   const [counts, setCounts] = useState<DataCounts>({ subjects: 0, teachers: 0, classes: 0 });
   const [generationReady, setGenerationReady] = useState(false);
 
   useEffect(() => {
     checkConfiguration();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const checkConfiguration = async () => {
@@ -36,8 +36,6 @@ export default function DashboardPage() {
         router.push('/dashboard/school-setup');
         return;
       }
-
-      setIsConfigured(true);
 
       // Fetch counts for subjects, teachers, and classes
       const [subjectsRes, teachersRes, classesRes] = await Promise.all([

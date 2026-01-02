@@ -3,7 +3,7 @@ import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/dbConnect';
 import Subject from '@/models/Subject';
 import School from '@/models/School';
-import { generateBrightColor } from '@/lib/utils';
+import { getUniqueColor } from '@/lib/utils';
 
 // GET: Fetch all subjects
 export async function GET() {
@@ -84,29 +84,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Auto-generate a bright color
-    const autoColor = generateBrightColor();
+    // Get all existing subjects to ensure unique color
+    const existingSubjects = await Subject.find({ schoolId: school._id }).select('color').lean();
+    const usedColors = existingSubjects.map(s => s.color);
+
+    // Get a unique color
+    const uniqueColor = getUniqueColor(usedColors);
 
     const subject = await Subject.create({
       schoolId: school._id,
       name: trimmedName,
-      color: autoColor,
+      color: uniqueColor,
     });
 
     // Revalidate pages to reflect changes
     revalidatePath('/dashboard/lessons');
     revalidatePath('/dashboard/subjects');
+    revalidatePath('/dashboard/teachers');
 
     return NextResponse.json({
       success: true,
       data: subject,
       message: 'Subject created successfully',
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating subject:', error);
     
     // Handle duplicate key error (fallback)
-    if (error.code === 11000) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 11000) {
       return NextResponse.json(
         {
           success: false,
@@ -176,7 +181,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const updateData: any = { name: trimmedName };
+    const updateData: Partial<{ name: string; color: string }> = { name: trimmedName };
     if (color) {
       updateData.color = color;
     }
@@ -190,6 +195,7 @@ export async function PUT(request: NextRequest) {
     // Revalidate pages to reflect changes
     revalidatePath('/dashboard/lessons');
     revalidatePath('/dashboard/subjects');
+    revalidatePath('/dashboard/teachers');
 
     return NextResponse.json({
       success: true,
@@ -252,6 +258,7 @@ export async function DELETE(request: NextRequest) {
     // Revalidate pages to reflect changes
     revalidatePath('/dashboard/lessons');
     revalidatePath('/dashboard/subjects');
+    revalidatePath('/dashboard/teachers');
 
     return NextResponse.json({
       success: true,

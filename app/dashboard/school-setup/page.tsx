@@ -38,7 +38,7 @@ export default function SchoolSetupPage() {
   const calculatedEndTime = useMemo(() => {
     try {
       return calculateSchoolEndTime(config);
-    } catch (error) {
+    } catch {
       return 'Invalid configuration';
     }
   }, [config]);

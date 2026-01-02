@@ -5,8 +5,6 @@
  * for Sri Lankan schools following 2026 education reforms.
  */
 
-import mongoose from 'mongoose';
-
 // Types
 export interface ScheduleLesson {
   _id: string;

@@ -188,12 +188,12 @@ export async function POST(request: NextRequest) {
       data: populatedLesson,
       message: 'Lesson created successfully',
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating lesson:', error);
     return NextResponse.json(
       {
         success: false,
-        error: error.message || 'Failed to create lesson',
+        error: error instanceof Error ? error.message : 'Failed to create lesson',
       },
       { status: 500 }
     );
@@ -292,12 +292,12 @@ export async function PUT(request: NextRequest) {
       data: lesson,
       message: 'Lesson updated successfully',
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error updating lesson:', error);
     return NextResponse.json(
       {
         success: false,
-        error: error.message || 'Failed to update lesson',
+        error: error instanceof Error ? error.message : 'Failed to update lesson',
       },
       { status: 500 }
     );

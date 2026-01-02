@@ -67,35 +67,96 @@ export function calculateEndTime(
 }
 
 /**
+ * Professional color palette with 50+ high-contrast colors
+ * Designed for readability and visual distinction
+ */
+const PROFESSIONAL_COLORS = [
+  '#FF6B9D', // Pink
+  '#C780E8', // Purple
+  '#9D84B7', // Lavender
+  '#6C91BF', // Blue
+  '#51C4D3', // Cyan
+  '#7AE7C7', // Mint
+  '#5FD068', // Green
+  '#B4E051', // Lime
+  '#FFBE0B', // Yellow
+  '#FB8500', // Orange
+  '#FF6B6B', // Red
+  '#4ECDC4', // Turquoise
+  '#FFB6C1', // Light Pink
+  '#DDA15E', // Tan
+  '#BC6C25', // Brown
+  '#8338EC', // Violet
+  '#06FFA5', // Neon Green
+  '#FFD60A', // Golden
+  '#FF9E00', // Amber
+  '#F72585', // Magenta
+  '#3A86FF', // Bright Blue
+  '#8338EC', // Electric Purple
+  '#FB5607', // Vivid Orange
+  '#FFBE0B', // Sunshine Yellow
+  '#FF006E', // Hot Pink
+  '#8AC926', // Bright Lime
+  '#1982C4', // Ocean Blue
+  '#6A4C93', // Royal Purple
+  '#F15BB5', // Flamingo
+  '#00BBF9', // Sky Blue
+  '#00F5FF', // Aqua
+  '#9B5DE5', // Amethyst
+  '#F15BB5', // Rose
+  '#FEE440', // Lemon
+  '#00BBF9', // Azure
+  '#F72585', // Ruby
+  '#4361EE', // Cobalt
+  '#3F37C9', // Sapphire
+  '#4895EF', // Cerulean
+  '#4CC9F0', // Electric Blue
+  '#7209B7', // Deep Purple
+  '#B5179E', // Orchid
+  '#F72585', // Fuchsia
+  '#560BAD', // Indigo
+  '#480CA8', // Dark Purple
+  '#3A0CA3', // Royal Blue
+  '#3F37C9', // Periwinkle
+  '#4361EE', // Cornflower
+  '#4895EF', // Light Blue
+  '#4CC9F0', // Cyan Blue
+  '#06FFA5', // Spring Green
+  '#72DDF7', // Baby Blue
+  '#FFD23F', // Marigold
+  '#EE6055', // Coral
+  '#60D394', // Emerald
+  '#AAF683', // Mint Green
+  '#FFD97D', // Peach
+  '#FF9B85', // Salmon
+];
+
+/**
+ * Get an unused color for a new subject
+ * @param usedColors Array of colors already assigned to subjects
+ * @returns A unique color from the professional palette
+ */
+export function getUniqueColor(usedColors: string[]): string {
+  // Filter out used colors
+  const availableColors = PROFESSIONAL_COLORS.filter(
+    color => !usedColors.includes(color)
+  );
+
+  // If all colors are used, return a random one from the full palette
+  if (availableColors.length === 0) {
+    return PROFESSIONAL_COLORS[Math.floor(Math.random() * PROFESSIONAL_COLORS.length)];
+  }
+
+  // Return a random available color
+  return availableColors[Math.floor(Math.random() * availableColors.length)];
+}
+
+/**
  * Generate a random bright/pastel color for subjects
- * Uses HSL color space to ensure colors are vibrant and readable
+ * @deprecated Use getUniqueColor instead for unique color assignment
  * @returns Hex color code (e.g., "#FF6B9D")
  */
 export function generateBrightColor(): string {
-  // Use a curated list of bright, pastel colors that work well with both light and dark backgrounds
-  const brightPastelColors = [
-    '#FF6B9D', // Pink
-    '#C780E8', // Purple
-    '#9D84B7', // Lavender
-    '#6C91BF', // Blue
-    '#51C4D3', // Cyan
-    '#7AE7C7', // Mint
-    '#5FD068', // Green
-    '#B4E051', // Lime
-    '#FFBE0B', // Yellow
-    '#FB8500', // Orange
-    '#FF6B6B', // Red
-    '#4ECDC4', // Turquoise
-    '#FFB6C1', // Light Pink
-    '#DDA15E', // Tan
-    '#BC6C25', // Brown
-    '#8338EC', // Violet
-    '#06FFA5', // Neon Green
-    '#FFD60A', // Golden
-    '#FF9E00', // Amber
-    '#F72585', // Magenta
-  ];
-
-  // Return a random color from the curated list
-  return brightPastelColors[Math.floor(Math.random() * brightPastelColors.length)];
+  return PROFESSIONAL_COLORS[Math.floor(Math.random() * PROFESSIONAL_COLORS.length)];
 }
+

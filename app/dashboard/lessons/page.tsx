@@ -47,7 +47,6 @@ export default function LessonsPage() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
-  const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -77,7 +76,7 @@ export default function LessonsPage() {
       // Clear auto-filled name when multiple subjects selected
       setFormData(prev => ({ ...prev, lessonName: '' }));
     }
-  }, [selectedSubjects, subjects, editingLesson]);
+  }, [selectedSubjects, subjects, editingLesson, formData.lessonName]);
 
   useEffect(() => {
     fetchData();
@@ -119,10 +118,8 @@ export default function LessonsPage() {
       if (subjectsData.success) setSubjects(subjectsData.data);
       if (teachersData.success) setTeachers(teachersData.data);
       if (classesData.success) setClasses(classesData.data);
-    } catch (error) {
+    } catch {
       toast.error('Failed to load data');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -176,7 +173,7 @@ export default function LessonsPage() {
       } else {
         toast.error(data.error);
       }
-    } catch (error) {
+    } catch {
       toast.error('An error occurred');
     }
   };
@@ -213,7 +210,7 @@ export default function LessonsPage() {
       } else {
         toast.error(data.error);
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to delete lesson');
     }
   };
@@ -296,8 +293,8 @@ export default function LessonsPage() {
       } else {
         toast.error(result.message);
       }
-    } catch (error: any) {
-      toast.error(`Error: ${error.message}`);
+    } catch (error: unknown) {
+      toast.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsGenerating(false);
     }

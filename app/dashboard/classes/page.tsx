@@ -80,7 +80,7 @@ export default function ClassesPage() {
       if (data.success) {
         setClasses(data.data);
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to load classes');
     } finally {
       setLoading(false);
@@ -150,7 +150,7 @@ export default function ClassesPage() {
       setDialogOpen(false);
       resetForm();
       fetchClasses();
-    } catch (error) {
+    } catch {
       toast.error('An error occurred');
     }
   };
@@ -182,7 +182,7 @@ export default function ClassesPage() {
       } else {
         toast.error(data.error);
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to delete class');
     }
   };

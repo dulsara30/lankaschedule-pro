@@ -7,7 +7,8 @@ export const TEACHER_MAX_PERIODS = 35;
 export interface ITeacher extends Document {
   schoolId: mongoose.Types.ObjectId;
   name: string;
-  email: string;
+  email?: string;
+  teacherGrade: 'SLTS 3 I' | 'SLTS 2 II' | 'SLTS 2 I' | 'SLTS 1' | 'DO';
   subjectsTaught: string[]; // Array of subject names
   createdAt: Date;
   updatedAt: Date;
@@ -28,9 +29,15 @@ const TeacherSchema = new Schema<ITeacher>(
     },
     email: {
       type: String,
-      required: [true, 'Teacher email is required'],
+      required: false,
       trim: true,
       lowercase: true,
+    },
+    teacherGrade: {
+      type: String,
+      enum: ['SLTS 3 I', 'SLTS 2 II', 'SLTS 2 I', 'SLTS 1', 'DO'],
+      default: 'SLTS 3 I',
+      required: [true, 'Teacher grade is required'],
     },
     subjectsTaught: {
       type: [String],
@@ -43,7 +50,9 @@ const TeacherSchema = new Schema<ITeacher>(
 );
 
 // Compound indexes for multi-tenant queries
-TeacherSchema.index({ schoolId: 1, email: 1 }, { unique: true });
+TeacherSchema.index({ schoolId: 1, email: 1 }, { unique: true, sparse: true });
 TeacherSchema.index({ schoolId: 1, name: 1 });
+TeacherSchema.index({ schoolId: 1, teacherGrade: 1 });
 
 export default mongoose.models.Teacher || mongoose.model<ITeacher>('Teacher', TeacherSchema);
+

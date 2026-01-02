@@ -1,19 +1,18 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Pencil, Trash2, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, X, Check } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Teacher {
   _id: string;
   name: string;
-  email: string;
+  email?: string;
+  teacherGrade: 'SLTS 3 I' | 'SLTS 2 II' | 'SLTS 2 I' | 'SLTS 1' | 'DO';
   subjectsTaught: string[];
   lessonCount?: number;
   totalPeriods?: number;
@@ -22,43 +21,79 @@ interface Teacher {
 interface Subject {
   _id: string;
   name: string;
+  color: string;
 }
 
-const TEACHER_MIN_PERIODS = 24;
-const TEACHER_MAX_PERIODS = 35;
+const TEACHER_GRADES = ['SLTS 3 I', 'SLTS 2 II', 'SLTS 2 I', 'SLTS 1', 'DO'];
 const ITEMS_PER_PAGE = 10;
 
 export default function TeachersPage() {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [filteredTeachers, setFilteredTeachers] = useState<Teacher[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [filteredSubjects, setFilteredSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
   const [editingTeacher, setEditingTeacher] = useState<Teacher | null>(null);
-  
-  // Search and filter states
-  const [searchTerm, setSearchTerm] = useState('');
-  const [subjectFilter, setSubjectFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [subjectSearchQuery, setSubjectSearchQuery] = useState('');
+  const [gradeFilter, setGradeFilter] = useState<string>('');
   const [currentPage, setCurrentPage] = useState(1);
-  
+
   const [formData, setFormData] = useState({
     name: '',
     email: '',
-    subjectsTaught: [] as string[],
+    teacherGrade: 'SLTS 3 I' as 'SLTS 3 I' | 'SLTS 2 II' | 'SLTS 2 I' | 'SLTS 1' | 'DO',
   });
+  const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
 
   useEffect(() => {
     fetchTeachers();
     fetchSubjects();
   }, []);
 
+  useEffect(() => {
+    let filtered = teachers;
+
+    if (searchQuery.trim()) {
+      filtered = filtered.filter((teacher) => {
+        const nameMatch = teacher.name.toLowerCase().includes(searchQuery.toLowerCase());
+        const emailMatch = teacher.email?.toLowerCase().includes(searchQuery.toLowerCase());
+        const subjectMatch = teacher.subjectsTaught.some((subject) =>
+          subject.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+        return nameMatch || emailMatch || subjectMatch;
+      });
+    }
+
+    if (gradeFilter) {
+      filtered = filtered.filter((teacher) => teacher.teacherGrade === gradeFilter);
+    }
+
+    setFilteredTeachers(filtered);
+    setCurrentPage(1);
+  }, [teachers, searchQuery, gradeFilter]);
+
+  useEffect(() => {
+    let filtered = subjects;
+
+    if (subjectSearchQuery.trim()) {
+      filtered = filtered.filter((subject) =>
+        subject.name.toLowerCase().includes(subjectSearchQuery.toLowerCase())
+      );
+    }
+
+    setFilteredSubjects(filtered);
+  }, [subjects, subjectSearchQuery]);
+
   const fetchTeachers = async () => {
     try {
-      const response = await fetch('/api/teachers', { cache: 'no-store' });
+      const response = await fetch('/api/teachers');
       const data = await response.json();
       if (data.success) {
         setTeachers(data.data);
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to load teachers');
     } finally {
       setLoading(false);
@@ -67,43 +102,23 @@ export default function TeachersPage() {
 
   const fetchSubjects = async () => {
     try {
-      const response = await fetch('/api/subjects', { cache: 'no-store' });
+      const response = await fetch('/api/subjects');
       const data = await response.json();
       if (data.success) {
         setSubjects(data.data);
       }
-    } catch (error) {
-      console.error('Failed to load subjects:', error);
+    } catch {
+      toast.error('Failed to load subjects');
     }
   };
-  // Filtered and paginated teachers
-  const filteredTeachers = useMemo(() => {
-    return teachers.filter(teacher => {
-      // Search filter
-      const searchLower = searchTerm.toLowerCase();
-      const matchesSearch = 
-        teacher.name.toLowerCase().includes(searchLower) ||
-        teacher.email.toLowerCase().includes(searchLower) ||
-        teacher.subjectsTaught.some(subject => subject.toLowerCase().includes(searchLower));
 
-      // Subject filter
-      const matchesSubject = subjectFilter === 'all' || 
-        teacher.subjectsTaught.includes(subjectFilter);
-
-      return matchesSearch && matchesSubject;
-    });
-  }, [teachers, searchTerm, subjectFilter]);
+  const getPaginatedTeachers = () => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    const endIndex = startIndex + ITEMS_PER_PAGE;
+    return filteredTeachers.slice(startIndex, endIndex);
+  };
 
   const totalPages = Math.ceil(filteredTeachers.length / ITEMS_PER_PAGE);
-  const paginatedTeachers = useMemo(() => {
-    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-    return filteredTeachers.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-  }, [filteredTeachers, currentPage]);
-
-  // Reset to page 1 when filters change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm, subjectFilter]);
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -111,8 +126,8 @@ export default function TeachersPage() {
       const url = '/api/teachers';
       const method = editingTeacher ? 'PUT' : 'POST';
       const body = editingTeacher
-        ? { id: editingTeacher._id, ...formData }
-        : formData;
+        ? { id: editingTeacher._id, ...formData, subjectsTaught: selectedSubjects }
+        : { ...formData, subjectsTaught: selectedSubjects };
 
       const response = await fetch(url, {
         method,
@@ -124,13 +139,13 @@ export default function TeachersPage() {
 
       if (data.success) {
         toast.success(data.message);
-        setDialogOpen(false);
+        setModalOpen(false);
         resetForm();
         fetchTeachers();
       } else {
         toast.error(data.error);
       }
-    } catch (error) {
+    } catch {
       toast.error('An error occurred');
     }
   };
@@ -139,10 +154,11 @@ export default function TeachersPage() {
     setEditingTeacher(teacher);
     setFormData({
       name: teacher.name,
-      email: teacher.email,
-      subjectsTaught: teacher.subjectsTaught,
+      email: teacher.email || '',
+      teacherGrade: teacher.teacherGrade,
     });
-    setDialogOpen(true);
+    setSelectedSubjects(teacher.subjectsTaught);
+    setModalOpen(true);
   };
 
   const handleDelete = async (id: string) => {
@@ -161,43 +177,41 @@ export default function TeachersPage() {
       } else {
         toast.error(data.error);
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to delete teacher');
     }
   };
 
   const toggleSubject = (subjectName: string) => {
-    setFormData(prev => ({
-      ...prev,
-      subjectsTaught: prev.subjectsTaught.includes(subjectName)
-        ? prev.subjectsTaught.filter(s => s !== subjectName)
-        : [...prev.subjectsTaught, subjectName]
-    }));
+    setSelectedSubjects((prev) =>
+      prev.includes(subjectName)
+        ? prev.filter((s) => s !== subjectName)
+        : [...prev, subjectName]
+    );
   };
 
   const resetForm = () => {
-    setFormData({
-      name: '',
-      email: '',
-      subjectsTaught: [],
-    });
+    setFormData({ name: '', email: '', teacherGrade: 'SLTS 3 I' });
+    setSelectedSubjects([]);
     setEditingTeacher(null);
+    setSubjectSearchQuery('');
   };
 
-  const handleDialogClose = (open: boolean) => {
-    setDialogOpen(open);
-    if (!open) resetForm();
+  const closeModal = () => {
+    setModalOpen(false);
+    resetForm();
   };
 
   const getWorkloadColor = (periods: number) => {
-    if (periods === 0) return 'text-zinc-400';
-    if (periods < TEACHER_MIN_PERIODS) return 'text-yellow-600 dark:text-yellow-500';
-    if (periods > TEACHER_MAX_PERIODS) return 'text-red-600 dark:text-red-500';
-    return 'text-green-600 dark:text-green-500';
+    if (periods < 24) return 'text-yellow-600 bg-yellow-50';
+    if (periods >= 24 && periods <= 35) return 'text-green-600 bg-green-50';
+    return 'text-red-600 bg-red-50';
   };
 
-  const getWorkloadPercentage = (periods: number) => {
-    return Math.min((periods / TEACHER_MAX_PERIODS) * 100, 100);
+  const getWorkloadBarColor = (periods: number) => {
+    if (periods < 24) return 'bg-yellow-500';
+    if (periods >= 24 && periods <= 35) return 'bg-green-500';
+    return 'bg-red-500';
   };
 
   return (
@@ -208,259 +222,174 @@ export default function TeachersPage() {
             Teachers
           </h1>
           <p className="mt-2 text-zinc-600 dark:text-zinc-400">
-            Manage teacher profiles and workload requirements
+            Manage your school teaching staff with grade classification
           </p>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={handleDialogClose}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Teacher
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>
-                {editingTeacher ? 'Edit Teacher' : 'Add New Teacher'}
-              </DialogTitle>
-              <DialogDescription>
-                {editingTeacher
-                  ? 'Update the teacher details below'
-                  : 'Enter the details for the new teacher'}
-              </DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <label htmlFor="name" className="mb-2 block text-sm font-medium">
-                    Full Name
-                  </label>
-                  <Input
-                    id="name"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="e.g., Ms. Silva"
-                    required
-                  />
-                </div>
-                <div>
-                  <label htmlFor="email" className="mb-2 block text-sm font-medium">
-                    Email Address
-                  </label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    placeholder="e.g., silva@school.lk"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label htmlFor="subjects" className="mb-2 block text-sm font-medium">
-                  Subjects Taught
-                </label>
-                {subjects.length === 0 ? (
-                  <div className="rounded-md border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
-                    No subjects available. Please add subjects first in the Subjects page.
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-3 rounded-md border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900">
-                    {subjects.map((subject) => (
-                      <label
-                        key={subject._id}
-                        className="flex items-center gap-2 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md p-2 transition-colors"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={formData.subjectsTaught.includes(subject.name)}
-                          onChange={() => toggleSubject(subject.name)}
-                          className="h-4 w-4 rounded border-zinc-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
-                        />
-                        <span className="text-sm">{subject.name}</span>
-                      </label>
-                    ))}
-                  </div>
-                )}
-                <p className="mt-1 text-xs text-zinc-500">
-                  Select one or more subjects this teacher can teach
-                </p>
-              </div>
-
-              <div className="rounded-md bg-amber-50 border border-amber-200 p-3 dark:bg-amber-950 dark:border-amber-800">
-                <p className="text-sm text-amber-800 dark:text-amber-200">
-                  <strong>💡 Workload Guideline:</strong> Teacher workload should ideally be between {TEACHER_MIN_PERIODS} and {TEACHER_MAX_PERIODS} periods per week for optimal scheduling.
-                </p>
-              </div>
-
-              <div className="flex justify-end gap-3">
-                <Button type="button" variant="outline" onClick={() => handleDialogClose(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit">
-                  {editingTeacher ? 'Update' : 'Create'}
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
+        <Button onClick={() => setModalOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" />
+          Add Teacher
+        </Button>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>All Teachers</CardTitle>
-          <CardDescription>
-            {filteredTeachers.length} teacher{filteredTeachers.length !== 1 ? 's' : ''} 
-            {searchTerm || subjectFilter !== 'all' ? ' (filtered)' : ''} 
-            {' '}of {teachers.length} total
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {/* Search and Filter Bar */}
-          <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
-              <Input
-                placeholder="Search by name, email, or subject..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>All Teachers</CardTitle>
+              <CardDescription>
+                {filteredTeachers.length} teacher{filteredTeachers.length !== 1 ? 's' : ''}
+                {searchQuery && ` matching "${searchQuery}"`}
+                {gradeFilter && ` in grade "${gradeFilter}"`}
+              </CardDescription>
             </div>
-            <div className="flex gap-2">
-              <Select value={subjectFilter} onValueChange={setSubjectFilter}>
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Filter by subject" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Subjects</SelectItem>
-                  {subjects.map((subject) => (
-                    <SelectItem key={subject._id} value={subject.name}>
-                      {subject.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="flex items-center gap-3">
+              <div className="relative w-72">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+                <Input
+                  placeholder="Search by name, email, or subject..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <select
+                value={gradeFilter}
+                onChange={(e) => setGradeFilter(e.target.value)}
+                className="h-10 rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
+              >
+                <option value="">All Grades</option>
+                {TEACHER_GRADES.map((grade) => (
+                  <option key={grade} value={grade}>
+                    {grade}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
-
+        </CardHeader>
+        <CardContent>
           {loading ? (
             <div className="py-8 text-center text-zinc-500">Loading...</div>
           ) : filteredTeachers.length === 0 ? (
             <div className="py-8 text-center text-zinc-500">
-              {searchTerm || subjectFilter !== 'all' 
-                ? 'No teachers found matching your filters.'
+              {searchQuery || gradeFilter
+                ? 'No teachers found matching your filters'
                 : 'No teachers found. Add your first teacher to get started.'}
             </div>
           ) : (
             <>
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Subjects</TableHead>
-                      <TableHead className="text-center">Assigned Lessons</TableHead>
-                      <TableHead className="text-center">Workload</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {paginatedTeachers.map((teacher) => {
-                      const workloadPercentage = getWorkloadPercentage(teacher.totalPeriods || 0);
-                      const workloadColor = getWorkloadColor(teacher.totalPeriods || 0);
-
-                      return (
-                        <TableRow key={teacher._id}>
-                          <TableCell className="font-medium">{teacher.name}</TableCell>
-                          <TableCell className="text-sm text-zinc-600 dark:text-zinc-400">
-                            {teacher.email}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex flex-wrap gap-1">
-                              {teacher.subjectsTaught.length > 0 ? (
-                                teacher.subjectsTaught.map((subject) => (
-                                  <span
-                                    key={subject}
-                                    className="inline-flex items-center rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200"
-                                  >
-                                    {subject}
-                                  </span>
-                                ))
-                              ) : (
-                                <span className="text-sm text-zinc-400">No subjects</span>
-                              )}
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Grade</TableHead>
+                    <TableHead>Subjects Taught</TableHead>
+                    <TableHead>Workload</TableHead>
+                    <TableHead className="w-32 text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {getPaginatedTeachers().map((teacher) => (
+                    <TableRow key={teacher._id}>
+                      <TableCell className="font-medium">{teacher.name}</TableCell>
+                      <TableCell className="text-zinc-600">
+                        {teacher.email || <span className="italic text-zinc-400">Not provided</span>}
+                      </TableCell>
+                      <TableCell>
+                        <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 border border-blue-200">
+                          {teacher.teacherGrade}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1">
+                          {teacher.subjectsTaught.length > 0 ? (
+                            teacher.subjectsTaught.map((subject, idx) => {
+                              const subjectData = subjects.find((s) => s.name === subject);
+                              return (
+                                <span
+                                  key={idx}
+                                  className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium border"
+                                  style={{
+                                    backgroundColor: subjectData?.color ? `${subjectData.color}20` : '#e4e4e7',
+                                    color: subjectData?.color || '#71717a',
+                                    borderColor: subjectData?.color ? `${subjectData.color}40` : '#d4d4d8',
+                                  }}
+                                >
+                                  {subject}
+                                </span>
+                              );
+                            })
+                          ) : (
+                            <span className="text-xs text-zinc-400 italic">No subjects</span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`px-2 py-1 text-xs font-medium rounded-md ${getWorkloadColor(
+                              teacher.totalPeriods || 0
+                            )}`}
+                          >
+                            {teacher.lessonCount || 0} lessons
+                          </span>
+                          <div className="flex-1 min-w-[80px]">
+                            <div className="relative h-2 bg-zinc-100 rounded-full overflow-hidden">
+                              <div
+                                className={`absolute top-0 left-0 h-full transition-all ${getWorkloadBarColor(
+                                  teacher.totalPeriods || 0
+                                )}`}
+                                style={{
+                                  width: `${Math.min((teacher.totalPeriods || 0) / 35, 1) * 100}%`,
+                                }}
+                              />
                             </div>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <span className="inline-flex items-center justify-center rounded-full bg-blue-100 px-3 py-1 text-sm font-semibold text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                              {teacher.lessonCount || 0}
+                            <span className="text-xs text-zinc-500 mt-0.5 block">
+                              {teacher.totalPeriods || 0}/35 periods
                             </span>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex flex-col items-center gap-1">
-                              <span className={`text-sm font-semibold ${workloadColor}`}>
-                                {teacher.totalPeriods || 0} / 35
-                              </span>
-                              <div className="w-24 h-2 bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden">
-                                <div
-                                  className={`h-full transition-all ${
-                                    workloadPercentage === 0
-                                      ? 'bg-zinc-400'
-                                      : workloadPercentage < (TEACHER_MIN_PERIODS / TEACHER_MAX_PERIODS) * 100
-                                      ? 'bg-yellow-500'
-                                      : workloadPercentage > 100
-                                      ? 'bg-red-500'
-                                      : 'bg-green-500'
-                                  }`}
-                                  style={{ width: `${workloadPercentage}%` }}
-                                />
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-2">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleEdit(teacher)}
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleDelete(teacher._id)}
-                              >
-                                <Trash2 className="h-4 w-4 text-red-600" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleEdit(teacher)}
+                            className="hover:bg-zinc-100"
+                          >
+                            <Pencil className="h-4 w-4 text-zinc-600" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDelete(teacher._id)}
+                            className="hover:bg-red-50"
+                          >
+                            <Trash2 className="h-4 w-4 text-red-600" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
 
-              {/* Pagination */}
               {totalPages > 1 && (
                 <div className="mt-4 flex items-center justify-between">
-                  <p className="text-sm text-zinc-600 dark:text-zinc-400">
-                    Showing {((currentPage - 1) * ITEMS_PER_PAGE) + 1} to{' '}
+                  <p className="text-sm text-zinc-600">
+                    Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} to{' '}
                     {Math.min(currentPage * ITEMS_PER_PAGE, filteredTeachers.length)} of{' '}
-                    {filteredTeachers.length} results
+                    {filteredTeachers.length} teachers
                   </p>
                   <div className="flex gap-2">
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
                       disabled={currentPage === 1}
                     >
-                      <ChevronLeft className="h-4 w-4 mr-1" />
                       Previous
                     </Button>
                     <div className="flex items-center gap-1">
@@ -479,11 +408,10 @@ export default function TeachersPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
                       disabled={currentPage === totalPages}
                     >
                       Next
-                      <ChevronRight className="h-4 w-4 ml-1" />
                     </Button>
                   </div>
                 </div>
@@ -492,6 +420,231 @@ export default function TeachersPage() {
           )}
         </CardContent>
       </Card>
+
+      <Card className="bg-blue-50 border-blue-200">
+        <CardContent className="pt-6">
+          <div className="flex items-start gap-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100">
+              <span className="text-sm font-bold text-blue-700">ℹ</span>
+            </div>
+            <div>
+              <h3 className="font-semibold text-blue-900">Workload Guideline</h3>
+              <p className="mt-1 text-sm text-blue-700">
+                Sri Lankan school teachers should handle{' '}
+                <span className="font-bold">24-35 periods per week</span> for optimal
+                performance. The system tracks this automatically.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Manual Ultra-Wide Modal */}
+      {modalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="w-[95vw] max-w-[1600px] h-[92vh] bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 px-8 py-6">
+              <div>
+                <h2 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">
+                  {editingTeacher ? 'Edit Teacher' : 'Add New Teacher'}
+                </h2>
+                <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+                  {editingTeacher
+                    ? 'Update teacher profile and subject assignments'
+                    : 'Create a new teacher profile with grade and subjects'}
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={closeModal}
+                className="hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+
+            {/* Modal Body */}
+            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
+              <div className="grid grid-cols-2 gap-8 p-8 h-full">
+                {/* Left Column - Profile */}
+                <div className="space-y-6">
+                  <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50 p-6">
+                    <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50 mb-4 flex items-center gap-2">
+                      <div className="h-8 w-8 rounded-full bg-zinc-900 dark:bg-zinc-100 flex items-center justify-center">
+                        <span className="text-white dark:text-zinc-900 text-sm font-bold">1</span>
+                      </div>
+                      Teacher Profile
+                    </h3>
+
+                    <div className="space-y-4">
+                      <div>
+                        <label htmlFor="name" className="mb-2 block text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                          Teacher Name <span className="text-red-500">*</span>
+                        </label>
+                        <Input
+                          id="name"
+                          value={formData.name}
+                          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                          placeholder="e.g., Mr. Perera"
+                          required
+                          className="h-12 text-base"
+                        />
+                      </div>
+
+                      <div>
+                        <label htmlFor="email" className="mb-2 block text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                          Email <span className="text-zinc-400">(Optional)</span>
+                        </label>
+                        <Input
+                          id="email"
+                          type="email"
+                          value={formData.email}
+                          onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                          placeholder="e.g., perera@school.lk"
+                          className="h-12 text-base"
+                        />
+                      </div>
+
+                      <div>
+                        <label htmlFor="teacherGrade" className="mb-2 block text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                          Teacher Grade <span className="text-red-500">*</span>
+                        </label>
+                        <select
+                          id="teacherGrade"
+                          value={formData.teacherGrade}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              teacherGrade: e.target.value as 'SLTS 3 I' | 'SLTS 2 II' | 'SLTS 2 I' | 'SLTS 1' | 'DO',
+                            })
+                          }
+                          required
+                          className="w-full h-12 rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 text-base focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-zinc-100"
+                        >
+                          {TEACHER_GRADES.map((grade) => (
+                            <option key={grade} value={grade}>
+                              {grade}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="mt-2 text-xs text-zinc-500">
+                          Default: SLTS 3 I (Sri Lanka Teacher Service)
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-950/30 p-4">
+                    <p className="text-sm text-blue-700 dark:text-blue-300">
+                      <span className="font-semibold">Selected Subjects:</span>{' '}
+                      {selectedSubjects.length > 0 ? (
+                        <span className="font-mono">{selectedSubjects.length} subject(s)</span>
+                      ) : (
+                        <span className="italic">None selected yet</span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Right Column - Subjects */}
+                <div className="space-y-4">
+                  <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50 p-6">
+                    <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50 mb-4 flex items-center gap-2">
+                      <div className="h-8 w-8 rounded-full bg-zinc-900 dark:bg-zinc-100 flex items-center justify-center">
+                        <span className="text-white dark:text-zinc-900 text-sm font-bold">2</span>
+                      </div>
+                      Subject Selection
+                    </h3>
+
+                    {/* Subject Search */}
+                    <div className="relative mb-4">
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+                      <Input
+                        placeholder="Search subjects..."
+                        value={subjectSearchQuery}
+                        onChange={(e) => setSubjectSearchQuery(e.target.value)}
+                        className="pl-10 h-12 text-base"
+                      />
+                    </div>
+
+                    {/* Subjects Grid */}
+                    <div className="max-h-[calc(92vh-320px)] overflow-y-auto rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900">
+                      {filteredSubjects.length === 0 ? (
+                        <div className="py-12 text-center text-zinc-500">
+                          {subjectSearchQuery
+                            ? `No subjects found matching "${subjectSearchQuery}"`
+                            : 'No subjects available. Please add subjects first.'}
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-2 p-4">
+                          {filteredSubjects.map((subject) => {
+                            const isSelected = selectedSubjects.includes(subject.name);
+                            return (
+                              <button
+                                key={subject._id}
+                                type="button"
+                                onClick={() => toggleSubject(subject.name)}
+                                className={`flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all ${
+                                  isSelected
+                                    ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-50 dark:bg-zinc-800'
+                                    : 'border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600'
+                                }`}
+                              >
+                                <div
+                                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 transition-all ${
+                                    isSelected
+                                      ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-900 dark:bg-zinc-100'
+                                      : 'border-zinc-300 dark:border-zinc-600'
+                                  }`}
+                                >
+                                  {isSelected && <Check className="h-3 w-3 text-white dark:text-zinc-900" />}
+                                </div>
+                                <div
+                                  className="h-8 w-8 rounded-md border border-zinc-200 dark:border-zinc-700 shrink-0"
+                                  style={{ backgroundColor: subject.color }}
+                                />
+                                <span className="font-medium text-zinc-900 dark:text-zinc-50 flex-1">
+                                  {subject.name}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="border-t border-zinc-200 dark:border-zinc-800 px-8 py-6 bg-zinc-50 dark:bg-zinc-800/50">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                    {selectedSubjects.length > 0 ? (
+                      <>
+                        <span className="font-semibold">{selectedSubjects.length}</span> subject
+                        {selectedSubjects.length !== 1 ? 's' : ''} selected
+                      </>
+                    ) : (
+                      'Select at least one subject to continue'
+                    )}
+                  </p>
+                  <div className="flex gap-3">
+                    <Button type="button" variant="outline" onClick={closeModal} size="lg">
+                      Cancel
+                    </Button>
+                    <Button type="submit" size="lg" className="min-w-[120px]">
+                      {editingTeacher ? 'Update Teacher' : 'Create Teacher'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

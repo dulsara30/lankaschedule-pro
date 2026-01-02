@@ -5,8 +5,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Pencil, Trash2, Search, X } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Plus, Pencil, Trash2, Search, X, Check, ChevronsUpDown, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
+import { deleteAndReassignTeacher, getTeacherLessonCount } from '@/app/actions/teacherActions';
 
 interface Teacher {
   _id: string;
@@ -39,6 +44,14 @@ export default function TeachersPage() {
   const [subjectSearchQuery, setSubjectSearchQuery] = useState('');
   const [gradeFilter, setGradeFilter] = useState<string>('');
   const [currentPage, setCurrentPage] = useState(1);
+
+  // Smart deletion state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [teacherToDelete, setTeacherToDelete] = useState<Teacher | null>(null);
+  const [affectedLessonsCount, setAffectedLessonsCount] = useState(0);
+  const [replacementTeacherId, setReplacementTeacherId] = useState<string>('');
+  const [replacementComboOpen, setReplacementComboOpen] = useState(false);
+  const [deletingTeacher, setDeletingTeacher] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -165,24 +178,41 @@ export default function TeachersPage() {
     setModalOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this teacher?')) return;
+  const handleDelete = async (teacher: Teacher) => {
+    // Open dialog and get affected lessons count
+    setTeacherToDelete(teacher);
+    setReplacementTeacherId('');
+    setDeleteDialogOpen(true);
+    
+    // Fetch affected lessons count
+    const count = await getTeacherLessonCount(teacher._id);
+    setAffectedLessonsCount(count);
+  };
 
+  const confirmDelete = async () => {
+    if (!teacherToDelete) return;
+
+    setDeletingTeacher(true);
     try {
-      const response = await fetch(`/api/teachers?id=${id}`, {
-        method: 'DELETE',
-      });
+      const result = await deleteAndReassignTeacher(
+        teacherToDelete._id,
+        replacementTeacherId || undefined
+      );
 
-      const data = await response.json();
-
-      if (data.success) {
-        toast.success('Teacher deleted successfully');
+      if (result.success) {
+        toast.success(result.message || 'Teacher deleted successfully');
+        setDeleteDialogOpen(false);
+        setTeacherToDelete(null);
+        setReplacementTeacherId('');
         fetchTeachers();
       } else {
-        toast.error(data.error);
+        toast.error(result.error || 'Failed to delete teacher');
       }
-    } catch {
+    } catch (error) {
       toast.error('Failed to delete teacher');
+      console.error('Delete error:', error);
+    } finally {
+      setDeletingTeacher(false);
     }
   };
 
@@ -368,7 +398,7 @@ export default function TeachersPage() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => handleDelete(teacher._id)}
+                            onClick={() => handleDelete(teacher)}
                             className="hover:bg-red-50"
                           >
                             <Trash2 className="h-4 w-4 text-red-600" />
@@ -669,6 +699,138 @@ export default function TeachersPage() {
           </div>
         </div>
       )}
+
+      {/* Smart Deletion Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Delete Teacher
+            </DialogTitle>
+            <DialogDescription className="text-base pt-2">
+              {teacherToDelete && (
+                <>
+                  You are about to delete <span className="font-semibold text-zinc-900 dark:text-zinc-100">{teacherToDelete.name}</span>.
+                  {affectedLessonsCount > 0 && (
+                    <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                      <p className="text-sm text-amber-800 dark:text-amber-200">
+                        <span className="font-semibold">{affectedLessonsCount}</span> lesson{affectedLessonsCount !== 1 ? 's are' : ' is'} assigned to this teacher.
+                      </p>
+                      <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                        Who should take over these lessons?
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {affectedLessonsCount > 0 && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  Replacement Teacher (Optional)
+                </label>
+                <Popover open={replacementComboOpen} onOpenChange={setReplacementComboOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={replacementComboOpen}
+                      className="w-full justify-between"
+                    >
+                      {replacementTeacherId
+                        ? teachers.find((t) => t._id === replacementTeacherId)?.name
+                        : "Select replacement teacher..."}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[400px] p-0">
+                    <Command>
+                      <CommandInput placeholder="Search teachers..." />
+                      <CommandList>
+                        <CommandEmpty>No teacher found.</CommandEmpty>
+                        <CommandGroup>
+                          <CommandItem
+                            value=""
+                            onSelect={() => {
+                              setReplacementTeacherId('');
+                              setReplacementComboOpen(false);
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                replacementTeacherId === '' ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            <span className="text-zinc-500 italic">None (Remove from lessons)</span>
+                          </CommandItem>
+                          {teachers
+                            .filter(t => t._id !== teacherToDelete?._id)
+                            .map((teacher) => (
+                              <CommandItem
+                                key={teacher._id}
+                                value={teacher.name}
+                                onSelect={() => {
+                                  setReplacementTeacherId(teacher._id);
+                                  setReplacementComboOpen(false);
+                                }}
+                              >
+                                <Check
+                                  className={cn(
+                                    "mr-2 h-4 w-4",
+                                    replacementTeacherId === teacher._id ? "opacity-100" : "opacity-0"
+                                  )}
+                                />
+                                <div className="flex flex-col">
+                                  <span>{teacher.name}</span>
+                                  <span className="text-xs text-zinc-500">
+                                    {teacher.teacherGrade} • {teacher.lessonCount || 0} lessons
+                                  </span>
+                                </div>
+                              </CommandItem>
+                            ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Leave empty to simply remove this teacher from all lessons
+                </p>
+              </div>
+            )}
+
+            {affectedLessonsCount === 0 && (
+              <div className="p-3 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg">
+                <p className="text-sm text-green-800 dark:text-green-200">
+                  This teacher is not assigned to any lessons. Safe to delete.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={deletingTeacher}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDelete}
+              disabled={deletingTeacher}
+            >
+              {deletingTeacher ? 'Deleting...' : 'Delete Teacher'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -95,7 +95,7 @@ export default function TeachersPage() {
 
   const fetchCurrentVersion = async () => {
     try {
-      const response = await fetch('/api/timetable-versions');
+      const response = await fetch('/api/timetable/versions');
       
       // Check if response is ok and content-type is JSON
       if (!response.ok) {

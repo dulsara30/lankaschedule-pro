@@ -13,7 +13,7 @@ import { signOut } from 'next-auth/react';
 import Image from 'next/image';
 import { PDFDownloadLink } from '@react-pdf/renderer';
 import TimetablePDF from '@/components/timetable/TimetablePDF';
-import html2canvas from 'html2canvas';
+import { toPng } from 'html-to-image';
 
 interface TimetableSlot {
   _id: string;
@@ -200,32 +200,29 @@ export default function TeacherDashboard() {
       const buttons = element.querySelectorAll('button');
       buttons.forEach(btn => btn.style.visibility = 'hidden');
 
-      const canvas = await html2canvas(element, {
-        scale: 2, // High resolution
-        backgroundColor: '#ffffff',
-        logging: false,
-        useCORS: true,
+      // Use html-to-image with high-quality settings
+      const dataUrl = await toPng(element, {
+        cacheBust: true, // Ensure fresh render
+        pixelRatio: 2, // High resolution (2x)
+        backgroundColor: '#ffffff', // White background
       });
 
       // Restore buttons
       buttons.forEach(btn => btn.style.visibility = 'visible');
 
-      // Convert to blob and download
-      canvas.toBlob((blob) => {
-        if (blob) {
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = url;
-          link.download = `${session?.user?.name || 'timetable'}-timetable.png`;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(url);
-          toast.success('Timetable image downloaded!');
-        }
-      });
+      // Download the image
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = `${session?.user?.name || 'timetable'}-timetable.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success('Timetable image downloaded!');
     } catch (error) {
       console.error('Error generating image:', error);
+      // Restore buttons even on error
+      const buttons = element.querySelectorAll('button');
+      buttons.forEach(btn => btn.style.visibility = 'visible');
       toast.error('Failed to generate image');
     }
   };

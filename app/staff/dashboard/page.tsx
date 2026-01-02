@@ -53,17 +53,13 @@ export default function TeacherDashboard() {
 
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
-  useEffect(() => {
-    if (status === 'unauthenticated') {
-      router.push('/');
-    } else if (status === 'authenticated' && session?.user.role !== 'teacher') {
-      router.push('/');
-    } else if (status === 'authenticated' && !hasFetched) {
-      fetchDashboardData();
-    }
-  }, [status, session?.user.role, hasFetched, router]);
-
   const fetchDashboardData = async () => {
+    // Early return if already fetched to prevent infinite loop
+    if (hasFetched) {
+      console.log('Already fetched, skipping...');
+      return;
+    }
+    
     setIsLoading(true);
     try {
       console.log('Fetching dashboard data...');
@@ -82,7 +78,12 @@ export default function TeacherDashboard() {
           setVersionName(data.version?.versionName || '');
           const scheduleData = data.mySchedule || [];
           console.log('Setting mySchedule with', scheduleData.length, 'slots');
+          console.log('UI STATE: mySchedule updated with', scheduleData.length, 'items');
+          console.log('First slot sample:', scheduleData[0]);
           setMySchedule(scheduleData);
+          
+          // Mark as fetched immediately to prevent re-fetch
+          setHasFetched(true);
           
           // Show feedback if version exists but no lessons assigned
           if (data.version && scheduleData.length === 0) {
@@ -120,9 +121,6 @@ export default function TeacherDashboard() {
           setClasses(classesData.classes || []);
         }
       }
-      
-      // Mark as fetched to prevent infinite loop
-      setHasFetched(true);
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
       toast.error('Failed to load dashboard data');
@@ -130,6 +128,17 @@ export default function TeacherDashboard() {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.push('/');
+    } else if (status === 'authenticated' && session?.user.role !== 'teacher') {
+      router.push('/');
+    } else if (status === 'authenticated' && !hasFetched) {
+      fetchDashboardData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, session?.user.role, hasFetched, router]);
 
   const fetchClassSchedule = async (classId: string) => {
     try {
@@ -212,20 +221,23 @@ export default function TeacherDashboard() {
                       }]}
                       slots={mySchedule.map(slot => ({
                         _id: slot._id,
-                        day: slot.day,
-                        periodNumber: slot.periodNumber,
-                        isDoubleStart: slot.isDoubleStart,
-                        isDoubleEnd: slot.isDoubleEnd,
+                        day: slot.day.trim(), // Ensure clean day string
+                        periodNumber: Number(slot.periodNumber), // Ensure number type
+                        isDoubleStart: slot.isDoubleStart || false,
+                        isDoubleEnd: slot.isDoubleEnd || false,
                         classId: {
                           _id: '',
-                          name: slot.className,
+                          name: slot.className || '',
                           grade: '',
                         },
                         lessonId: {
                           _id: '',
-                          lessonName: slot.subject,
+                          lessonName: slot.subject || '',
                           subjectIds: [],
-                          teacherIds: [{ _id: session.user.id, name: session.user.name || 'Teacher' }],
+                          teacherIds: [{ 
+                            _id: session.user.id, 
+                            name: session.user.name || 'Teacher' 
+                          }],
                           classIds: [],
                         },
                       }))}
@@ -371,13 +383,16 @@ export default function TeacherDashboard() {
                       </div>
                     </td>
                     {days.map((day) => {
+                      // Strict case-insensitive comparison with type coercion
                       const slot = schedule.find(
-                        (s) => s.day === day && s.periodNumber === period
+                        (s) => s.day.trim().toLowerCase() === day.trim().toLowerCase() && 
+                               Number(s.periodNumber) === Number(period)
                       );
                       
                       // Debug log for first few slots
                       if (period === 1 && schedule.length > 0) {
-                        console.log(`Looking for ${day} P${period}, found:`, slot ? 'YES' : 'NO');
+                        console.log(`Looking for ${day} P${period}, found:`, slot ? 'YES' : 'NO', 
+                                    `Slot data:`, slot ? `${slot.day} P${slot.periodNumber}` : 'N/A');
                       }
                       
                       return (

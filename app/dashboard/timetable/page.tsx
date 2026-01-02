@@ -103,7 +103,13 @@ export default function TimetablePage() {
       ]);
 
       console.log('🔍 Client: Slots received:', slotsData.data?.length || 0);
+      console.log('📦 Client: Version ID:', slotsData.versionId);
       console.log('📦 Client: Sample slot:', slotsData.data?.[0]);
+      
+      if (slotsData.data?.length === 0) {
+        console.warn('⚠️ No slots received from API');
+        console.log('API Response:', slotsData);
+      }
       
       // Debug: Check for double period flags
       if (slotsData.data && slotsData.data.length > 0) {
@@ -118,6 +124,9 @@ export default function TimetablePage() {
       console.log('📋 Client: Classes:', classesData.data?.length || 0);
       console.log('⚙️ Client: Config:', configData.data);
       console.log('📚 Client: Versions:', versionsData.data?.length || 0);
+      if (versionsData.data?.length > 0) {
+        console.log('📚 Versions list:', versionsData.data);
+      }
 
       if (slotsData.success) {
         setSlots(slotsData.data || []);

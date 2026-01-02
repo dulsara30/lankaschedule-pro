@@ -26,11 +26,15 @@ export async function GET(request: Request) {
     
     // If no versionId specified, fetch the latest (draft or most recent saved)
     if (!versionId) {
+      console.log('🔍 No versionId specified, fetching latest version...');
       const latestVersion = await TimetableVersion.findOne({ schoolId: school._id })
         .sort({ isSaved: 1, createdAt: -1 }) // Draft first, then by date
         .lean();
       
+      console.log('📦 Latest version found:', latestVersion);
+      
       if (!latestVersion) {
+        console.log('⚠️ No versions found in database');
         return NextResponse.json({
           success: true,
           data: [],
@@ -39,7 +43,16 @@ export async function GET(request: Request) {
       }
       
       versionId = latestVersion._id.toString();
+      console.log(`✅ Using version: ${versionId} (${latestVersion.versionName})`);
     }
+
+    console.log(`🔍 Querying slots with: schoolId=${school._id}, versionId=${versionId}`);
+
+    // Debug: Check total slots in database
+    const totalSlots = await TimetableSlot.countDocuments({ schoolId: school._id });
+    const slotsWithVersion = await TimetableSlot.countDocuments({ schoolId: school._id, versionId: { $exists: true } });
+    const slotsWithoutVersion = await TimetableSlot.countDocuments({ schoolId: school._id, versionId: { $exists: false } });
+    console.log(`📊 Database stats: Total=${totalSlots}, WithVersion=${slotsWithVersion}, WithoutVersion=${slotsWithoutVersion}`);
 
     const slots = await TimetableSlot.find({ 
       schoolId: school._id,

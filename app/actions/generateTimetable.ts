@@ -125,8 +125,18 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
         `DoubleStart: ${slot.isDoubleStart}, DoubleEnd: ${slot.isDoubleEnd}`);
     });
 
-    // 6. Handle versioning: Check for existing draft version
+    // 6. Handle versioning: Check for existing draft version and cleanup
     console.log('🔍 Checking for existing draft version...');
+    
+    // First, delete any old slots without versionId (from before versioning was implemented)
+    const oldSlotsDeleted = await TimetableSlot.deleteMany({ 
+      schoolId: school._id,
+      versionId: { $exists: false }
+    });
+    if (oldSlotsDeleted.deletedCount > 0) {
+      console.log(`🗑️  Cleaned up ${oldSlotsDeleted.deletedCount} old slots without versionId`);
+    }
+    
     const existingDraft = await TimetableVersion.findOne({
       schoolId: school._id,
       isSaved: false,
@@ -166,7 +176,7 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
     if (result.slots.length > 0) {
       const slotsToSave = result.slots.map((slot) => ({
         schoolId: school._id,
-        versionId: newVersion._id,
+        versionId: newVersion._id, // Explicitly link to the version
         classId: slot.classId,
         lessonId: slot.lessonId,
         day: slot.day,
@@ -178,14 +188,20 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
 
       console.log('💾 Saving slots to database...');
       console.log(`   Total slots to save: ${slotsToSave.length}`);
+      console.log(`   Version ID being used: ${newVersion._id}`);
+      console.log(`   Sample slot with versionId:`, JSON.stringify(slotsToSave[0], null, 2));
       
       // Debug: Show what we're saving
       const doubleSlotsCount = slotsToSave.filter(s => s.isDoubleStart || s.isDoubleEnd).length;
       console.log(`   Double period slots: ${doubleSlotsCount}`);
       
-      await TimetableSlot.insertMany(slotsToSave);
+      const insertedSlots = await TimetableSlot.insertMany(slotsToSave);
       
-      console.log('✅ Slots saved successfully!');
+      console.log(`✅ Slots saved successfully! Inserted ${insertedSlots.length} documents`);
+      
+      // Verify that versionId was saved
+      const verifySlot = await TimetableSlot.findOne({ versionId: newVersion._id }).lean();
+      console.log('🔍 Verification - Sample saved slot:', JSON.stringify(verifySlot, null, 2));
     }
 
     // 9. Revalidate paths

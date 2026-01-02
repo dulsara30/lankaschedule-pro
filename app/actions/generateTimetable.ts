@@ -122,6 +122,8 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
         lessonId: slot.lessonId,
         day: slot.day,
         periodNumber: slot.periodNumber,
+        isDoubleStart: slot.isDoubleStart || false,
+        isDoubleEnd: slot.isDoubleEnd || false,
         isLocked: false,
       }));
 

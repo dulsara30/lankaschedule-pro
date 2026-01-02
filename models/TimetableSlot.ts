@@ -21,6 +21,8 @@ export interface ITimetableSlot extends Document {
   lessonId: mongoose.Types.ObjectId; // The lesson assigned to this slot
   day: 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday';
   periodNumber: number; // 1-7 (or as configured in school settings)
+  isDoubleStart?: boolean; // TRUE if this is the first period of a double block
+  isDoubleEnd?: boolean; // TRUE if this is the second period of a double block
   weekNumber?: number; // Optional: for schools with rotating schedules
   academicYear?: string; // e.g., "2026"
   term?: string; // e.g., "Term 1", "Term 2", "Term 3"
@@ -58,6 +60,16 @@ const TimetableSlotSchema = new Schema<ITimetableSlot>(
       type: Number,
       required: [true, 'Period number is required'],
       min: [1, 'Period number must be at least 1'],
+    },
+    isDoubleStart: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    isDoubleEnd: {
+      type: Boolean,
+      default: false,
+      index: true,
     },
     weekNumber: {
       type: Number,

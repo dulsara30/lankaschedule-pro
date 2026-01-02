@@ -152,24 +152,24 @@ export default function TimetablePage() {
 
   const renderSlotContent = (slot: TimetableSlot | undefined, isDoubleStart: boolean = false) => {
     if (!slot) {
-      return <div className="text-xs text-zinc-400 italic">Free</div>;
+      return <div className="text-xs text-zinc-400 italic p-2">Free</div>;
     }
 
     const lesson = slot.lessonId;
     if (!lesson || !lesson.subjectIds || !lesson.teacherIds || !lesson.classIds) {
-      return <div className="text-xs text-zinc-400 italic">Invalid data</div>;
+      return <div className="text-xs text-zinc-400 italic p-2">Invalid data</div>;
     }
 
     const subjects = lesson.subjectIds;
     
-    // Rainbow gradient background - continuous across double periods
+    // Rainbow gradient background - continuous vertical flow for double periods
     let backgroundStyle: React.CSSProperties;
     
     if (subjects.length === 1) {
       // Single subject - solid color
       backgroundStyle = { backgroundColor: subjects[0]?.color || '#3B82F6' };
     } else {
-      // Multiple subjects - create rainbow gradient
+      // Multiple subjects - create smooth rainbow gradient (top to bottom)
       const gradientStops = subjects.map((subject, idx) => {
         const color = subject?.color || '#3B82F6';
         const start = (idx / subjects.length) * 100;
@@ -184,21 +184,19 @@ export default function TimetablePage() {
 
     return (
       <div 
-        className={`p-3 text-white h-full flex flex-col justify-center shadow-sm ${
-          isDoubleStart ? 'rounded-t-md' : 'rounded-md'
-        }`}
+        className="h-full w-full flex flex-col justify-center items-center text-white relative"
         style={backgroundStyle}
       >
         {/* Double period indicator badge - only show on start */}
         {isDoubleStart && (
-          <div className="absolute top-2 right-2 bg-white/30 text-white text-xs px-2 py-0.5 rounded-full font-bold shadow-sm">
+          <div className="absolute top-2 right-2 bg-black/40 text-white text-xs px-2 py-1 rounded-md font-bold shadow-lg z-10">
             DOUBLE
           </div>
         )}
-        <div className="text-sm font-semibold leading-tight text-center">
+        <div className="text-sm font-bold leading-tight text-center px-2">
           {lesson.lessonName}
         </div>
-        <div className="text-xs opacity-90 mt-2 text-center">
+        <div className="text-xs opacity-95 mt-2 text-center px-2">
           {viewMode === 'class' 
             ? lesson.teacherIds?.map(t => t?.name).filter(Boolean).join(', ') || 'No teacher'
             : lesson.classIds?.map(c => c?.name).filter(Boolean).join(', ') || 'No class'
@@ -403,13 +401,16 @@ export default function TimetablePage() {
                                 <td
                                   key={`${day}-${period}`}
                                   rowSpan={rowSpan}
-                                  className={`relative p-0 min-w-37.5 ${
+                                  className={`relative overflow-hidden ${
                                     isDoubleStart && rowSpan === 2 ? 'h-40' : 'h-20'
                                   } ${
                                     isDoubleStart 
-                                      ? 'border-4 border-blue-500 dark:border-blue-400' 
+                                      ? 'border-l-4 border-r-4 border-t-4 border-b-4 border-blue-600 dark:border-blue-400' 
                                       : 'border border-zinc-300 dark:border-zinc-700'
                                   }`}
+                                  style={{
+                                    minWidth: '150px',
+                                  }}
                                 >
                                   {renderSlotContent(slot, isDoubleStart)}
                                 </td>

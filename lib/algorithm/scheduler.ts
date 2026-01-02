@@ -32,7 +32,8 @@ export interface TimetableSlot {
   lessonId: string;
   day: string;
   periodNumber: number;
-  isDoublePeriod?: boolean;
+  isDoubleStart?: boolean;  // First period of a double block
+  isDoubleEnd?: boolean;    // Second period of a double block
 }
 
 export interface ScheduleConfig {
@@ -56,11 +57,11 @@ export interface ScheduleResult {
   };
 }
 
-// Grid representation with EXPLICIT double block flagging
-// Map<"classId-day-period", { lessonId: string, isDoubleBlock: boolean }>
+// Grid representation with UNIFIED double period metadata
+// Map<"classId-day-period", { lessonId: string, slotType: 'single' | 'double-start' | 'double-end' }>
 interface GridSlot {
   lessonId: string;
-  isDoubleBlock: boolean; // TRUE if this slot is part of a double period
+  slotType: 'single' | 'double-start' | 'double-end';
 }
 type TimetableGrid = Map<string, GridSlot>;
 
@@ -433,13 +434,25 @@ function placeLesson(
   const { day, period } = slot;
   const periods = isDouble ? [period, period + 1] : [period];
 
-  for (const p of periods) {
-    // Mark grid slots for each class with EXPLICIT double block flag
+  for (let i = 0; i < periods.length; i++) {
+    const p = periods[i];
+    
+    // Determine slot type based on position in double period
+    let slotType: 'single' | 'double-start' | 'double-end';
+    if (!isDouble) {
+      slotType = 'single';
+    } else if (i === 0) {
+      slotType = 'double-start'; // First period of double
+    } else {
+      slotType = 'double-end'; // Second period of double
+    }
+    
+    // Mark grid slots for each class with UNIFIED double period metadata
     for (const classId of lesson.classIds) {
       const gridKey = `${classId}-${day}-${p}`;
       grid.set(gridKey, {
         lessonId: lesson._id,
-        isDoubleBlock: isDouble, // EXPLICIT FLAG: both periods marked as double
+        slotType: slotType, // 'single' | 'double-start' | 'double-end'
       });
       changes.push({ type: 'grid', key: gridKey });
     }
@@ -492,7 +505,7 @@ function undoChanges(
 
 /**
  * Convert grid map to array of timetable slots
- * Uses EXPLICIT isDoubleBlock metadata instead of comparing adjacent IDs
+ * Uses slotType metadata to set isDoubleStart and isDoubleEnd flags
  */
 function gridToSlots(grid: TimetableGrid): TimetableSlot[] {
   const slots: TimetableSlot[] = [];
@@ -504,21 +517,23 @@ function gridToSlots(grid: TimetableGrid): TimetableSlot[] {
     const [classId, day, periodStr] = key.split('-');
     const period = parseInt(periodStr);
 
-    // Use EXPLICIT isDoubleBlock flag from grid metadata
-    const isDoublePeriod = gridSlot.isDoubleBlock;
+    // Read slotType metadata to determine double period flags
+    const isDoubleStart = gridSlot.slotType === 'double-start';
+    const isDoubleEnd = gridSlot.slotType === 'double-end';
 
     slots.push({
       classId,
       lessonId: gridSlot.lessonId,
       day,
       periodNumber: period,
-      isDoublePeriod,
+      isDoubleStart,
+      isDoubleEnd,
     });
 
     processed.add(key);
     
-    // If this is a double block, skip the next period
-    if (isDoublePeriod) {
+    // If this is the start of a double block, skip the end period
+    if (isDoubleStart) {
       const nextKey = `${classId}-${day}-${period + 1}`;
       processed.add(nextKey);
     }

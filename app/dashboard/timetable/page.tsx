@@ -37,7 +37,8 @@ interface TimetableSlot {
   lessonId: Lesson;
   day: string;
   periodNumber: number;
-  isDoublePeriod?: boolean;
+  isDoubleStart?: boolean;  // First period of a double block
+  isDoubleEnd?: boolean;    // Second period of a double block
 }
 
 interface SchoolConfig {
@@ -149,18 +150,7 @@ export default function TimetablePage() {
     }
   };
 
-  // Check if this period is the second part of a double period
-  const isSecondPartOfDouble = (day: string, period: number): boolean => {
-    if (period === 1) return false; // First period can't be second part
-    
-    const previousPeriodSlot = getSlotForPeriod(day, period - 1);
-    if (!previousPeriodSlot) return false;
-    
-    // Check if previous period is marked as double and covers this period
-    return previousPeriodSlot.isDoublePeriod === true;
-  };
-
-  const renderSlotContent = (slot: TimetableSlot | undefined, isDouble: boolean = false) => {
+  const renderSlotContent = (slot: TimetableSlot | undefined, isDoubleStart: boolean = false) => {
     if (!slot) {
       return <div className="text-xs text-zinc-400 italic">Free</div>;
     }
@@ -172,14 +162,14 @@ export default function TimetablePage() {
 
     const subjects = lesson.subjectIds;
     
-    // Fixed gradient background - properly handle multiple subjects
+    // Rainbow gradient background - continuous across double periods
     let backgroundStyle: React.CSSProperties;
     
     if (subjects.length === 1) {
       // Single subject - solid color
       backgroundStyle = { backgroundColor: subjects[0]?.color || '#3B82F6' };
     } else {
-      // Multiple subjects - create proper gradient
+      // Multiple subjects - create rainbow gradient
       const gradientStops = subjects.map((subject, idx) => {
         const color = subject?.color || '#3B82F6';
         const start = (idx / subjects.length) * 100;
@@ -188,25 +178,27 @@ export default function TimetablePage() {
       }).join(', ');
       
       backgroundStyle = {
-        background: `linear-gradient(135deg, ${gradientStops})`,
+        background: `linear-gradient(180deg, ${gradientStops})`,
       };
     }
 
     return (
       <div 
-        className={`p-2 rounded-md text-white h-full flex flex-col justify-between shadow-sm ${isDouble ? 'relative' : ''}`}
+        className={`p-3 text-white h-full flex flex-col justify-center shadow-sm ${
+          isDoubleStart ? 'rounded-t-md' : 'rounded-md'
+        }`}
         style={backgroundStyle}
       >
-        {/* Double period indicator badge */}
-        {isDouble && (
-          <div className="absolute top-1 right-1 bg-white/30 text-white text-xs px-2 py-0.5 rounded-full font-bold shadow-sm">
+        {/* Double period indicator badge - only show on start */}
+        {isDoubleStart && (
+          <div className="absolute top-2 right-2 bg-white/30 text-white text-xs px-2 py-0.5 rounded-full font-bold shadow-sm">
             DOUBLE
           </div>
         )}
-        <div className="text-xs font-semibold leading-tight">
+        <div className="text-sm font-semibold leading-tight text-center">
           {lesson.lessonName}
         </div>
-        <div className="text-xs opacity-90 mt-1">
+        <div className="text-xs opacity-90 mt-2 text-center">
           {viewMode === 'class' 
             ? lesson.teacherIds?.map(t => t?.name).filter(Boolean).join(', ') || 'No teacher'
             : lesson.classIds?.map(c => c?.name).filter(Boolean).join(', ') || 'No class'
@@ -385,25 +377,25 @@ export default function TimetablePage() {
                             </td>
                             {DAYS.map((day) => {
                               const slot = getSlotForPeriod(day, period);
-                              const isSecondPart = isSecondPartOfDouble(day, period);
-                              const isDouble = slot?.isDoublePeriod || false;
                               
-                              // CRITICAL: Skip rendering if this is the second part of a double period
-                              // Double periods use rowSpan=2 to merge cells visually
-                              if (isSecondPart) {
+                              // Check if this is part of a double period
+                              const isDoubleStart = slot?.isDoubleStart || false;
+                              const isDoubleEnd = slot?.isDoubleEnd || false;
+                              
+                              // CRITICAL: Skip rendering if this is the END of a double period
+                              // The START period will span 2 rows to cover both periods
+                              if (isDoubleEnd) {
                                 return null;
                               }
                               
-                              // Calculate rowSpan - double period occupies 2 period rows
-                              // But we need to check if there's an interval in between
+                              // Calculate rowSpan for double periods
                               let rowSpan = 1;
-                              if (isDouble) {
-                                // Check if next period exists and no interval blocks it
+                              if (isDoubleStart) {
+                                // Check if there's an interval between the two periods
                                 const hasIntervalAfter = config.intervalSlots.some(
                                   slot => slot.afterPeriod === period
                                 );
-                                // Double period should span 2 rows only if no interval interrupts
-                                // This ensures proper visual merging of consecutive periods
+                                // Only span 2 rows if no interval interrupts
                                 rowSpan = hasIntervalAfter ? 1 : 2;
                               }
                               
@@ -411,15 +403,15 @@ export default function TimetablePage() {
                                 <td
                                   key={`${day}-${period}`}
                                   rowSpan={rowSpan}
-                                  className={`border p-2 min-w-37.5 ${
-                                    isDouble && rowSpan === 2 ? 'h-40' : 'h-20'
+                                  className={`relative p-0 min-w-37.5 ${
+                                    isDoubleStart && rowSpan === 2 ? 'h-40' : 'h-20'
                                   } ${
-                                    isDouble 
-                                      ? 'border-4 border-blue-500 dark:border-blue-400 bg-blue-50/20 dark:bg-blue-900/20' 
-                                      : 'border-zinc-300 dark:border-zinc-700'
+                                    isDoubleStart 
+                                      ? 'border-4 border-blue-500 dark:border-blue-400' 
+                                      : 'border border-zinc-300 dark:border-zinc-700'
                                   }`}
                                 >
-                                  {renderSlotContent(slot, isDouble)}
+                                  {renderSlotContent(slot, isDoubleStart)}
                                 </td>
                               );
                             })}

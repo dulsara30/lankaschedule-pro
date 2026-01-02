@@ -3,8 +3,9 @@ import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/dbConnect';
 import Class from '@/models/Class';
 import School from '@/models/School';
+import Lesson from '@/models/Lesson';
 
-// GET: Fetch all classes
+// GET: Fetch all classes with lesson counts
 export async function GET() {
   try {
     await dbConnect();
@@ -21,9 +22,27 @@ export async function GET() {
       .sort({ grade: 1, name: 1 })
       .lean();
 
+    // Fetch all lessons to calculate counts for each class
+    const lessons = await Lesson.find({ schoolId: school._id }).lean();
+
+    // Enrich classes with lesson count
+    const enrichedClasses = classes.map(classItem => {
+      // Count lessons that include this class in their classIds array
+      const lessonCount = lessons.filter(lesson => 
+        lesson.classIds.some((id: { toString: () => string }) => 
+          id.toString() === classItem._id.toString()
+        )
+      ).length;
+
+      return {
+        ...classItem,
+        lessonCount,
+      };
+    });
+
     return NextResponse.json({
       success: true,
-      data: classes,
+      data: enrichedClasses,
     });
   } catch (error) {
     console.error('Error fetching classes:', error);

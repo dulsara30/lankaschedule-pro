@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2, Info } from 'lucide-react';
+import { Plus, Pencil, Trash2, Info, Search, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Class {
@@ -14,15 +14,26 @@ interface Class {
   name: string;
   grade: number | string;
   stream?: string;
+  lessonCount: number;
 }
 
 const STREAMS = ['Science', 'Arts', 'Commerce', 'Technology'] as const;
+const ITEMS_PER_PAGE = 10;
 
 export default function ClassesPage() {
   const [classes, setClasses] = useState<Class[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingClass, setEditingClass] = useState<Class | null>(null);
+  
+  // Search and filter states
+  const [searchQuery, setSearchQuery] = useState('');
+  const [gradeFilter, setGradeFilter] = useState<string>('');
+  const [streamFilter, setStreamFilter] = useState<string>('');
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  
   const [formData, setFormData] = useState({
     grade: 6 as number | string,
     stream: '',
@@ -69,9 +80,53 @@ export default function ClassesPage() {
     return names;
   }, [formData.grade, formData.stream, formData.numberOfParallelClasses, formData.customPrefix]);
 
+  // Filtered and searched classes
+  const filteredClasses = useMemo(() => {
+    let filtered = [...classes];
+
+    // Search by name or grade
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter((classItem) => {
+        const gradeText = classItem.grade === '13-years' ? '13 years' : `grade ${classItem.grade}`;
+        return (
+          classItem.name.toLowerCase().includes(query) ||
+          gradeText.includes(query) ||
+          (classItem.stream && classItem.stream.toLowerCase().includes(query))
+        );
+      });
+    }
+
+    // Filter by grade
+    if (gradeFilter) {
+      filtered = filtered.filter((classItem) => String(classItem.grade) === gradeFilter);
+    }
+
+    // Filter by stream
+    if (streamFilter) {
+      filtered = filtered.filter((classItem) => classItem.stream === streamFilter);
+    }
+
+    return filtered;
+  }, [classes, searchQuery, gradeFilter, streamFilter]);
+
+  // Paginated classes
+  const getPaginatedClasses = () => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    const endIndex = startIndex + ITEMS_PER_PAGE;
+    return filteredClasses.slice(startIndex, endIndex);
+  };
+
+  const totalPages = Math.ceil(filteredClasses.length / ITEMS_PER_PAGE);
+
   useEffect(() => {
     fetchClasses();
   }, []);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, gradeFilter, streamFilter]);
 
   const fetchClasses = async () => {
     try {
@@ -202,12 +257,23 @@ export default function ClassesPage() {
     if (!open) resetForm();
   };
 
-  const getGradeBadgeColor = (grade: number) => {
-    if (grade <= 5) return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
-    if (grade <= 9) return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
-    if (grade <= 11) return 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200';
-    return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200';
+  const getGradeBadgeColor = (grade: number | string) => {
+    if (typeof grade === 'number') {
+      if (grade <= 5) return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
+      if (grade <= 9) return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
+      if (grade <= 11) return 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200';
+      return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200';
+    }
+    return 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200';
   };
+
+  const clearFilters = () => {
+    setSearchQuery('');
+    setGradeFilter('');
+    setStreamFilter('');
+  };
+
+  const hasActiveFilters = searchQuery || gradeFilter || streamFilter;
 
   return (
     <div className="space-y-6">
@@ -217,7 +283,7 @@ export default function ClassesPage() {
             Classes
           </h1>
           <p className="mt-2 text-zinc-600 dark:text-zinc-400">
-            Manage classes and grade levels
+            Manage classes, grade levels, and track assigned lessons
           </p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={handleDialogClose}>
@@ -227,7 +293,7 @@ export default function ClassesPage() {
               Add Class
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle>
                 {editingClass ? 'Edit Class' : 'Add New Class'}
@@ -362,70 +428,212 @@ export default function ClassesPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>All Classes</CardTitle>
-          <CardDescription>
-            {classes.length} class{classes.length !== 1 ? 'es' : ''} registered
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>All Classes</CardTitle>
+              <CardDescription>
+                {filteredClasses.length} class{filteredClasses.length !== 1 ? 'es' : ''} found
+                {hasActiveFilters && ` (filtered from ${classes.length} total)`}
+              </CardDescription>
+            </div>
+            {hasActiveFilters && (
+              <Button variant="outline" size="sm" onClick={clearFilters}>
+                Clear Filters
+              </Button>
+            )}
+          </div>
+
+          {/* Search and Filters */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+            {/* Search Bar */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+              <Input
+                placeholder="Search by class name or grade..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+
+            {/* Grade Filter */}
+            <div className="relative">
+              <Filter className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500 pointer-events-none" />
+              <select
+                value={gradeFilter}
+                onChange={(e) => setGradeFilter(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-zinc-200 bg-white pl-10 pr-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-950 dark:ring-offset-zinc-950 dark:focus-visible:ring-zinc-300"
+              >
+                <option value="">All Grades</option>
+                {Array.from({ length: 13 }, (_, i) => i + 1).map((grade) => (
+                  <option key={grade} value={grade}>
+                    Grade {grade}
+                  </option>
+                ))}
+                <option value="13-years">13 Years</option>
+              </select>
+            </div>
+
+            {/* Stream Filter */}
+            <div className="relative">
+              <Filter className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500 pointer-events-none" />
+              <select
+                value={streamFilter}
+                onChange={(e) => setStreamFilter(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-zinc-200 bg-white pl-10 pr-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-950 dark:ring-offset-zinc-950 dark:focus-visible:ring-zinc-300"
+              >
+                <option value="">All Streams</option>
+                {STREAMS.map((stream) => (
+                  <option key={stream} value={stream}>
+                    {stream}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="py-8 text-center text-zinc-500">Loading...</div>
-          ) : classes.length === 0 ? (
-            <div className="py-8 text-center text-zinc-500">
-              No classes found. Add your first class to get started.
+            <div className="py-8 text-center text-zinc-500">Loading classes...</div>
+          ) : filteredClasses.length === 0 ? (
+            <div className="py-12 text-center">
+              <p className="text-zinc-500 mb-2">
+                {hasActiveFilters
+                  ? 'No classes match your search criteria.'
+                  : 'No classes found. Add your first class to get started.'}
+              </p>
+              {hasActiveFilters && (
+                <Button variant="outline" size="sm" onClick={clearFilters}>
+                  Clear Filters
+                </Button>
+              )}
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Class Name</TableHead>
-                  <TableHead>Grade Level</TableHead>
-                  <TableHead>Stream</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {classes.map((classItem) => (
-                  <TableRow key={classItem._id}>
-                    <TableCell className="font-medium">{classItem.name}</TableCell>
-                    <TableCell>
-                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                        typeof classItem.grade === 'number' ? getGradeBadgeColor(classItem.grade) : 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200'
-                      }`}>
-                        {classItem.grade === '13-years' ? '13 Years' : `Grade ${classItem.grade}`}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      {classItem.stream ? (
-                        <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                          {classItem.stream}
-                        </span>
-                      ) : (
-                        <span className="text-sm text-zinc-400">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleEdit(classItem)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDelete(classItem._id)}
-                        >
-                          <Trash2 className="h-4 w-4 text-red-600" />
-                        </Button>
-                      </div>
-                    </TableCell>
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Class Name</TableHead>
+                    <TableHead>Grade Level</TableHead>
+                    <TableHead>Stream</TableHead>
+                    <TableHead>Assigned Lessons</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {getPaginatedClasses().map((classItem) => (
+                    <TableRow key={classItem._id}>
+                      <TableCell className="font-medium">{classItem.name}</TableCell>
+                      <TableCell>
+                        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${getGradeBadgeColor(classItem.grade)}`}>
+                          {classItem.grade === '13-years' ? '13 Years' : `Grade ${classItem.grade}`}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        {classItem.stream ? (
+                          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                            {classItem.stream}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-zinc-400">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
+                          classItem.lessonCount === 0 
+                            ? 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400'
+                            : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200'
+                        }`}>
+                          {classItem.lessonCount} {classItem.lessonCount === 1 ? 'Lesson' : 'Lessons'}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleEdit(classItem)}
+                            className="hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDelete(classItem._id)}
+                            className="hover:bg-red-50 dark:hover:bg-red-950"
+                          >
+                            <Trash2 className="h-4 w-4 text-red-600" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="mt-4 flex items-center justify-between border-t border-zinc-200 dark:border-zinc-800 pt-4">
+                  <div className="text-sm text-zinc-600 dark:text-zinc-400">
+                    Showing <span className="font-medium">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> to{' '}
+                    <span className="font-medium">
+                      {Math.min(currentPage * ITEMS_PER_PAGE, filteredClasses.length)}
+                    </span>{' '}
+                    of <span className="font-medium">{filteredClasses.length}</span> results
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4 mr-1" />
+                      Previous
+                    </Button>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                        // Show first page, last page, current page, and pages around current
+                        if (
+                          page === 1 ||
+                          page === totalPages ||
+                          (page >= currentPage - 1 && page <= currentPage + 1)
+                        ) {
+                          return (
+                            <Button
+                              key={page}
+                              variant={currentPage === page ? 'default' : 'outline'}
+                              size="sm"
+                              onClick={() => setCurrentPage(page)}
+                              className="min-w-9"
+                            >
+                              {page}
+                            </Button>
+                          );
+                        } else if (page === currentPage - 2 || page === currentPage + 2) {
+                          return (
+                            <span key={page} className="px-2 text-zinc-500">
+                              ...
+                            </span>
+                          );
+                        }
+                        return null;
+                      })}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                      disabled={currentPage === totalPages}
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>

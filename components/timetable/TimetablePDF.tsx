@@ -322,16 +322,17 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
 
   // Get slot for a specific day and period
   const getSlotForPeriod = (day: string, period: number, entityId: string): TimetableSlot | undefined => {
+    const normalizedDay = String(day).trim().toLowerCase();
     if (type === 'class') {
       return slots.find(
-        slot => slot.day === day && 
-                slot.periodNumber === period && 
+        slot => String(slot.day).trim().toLowerCase() === normalizedDay && 
+                Number(slot.periodNumber) === period && 
                 slot.classId?._id === entityId
       );
     } else {
       return slots.find(
-        slot => slot.day === day && 
-                slot.periodNumber === period &&
+        slot => String(slot.day).trim().toLowerCase() === normalizedDay && 
+                Number(slot.periodNumber) === period &&
                 slot.lessonId?.teacherIds?.some((teacher: Teacher) => teacher._id === entityId)
       );
     }
@@ -408,7 +409,7 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
           </View>
 
           {/* Period Rows */}
-          {Array.from({ length: config.numberOfPeriods }, (_, i) => i + 1).map((period) => {
+          {Array.from({ length: Math.max(config.numberOfPeriods, Math.max(...slots.map(s => Number(s.periodNumber)), 0)) }, (_, i) => i + 1).map((period) => {
             const intervalInfo = hasIntervalAfter(period) ? getIntervalInfo(period) : null;
             const isLastPeriod = period === config.numberOfPeriods && !intervalInfo;
             

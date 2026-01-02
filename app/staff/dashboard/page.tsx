@@ -54,12 +54,14 @@ export default function TeacherDashboard() {
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
   const fetchDashboardData = async () => {
-    // Early return if already fetched to prevent infinite loop
-    if (hasFetched) {
-      console.log('Already fetched, skipping...');
+    // Absolute guard: prevent any duplicate fetch attempts
+    if (hasFetched || isLoading) {
+      console.log('Already fetched or loading, skipping...');
       return;
     }
     
+    // Set fetched flag as the ABSOLUTE FIRST action
+    setHasFetched(true);
     setIsLoading(true);
     try {
       console.log('Fetching dashboard data...');
@@ -81,9 +83,6 @@ export default function TeacherDashboard() {
           console.log('UI STATE: mySchedule updated with', scheduleData.length, 'items');
           console.log('First slot sample:', scheduleData[0]);
           setMySchedule(scheduleData);
-          
-          // Mark as fetched immediately to prevent re-fetch
-          setHasFetched(true);
           
           // Show feedback if version exists but no lessons assigned
           if (data.version && scheduleData.length === 0) {
@@ -149,7 +148,7 @@ export default function TeacherDashboard() {
     }
     
     // Only fetch if authenticated and teacher role confirmed
-    if (status === 'authenticated' && session?.user?.role === 'teacher' && !isLoading) {
+    if (status === 'authenticated' && session?.user?.role === 'teacher') {
       fetchDashboardData();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -213,14 +212,14 @@ export default function TeacherDashboard() {
     // Diagnostic log
     console.log('DEBUG: School periods:', schoolInfo.numberOfPeriods, 'My slots count:', schedule.length);
     
-    // Find max period in schedule to handle cases where slots exceed numberOfPeriods
-    const maxPeriodInSchedule = schedule.length > 0 
-      ? Math.max(...schedule.map(s => Number(s.periodNumber)))
-      : schoolInfo.numberOfPeriods;
-    const actualPeriods = Math.max(schoolInfo.numberOfPeriods, maxPeriodInSchedule);
+    // Fix NaN: Explicitly convert schoolInfo.numberOfPeriods to Number and handle empty schedule
+    const periodsCount = Math.max(
+      Number(schoolInfo?.numberOfPeriods || 0),
+      ...schedule.map(s => Number(s.periodNumber) || 0)
+    );
     
-    console.log('DEBUG: Rendering periods up to:', actualPeriods);
-    const periods = Array.from({ length: actualPeriods }, (_, i) => i + 1);
+    console.log('DEBUG: Rendering periods up to:', periodsCount);
+    const periods = Array.from({ length: periodsCount }, (_, i) => i + 1);
 
     return (
       <Card className="border-2 border-black dark:border-white rounded-none">

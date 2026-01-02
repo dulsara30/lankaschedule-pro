@@ -18,6 +18,12 @@ export async function GET() {
       }, { status: 400 });
     }
 
+    // Migration: Ensure all existing teachers have a grade
+    await Teacher.updateMany(
+      { schoolId: school._id, teacherGrade: { $exists: false } },
+      { $set: { teacherGrade: 'SLTS 3 I' } }
+    );
+
     const teachers = await Teacher.find({ schoolId: school._id })
       .sort({ name: 1 })
       .lean();
@@ -40,6 +46,7 @@ export async function GET() {
 
       return {
         ...teacher,
+        teacherGrade: teacher.teacherGrade || 'SLTS 3 I', // Ensure grade is always present
         lessonCount,
         totalPeriods,
       };
@@ -145,17 +152,14 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const updateData: { name: string; email?: string; teacherGrade?: string; subjectsTaught: string[] } = {
+    const updateData: { name: string; email?: string; teacherGrade: string; subjectsTaught: string[] } = {
       name,
+      teacherGrade: teacherGrade || 'SLTS 3 I',
       subjectsTaught: subjectsTaught || [],
     };
 
     if (email) {
       updateData.email = email.toLowerCase();
-    }
-
-    if (teacherGrade) {
-      updateData.teacherGrade = teacherGrade;
     }
 
     const teacher = await Teacher.findByIdAndUpdate(

@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Pencil, Trash2, Search, X, Check } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Teacher {
@@ -334,7 +334,7 @@ export default function TeachersPage() {
                           >
                             {teacher.lessonCount || 0} lessons
                           </span>
-                          <div className="flex-1 min-w-[80px]">
+                          <div className="flex-1 min-w-20">
                             <div className="relative h-2 bg-zinc-100 rounded-full overflow-hidden">
                               <div
                                 className={`absolute top-0 left-0 h-full transition-all ${getWorkloadBarColor(
@@ -442,7 +442,7 @@ export default function TeachersPage() {
       {/* Manual Ultra-Wide Modal */}
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="w-[95vw] max-w-[1600px] h-[92vh] bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+          <div className="w-[95vw] max-w-400 h-[92vh] bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 px-8 py-6">
               <div>
@@ -536,16 +536,47 @@ export default function TeachersPage() {
                     </div>
                   </div>
 
-                  <div className="rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-950/30 p-4">
-                    <p className="text-sm text-blue-700 dark:text-blue-300">
-                      <span className="font-semibold">Selected Subjects:</span>{' '}
-                      {selectedSubjects.length > 0 ? (
-                        <span className="font-mono">{selectedSubjects.length} subject(s)</span>
-                      ) : (
-                        <span className="italic">None selected yet</span>
-                      )}
-                    </p>
-                  </div>
+                  {/* Selected Subjects Display */}
+                  {selectedSubjects.length > 0 && (
+                    <div className="rounded-lg border border-green-200 bg-green-50 dark:bg-green-950/30 p-4">
+                      <p className="text-xs font-semibold text-green-900 dark:text-green-300 mb-2">
+                        Selected Subjects ({selectedSubjects.length})
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedSubjects.map((subjectName) => {
+                          const subjectData = subjects.find((s) => s.name === subjectName);
+                          return (
+                            <button
+                              key={subjectName}
+                              type="button"
+                              onClick={() => toggleSubject(subjectName)}
+                              className="group inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium border-2 transition-all hover:scale-105"
+                              style={{
+                                backgroundColor: subjectData?.color ? `${subjectData.color}20` : '#e4e4e7',
+                                color: subjectData?.color || '#71717a',
+                                borderColor: subjectData?.color || '#d4d4d8',
+                              }}
+                            >
+                              <div
+                                className="h-4 w-4 rounded-sm shrink-0"
+                                style={{ backgroundColor: subjectData?.color }}
+                              />
+                              <span>{subjectName}</span>
+                              <X className="h-3 w-3 opacity-60 group-hover:opacity-100 transition-opacity" />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedSubjects.length === 0 && (
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-950/30 p-4">
+                      <p className="text-sm text-blue-700 dark:text-blue-300">
+                        <span className="font-semibold">💡 Tip:</span> Select subjects from the list on the right →
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Right Column - Subjects */}
@@ -555,7 +586,7 @@ export default function TeachersPage() {
                       <div className="h-8 w-8 rounded-full bg-zinc-900 dark:bg-zinc-100 flex items-center justify-center">
                         <span className="text-white dark:text-zinc-900 text-sm font-bold">2</span>
                       </div>
-                      Subject Selection
+                      Available Subjects
                     </h3>
 
                     {/* Subject Search */}
@@ -565,52 +596,41 @@ export default function TeachersPage() {
                         placeholder="Search subjects..."
                         value={subjectSearchQuery}
                         onChange={(e) => setSubjectSearchQuery(e.target.value)}
-                        className="pl-10 h-12 text-base"
+                        className="pl-10"
                       />
                     </div>
 
-                    {/* Subjects Grid */}
-                    <div className="max-h-[calc(92vh-320px)] overflow-y-auto rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900">
-                      {filteredSubjects.length === 0 ? (
+                    {/* Available Subjects List */}
+                    <div className="max-h-[calc(92vh-360px)] overflow-y-auto rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900">
+                      {filteredSubjects.filter(s => !selectedSubjects.includes(s.name)).length === 0 ? (
                         <div className="py-12 text-center text-zinc-500">
                           {subjectSearchQuery
                             ? `No subjects found matching "${subjectSearchQuery}"`
+                            : selectedSubjects.length > 0
+                            ? 'All subjects selected! 🎉'
                             : 'No subjects available. Please add subjects first.'}
                         </div>
                       ) : (
-                        <div className="grid grid-cols-2 gap-2 p-4">
-                          {filteredSubjects.map((subject) => {
-                            const isSelected = selectedSubjects.includes(subject.name);
-                            return (
+                        <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                          {filteredSubjects
+                            .filter(subject => !selectedSubjects.includes(subject.name))
+                            .map((subject) => (
                               <button
                                 key={subject._id}
                                 type="button"
                                 onClick={() => toggleSubject(subject.name)}
-                                className={`flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all ${
-                                  isSelected
-                                    ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-50 dark:bg-zinc-800'
-                                    : 'border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600'
-                                }`}
+                                className="flex items-center gap-3 w-full p-3 text-left transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
                               >
                                 <div
-                                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 transition-all ${
-                                    isSelected
-                                      ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-900 dark:bg-zinc-100'
-                                      : 'border-zinc-300 dark:border-zinc-600'
-                                  }`}
-                                >
-                                  {isSelected && <Check className="h-3 w-3 text-white dark:text-zinc-900" />}
-                                </div>
-                                <div
-                                  className="h-8 w-8 rounded-md border border-zinc-200 dark:border-zinc-700 shrink-0"
+                                  className="h-6 w-6 rounded shrink-0 border border-zinc-200 dark:border-zinc-700"
                                   style={{ backgroundColor: subject.color }}
                                 />
-                                <span className="font-medium text-zinc-900 dark:text-zinc-50 flex-1">
+                                <span className="font-medium text-zinc-900 dark:text-zinc-50 text-sm flex-1">
                                   {subject.name}
                                 </span>
+                                <Plus className="h-4 w-4 text-zinc-400" />
                               </button>
-                            );
-                          })}
+                            ))}
                         </div>
                       )}
                     </div>
@@ -635,7 +655,7 @@ export default function TeachersPage() {
                     <Button type="button" variant="outline" onClick={closeModal} size="lg">
                       Cancel
                     </Button>
-                    <Button type="submit" size="lg" className="min-w-[120px]">
+                    <Button type="submit" size="lg" className="min-w-30">
                       {editingTeacher ? 'Update Teacher' : 'Create Teacher'}
                     </Button>
                   </div>

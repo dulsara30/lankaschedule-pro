@@ -84,6 +84,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { name, email, teacherGrade, subjectsTaught } = body;
 
+    // Debug logging
+    console.log('POST /api/teachers - Received body:', { name, email, teacherGrade, subjectsTaught });
+
     if (!name) {
       return NextResponse.json(
         {
@@ -94,13 +97,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const teacher = await Teacher.create({
+    const teacherData = {
       schoolId: school._id,
-      name,
-      email: email ? email.toLowerCase() : undefined,
+      name: name.trim(),
+      email: email ? email.toLowerCase().trim() : undefined,
       teacherGrade: teacherGrade || 'SLTS 3 I',
       subjectsTaught: subjectsTaught || [],
-    });
+    };
+
+    console.log('POST /api/teachers - Creating teacher with data:', teacherData);
+
+    const teacher = await Teacher.create(teacherData);
+
+    console.log('POST /api/teachers - Created teacher:', { _id: teacher._id, name: teacher.name, teacherGrade: teacher.teacherGrade });
 
     // Revalidate lessons page to reflect changes
     revalidatePath('/dashboard/lessons');
@@ -142,6 +151,9 @@ export async function PUT(request: NextRequest) {
     const body = await request.json();
     const { id, name, email, teacherGrade, subjectsTaught } = body;
 
+    // Debug logging
+    console.log('PUT /api/teachers - Received body:', { id, name, email, teacherGrade, subjectsTaught });
+
     if (!id || !name) {
       return NextResponse.json(
         {
@@ -172,11 +184,15 @@ export async function PUT(request: NextRequest) {
       }
     }
 
+    console.log('PUT /api/teachers - Update data:', updateData);
+
     const teacher = await Teacher.findByIdAndUpdate(
       id,
       updateData,
       { new: true, runValidators: true }
     );
+
+    console.log('PUT /api/teachers - Updated teacher:', teacher ? { _id: teacher._id, name: teacher.name, teacherGrade: teacher.teacherGrade } : 'not found');
 
     if (!teacher) {
       return NextResponse.json(

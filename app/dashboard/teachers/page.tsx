@@ -129,6 +129,10 @@ export default function TeachersPage() {
         ? { id: editingTeacher._id, ...formData, subjectsTaught: selectedSubjects }
         : { ...formData, subjectsTaught: selectedSubjects };
 
+      // Debug logging
+      console.log('Sending payload:', body);
+      console.log('Method:', method);
+
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },

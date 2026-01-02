@@ -21,13 +21,15 @@ export interface GenerateTimetableResult {
     lessonName: string;
     reason: string;
   }[];
+  currentStep?: number;
+  totalSteps?: number;
 }
 
 export async function generateTimetableAction(): Promise<GenerateTimetableResult> {
   try {
     await dbConnect();
 
-    // 1. Fetch school configuration
+    // Step 1: Fetch school configuration
     const school = await School.findOne();
     if (!school) {
       return {
@@ -38,8 +40,8 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
 
     const config = school.config;
     
-    // Find interval after period 3 (2026 reform)
-    const intervalAfterPeriod = config.intervalSlots.find((slot: { afterPeriod: number }) => slot.afterPeriod === 3)?.afterPeriod || 3;
+    // Extract interval slot positions dynamically from school config
+    const intervalSlots = config.intervalSlots.map((slot: { afterPeriod: number }) => slot.afterPeriod);
 
     // 2. Fetch all lessons
     const lessonsData = await Lesson.find({ schoolId: school._id })
@@ -101,8 +103,8 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
     }));
 
     const scheduleConfig = {
-      numberOfPeriods: config.numberOfPeriods || 7,
-      intervalAfterPeriod,
+      numberOfPeriods: config.numberOfPeriods,
+      intervalSlots,
       daysOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
     };
 

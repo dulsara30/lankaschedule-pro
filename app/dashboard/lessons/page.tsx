@@ -51,6 +51,7 @@ export default function LessonsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generationStep, setGenerationStep] = useState(0);
 
   const [formData, setFormData] = useState({
     lessonName: '',
@@ -322,12 +323,32 @@ export default function LessonsPage() {
     }
 
     setIsGenerating(true);
-    toast.info('Starting AI timetable generation...');
+    setGenerationStep(0);
 
     try {
+      // Simulate progress steps
+      const steps = [
+        { delay: 500, message: 'Fetching School Configuration & Lessons...' },
+        { delay: 800, message: 'Initializing Constraint Engine...' },
+        { delay: 1200, message: 'Placing Locked/Double Periods...' },
+        { delay: 1500, message: 'Optimizing Teacher Workloads...' },
+        { delay: 1000, message: 'Finalizing Timetable Grid...' },
+      ];
+
+      // Animate through steps
+      for (let i = 0; i < steps.length; i++) {
+        setGenerationStep(i + 1);
+        await new Promise(resolve => setTimeout(resolve, steps[i].delay));
+      }
+
       const result = await generateTimetableAction();
 
       if (result.success) {
+        setGenerationStep(6); // Completion step
+        
+        // Small delay to show success state
+        await new Promise(resolve => setTimeout(resolve, 800));
+        
         toast.success(result.message);
         
         if (result.stats) {
@@ -347,18 +368,130 @@ export default function LessonsPage() {
         router.push('/dashboard/timetable');
       } else {
         toast.error(result.message);
+        setIsGenerating(false);
+        setGenerationStep(0);
       }
     } catch (error: unknown) {
+      console.error('Timetable generation error:', error);
       toast.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
       setIsGenerating(false);
+      setGenerationStep(0);
     }
   };
 
   const totalPeriods = formData.numberOfSingles + (formData.numberOfDoubles * 2);
 
+  const generationSteps = [
+    'Fetching School Configuration & Lessons...',
+    'Initializing Constraint Engine...',
+    'Placing Locked/Double Periods...',
+    'Optimizing Teacher Workloads...',
+    'Finalizing Timetable Grid...',
+    'Complete! ✓',
+  ];
+
   return (
     <div className="space-y-6">
+      {/* Full-Screen AI Generation Overlay */}
+      {isGenerating && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm">
+          <div className="relative flex flex-col items-center max-w-2xl px-8">
+            {/* Animated Brain/AI Icon */}
+            <div className="relative mb-8">
+              {generationStep < 6 ? (
+                <div className="relative">
+                  <div className="absolute inset-0 animate-ping">
+                    <Sparkles className="h-24 w-24 text-purple-500 opacity-50" />
+                  </div>
+                  <div className="relative animate-pulse">
+                    <Sparkles className="h-24 w-24 text-purple-400" />
+                  </div>
+                </div>
+              ) : (
+                <div className="relative">
+                  <div className="absolute inset-0 animate-ping">
+                    <div className="h-24 w-24 rounded-full bg-green-500 opacity-50" />
+                  </div>
+                  <div className="relative flex items-center justify-center">
+                    <div className="h-24 w-24 rounded-full bg-green-500 flex items-center justify-center">
+                      <svg className="h-16 w-16 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Title */}
+            <h2 className="text-3xl font-bold text-white mb-2">
+              {generationStep < 6 ? 'AI Timetable Generation' : 'Generation Complete!'}
+            </h2>
+            <p className="text-zinc-400 text-lg mb-12">
+              {generationStep < 6 
+                ? 'Processing constraints and optimizing schedules...' 
+                : 'Redirecting to timetable view...'}
+            </p>
+
+            {/* Progress Steps */}
+            <div className="w-full max-w-xl space-y-4">
+              {generationSteps.map((step, index) => {
+                const stepNumber = index + 1;
+                const isComplete = generationStep > stepNumber;
+                const isCurrent = generationStep === stepNumber;
+
+                return (
+                  <div
+                    key={index}
+                    className={`flex items-center gap-4 p-4 rounded-lg transition-all ${
+                      isComplete
+                        ? 'bg-green-500/20 border border-green-500/50'
+                        : isCurrent
+                        ? 'bg-purple-500/20 border border-purple-500/50 animate-pulse'
+                        : 'bg-zinc-800/50 border border-zinc-700/50'
+                    }`}
+                  >
+                    {/* Step Icon */}
+                    <div
+                      className={`flex items-center justify-center h-8 w-8 rounded-full shrink-0 ${
+                        isComplete
+                          ? 'bg-green-500'
+                          : isCurrent
+                          ? 'bg-purple-500'
+                          : 'bg-zinc-700'
+                      }`}
+                    >
+                      {isComplete ? (
+                        <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : isCurrent ? (
+                        <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <span className="text-zinc-400 text-sm font-bold">{stepNumber}</span>
+                      )}
+                    </div>
+
+                    {/* Step Text */}
+                    <span
+                      className={`text-sm font-medium ${
+                        isComplete
+                          ? 'text-green-400'
+                          : isCurrent
+                          ? 'text-purple-300'
+                          : 'text-zinc-500'
+                      }`}
+                    >
+                      {step}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-50">

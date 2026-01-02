@@ -2,7 +2,7 @@
  * LankaSchedule Pro AI Engine - Constraint Satisfaction Algorithm
  * 
  * Implements backtracking with heuristics to generate clash-free timetables
- * for Sri Lankan schools following 2026 education reforms.
+ * for Sri Lankan schools with dynamic constraints based on school configuration.
  */
 
 // Types
@@ -32,8 +32,8 @@ export interface TimetableSlot {
 }
 
 export interface ScheduleConfig {
-  numberOfPeriods: number; // e.g., 7
-  intervalAfterPeriod: number; // e.g., 3 (interval after period 3)
+  numberOfPeriods: number; // From school config
+  intervalSlots: number[]; // Array of period numbers where intervals occur (e.g., [2, 4])
   daysOfWeek: string[]; // ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
 }
 
@@ -222,16 +222,23 @@ function findValidSlots(
   config: ScheduleConfig
 ): SlotPosition[] {
   const validSlots: SlotPosition[] = [];
-  const { daysOfWeek, numberOfPeriods, intervalAfterPeriod } = config;
+  const { daysOfWeek, numberOfPeriods, intervalSlots } = config;
 
   for (const day of daysOfWeek) {
     for (let period = 1; period <= numberOfPeriods; period++) {
       if (isDouble) {
-        // Double period constraints
+        // Double period constraints:
         // 1. Must have consecutive period available
-        // 2. Cannot span across interval (e.g., period 3 and 4)
-        if (period === intervalAfterPeriod || period === numberOfPeriods) {
-          continue; // Can't start double at interval or last period
+        // 2. Cannot span across an interval slot
+        // 3. Cannot start at the last period
+        
+        if (period === numberOfPeriods) {
+          continue; // Can't start double at last period
+        }
+
+        // Check if there's an interval between this period and the next
+        if (intervalSlots.includes(period)) {
+          continue; // Can't start double right before an interval
         }
 
         const nextPeriod = period + 1;

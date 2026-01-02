@@ -3,6 +3,7 @@
  * Import models from here to ensure proper initialization order
  */
 
+export { default as User } from './User';
 export { default as School } from './School';
 export { default as Teacher } from './Teacher';
 export { default as Subject } from './Subject';
@@ -11,6 +12,7 @@ export { default as Lesson } from './Lesson';
 export { default as TimetableSlot } from './TimetableSlot';
 
 // Re-export types
+export type { IUser } from './User';
 export type { ISchool, ISchoolConfig } from './School';
 export type { ITeacher } from './Teacher';
 export type { ISubject } from './Subject';

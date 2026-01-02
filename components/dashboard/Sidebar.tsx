@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { Settings, Calendar, Users, BookOpen, GraduationCap, Clock, CalendarDays, PanelLeftClose, PanelLeft } from 'lucide-react';
+import { Settings, Calendar, Users, BookOpen, GraduationCap, Clock, CalendarDays, PanelLeftClose, PanelLeft, MessageSquare } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useEffect, useState } from 'react';
@@ -22,6 +22,7 @@ const navItems = [
   { href: '/dashboard/classes', icon: GraduationCap, label: 'Classes' },
   { href: '/dashboard/lessons', icon: Clock, label: 'Lessons' },
   { href: '/dashboard/timetable', icon: CalendarDays, label: 'Timetable' },
+  { href: '/dashboard/communications', icon: MessageSquare, label: 'Communications' },
 ];
 
 export function Sidebar() {

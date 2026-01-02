@@ -1,15 +1,72 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { getToken } from 'next-auth/jwt';
 
-export function middleware(request: NextRequest) {
-  // Redirect root URL to dashboard
-  if (request.nextUrl.pathname === '/') {
-    return NextResponse.redirect(new URL('/dashboard', request.url));
+export async function middleware(request: NextRequest) {
+  const token = await getToken({ 
+    req: request, 
+    secret: process.env.NEXTAUTH_SECRET || 'your-secret-key-change-in-production' 
+  });
+
+  const { pathname } = request.nextUrl;
+
+  // Public routes that don't require authentication
+  const publicPaths = ['/', '/api/auth'];
+  
+  const isPublicPath = publicPaths.some(path => pathname.startsWith(path));
+  const isDashboardRoute = pathname.startsWith('/dashboard');
+  const isStaffRoute = pathname.startsWith('/staff');
+
+  // Allow public paths
+  if (isPublicPath) {
+    // If user is already authenticated, redirect to appropriate dashboard
+    if (token && pathname === '/') {
+      if (token.role === 'admin') {
+        // Check if schoolId is null - redirect to setup if needed
+        if (!token.schoolId) {
+          return NextResponse.redirect(new URL('/dashboard/setup-school', request.url));
+        }
+        return NextResponse.redirect(new URL('/dashboard', request.url));
+      }
+    }
+    return NextResponse.next();
+  }
+
+  // Protect dashboard routes (admin only)
+  if (isDashboardRoute) {
+    if (!token) {
+      return NextResponse.redirect(new URL('/?error=unauthorized', request.url));
+    }
+    
+    if (token.role !== 'admin') {
+      return NextResponse.redirect(new URL('/?error=forbidden', request.url));
+    }
+
+    // Allow setup-school without schoolId check
+    if (pathname === '/dashboard/setup-school') {
+      return NextResponse.next();
+    }
+
+    // For all other dashboard routes, require schoolId
+    if (!token.schoolId) {
+      return NextResponse.redirect(new URL('/dashboard/setup-school', request.url));
+    }
+    
+    return NextResponse.next();
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: '/',
+  matcher: [
+    /*
+     * Match all request paths except:
+     * - _next/static (static files)
+     * - _next/image (image optimization)
+     * - favicon.ico
+     * - public files (images, etc.)
+     */
+    '/((?!_next/static|_next/image|favicon.ico|logo.png|.*\\.png|.*\\.jpg|.*\\.svg).*)',
+  ],
 };

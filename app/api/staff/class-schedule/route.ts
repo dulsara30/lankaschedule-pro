@@ -55,30 +55,34 @@ export async function GET(request: Request) {
       versionId: publishedVersion._id,
       classId: classId,
     })
-      .populate('lessonId')
+      .populate({
+        path: 'lessonId',
+        populate: [
+          { path: 'subjectIds', model: 'Subject' },
+        ]
+      })
       .lean();
 
     const schedule = [];
     for (const slot of slots) {
+      if (!slot.lessonId) continue;
+      
       const lesson = slot.lessonId as any;
-      if (lesson) {
-        // Get all subjects for this lesson
-        const subjects = await Subject.find({
-          _id: { $in: lesson.subjectIds || [] }
-        }).lean();
-        
-        const subjectNames = subjects.map(s => s.name).join(', ') || 'Unknown Subject';
-        
-        schedule.push({
-          _id: slot._id.toString(),
-          day: slot.day,
-          periodNumber: slot.periodNumber,
-          subject: subjectNames,
-          className: null, // Not needed for class view
-          isDoubleStart: slot.isDoubleStart,
-          isDoubleEnd: slot.isDoubleEnd,
-        });
-      }
+      
+      // Get subject names from populated subjectIds
+      const subjectNames = lesson.subjectIds && Array.isArray(lesson.subjectIds)
+        ? lesson.subjectIds.map((s: any) => s.name).join(', ')
+        : 'Unknown Subject';
+      
+      schedule.push({
+        _id: slot._id.toString(),
+        day: slot.day,
+        periodNumber: slot.periodNumber,
+        subject: subjectNames,
+        className: null, // Not needed for class view
+        isDoubleStart: slot.isDoubleStart || false,
+        isDoubleEnd: slot.isDoubleEnd || false,
+      });
     }
 
     return NextResponse.json({

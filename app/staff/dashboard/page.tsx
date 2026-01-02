@@ -74,9 +74,19 @@ export default function TeacherDashboard() {
         if (data.success) {
           setAdminNote(data.version?.adminNote || '');
           setVersionName(data.version?.versionName || 'Current Timetable');
-          setMySchedule(data.mySchedule || []);
-          setShowPDFDownload(data.mySchedule && data.mySchedule.length > 0);
+          const scheduleData = data.mySchedule || [];
+          setMySchedule(scheduleData);
+          setShowPDFDownload(scheduleData.length > 0);
+          
+          // Show feedback if version exists but no lessons assigned
+          if (data.version && scheduleData.length === 0) {
+            console.log('Published version found but no lessons assigned to this teacher');
+          }
+        } else {
+          console.error('Failed to fetch published timetable:', data.error);
         }
+      } else {
+        console.error('Failed to fetch published timetable:', publishedRes.status);
       }
 
       // Fetch school info
@@ -158,8 +168,8 @@ export default function TeacherDashboard() {
         <CardHeader className="border-b-2 border-black dark:border-white">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg font-bold text-black dark:text-white">{title}</CardTitle>
-            {/* Download Button */}
-            {isTeacherSchedule && showPDFDownload && schoolInfo && session?.user.name && (
+            {/* Download Button - Only show when data is ready */}
+            {isTeacherSchedule && showPDFDownload && schoolInfo && session?.user.name && mySchedule.length > 0 && versionName && (
               <PDFDownloadLink
                 document={
                   <TimetablePDF
@@ -183,7 +193,7 @@ export default function TeacherDashboard() {
                         _id: '',
                         lessonName: slot.subject,
                         subjectIds: [],
-                        teacherIds: [{ _id: session.user.id, name: session.user.name }],
+                        teacherIds: [{ _id: session.user.id, name: session.user.name || 'Teacher' }],
                         classIds: [],
                       },
                     }))}
@@ -214,7 +224,7 @@ export default function TeacherDashboard() {
                 )}
               </PDFDownloadLink>
             )}
-            {!isTeacherSchedule && showClassPDF && schoolInfo && selectedClass && (
+            {!isTeacherSchedule && showClassPDF && schoolInfo && selectedClass && classSchedule.length > 0 && versionName && (
               <PDFDownloadLink
                 document={
                   <TimetablePDF
@@ -411,8 +421,15 @@ export default function TeacherDashboard() {
             renderScheduleGrid(mySchedule, 'Your Weekly Schedule', true)
           ) : (
             <Card className="border-2 border-black dark:border-white rounded-none">
-              <CardContent className="pt-6 text-center">
-                <p className="text-zinc-500 dark:text-zinc-400">No schedule available</p>
+              <CardContent className="pt-6 text-center space-y-2">
+                <p className="text-zinc-900 dark:text-zinc-100 font-medium">
+                  {versionName ? 'No Assigned Lessons' : 'No Published Timetable'}
+                </p>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                  {versionName 
+                    ? 'You have no assigned lessons in the current published timetable.'
+                    : 'Please wait for the administration to publish a timetable.'}
+                </p>
               </CardContent>
             </Card>
           )}

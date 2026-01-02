@@ -346,9 +346,9 @@ export default function LessonsPage() {
               {/* Modal Container */}
               <div className="w-[95vw] max-w-[1600px] h-[92vh] bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
                 {/* Modal Header */}
-                <div className="px-8 py-6 border-b-2 border-zinc-200 dark:border-zinc-700 flex items-center justify-between bg-gradient-to-r from-blue-50 to-purple-50 dark:from-zinc-800 dark:to-zinc-800">
+                <div className="px-8 py-5 border-b border-zinc-200 dark:border-zinc-700 flex items-center justify-between bg-white dark:bg-zinc-900">
                   <div>
-                    <h2 className="text-3xl font-bold text-zinc-900 dark:text-zinc-50">
+                    <h2 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">
                       {editingLesson ? 'Edit Lesson' : 'Create New Lesson'}
                     </h2>
                     <p className="text-base text-zinc-600 dark:text-zinc-400 mt-1">
@@ -372,11 +372,11 @@ export default function LessonsPage() {
                     <div className="grid grid-cols-3 gap-4 h-[45vh] min-h-[400px]">
                       
                       {/* Column 1: Classes */}
-                      <div className="flex flex-col overflow-hidden border-2 border-blue-300 dark:border-blue-700 rounded-xl shadow-lg">
-                        <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-4 font-bold text-lg flex items-center justify-between">
+                      <div className="flex flex-col overflow-hidden border border-zinc-200 dark:border-zinc-700 rounded-lg">
+                        <div className="bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-50 px-5 py-3 font-semibold text-sm flex items-center justify-between border-b border-zinc-200 dark:border-zinc-700">
                           <span>📚 Select Classes</span>
                           {selectedClasses.length > 0 && (
-                            <span className="bg-white/30 px-3 py-1 rounded-full text-sm font-semibold">
+                            <span className="bg-zinc-200 dark:bg-zinc-700 px-2.5 py-0.5 rounded-full text-xs font-medium">
                               {selectedClasses.length} selected
                             </span>
                           )}
@@ -391,7 +391,7 @@ export default function LessonsPage() {
                               placeholder="Search classes..."
                               value={classSearchTerm}
                               onChange={(e) => setClassSearchTerm(e.target.value)}
-                              className="w-full pl-10 pr-4 py-3 border-2 border-zinc-300 dark:border-zinc-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-800"
+                              className="w-full pl-10 pr-4 py-2.5 border border-zinc-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:border-zinc-900 dark:focus:border-zinc-50 bg-white dark:bg-zinc-900 text-sm"
                             />
                           </div>
                           
@@ -407,10 +407,10 @@ export default function LessonsPage() {
                                   key={classItem._id}
                                   type="button"
                                   onClick={() => toggleClass(classItem._id)}
-                                  className={`rounded-xl border-2 px-3 py-3 text-sm font-bold transition-all hover:scale-105 ${
+                                  className={`rounded-md border px-3 py-2.5 text-sm font-medium transition-all ${
                                     selectedClasses.includes(classItem._id)
-                                      ? 'border-blue-600 bg-blue-100 text-blue-900 shadow-xl dark:bg-blue-900 dark:text-blue-50'
-                                      : 'border-zinc-300 bg-zinc-50 hover:border-blue-400 hover:bg-blue-50 dark:border-zinc-700 dark:bg-zinc-800 hover:shadow-md'
+                                      ? 'border-zinc-900 bg-zinc-900 text-white dark:border-zinc-50 dark:bg-zinc-50 dark:text-zinc-900'
+                                      : 'border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-zinc-600'
                                   }`}
                                 >
                                   {classItem.name}
@@ -422,11 +422,11 @@ export default function LessonsPage() {
                       </div>
 
                       {/* Column 2: Subjects */}
-                      <div className="flex flex-col overflow-hidden border-2 border-pink-300 dark:border-pink-700 rounded-xl shadow-lg">
-                        <div className="bg-gradient-to-r from-pink-500 to-rose-600 text-white px-6 py-4 font-bold text-lg flex items-center justify-between">
+                      <div className="flex flex-col overflow-hidden border border-zinc-200 dark:border-zinc-700 rounded-lg">
+                        <div className="bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-50 px-5 py-3 font-semibold text-sm flex items-center justify-between border-b border-zinc-200 dark:border-zinc-700">
                           <span>🎨 Select Subjects</span>
                           {selectedSubjects.length > 0 && (
-                            <span className="bg-white/30 px-3 py-1 rounded-full text-sm font-semibold">
+                            <span className="bg-zinc-200 dark:bg-zinc-700 px-2.5 py-0.5 rounded-full text-xs font-medium">
                               {selectedSubjects.length} selected
                             </span>
                           )}
@@ -441,7 +441,7 @@ export default function LessonsPage() {
                               placeholder="Search subjects..."
                               value={subjectSearchTerm}
                               onChange={(e) => setSubjectSearchTerm(e.target.value)}
-                              className="w-full pl-10 pr-4 py-3 border-2 border-zinc-300 dark:border-zinc-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 dark:bg-zinc-800"
+                              className="w-full pl-10 pr-4 py-2.5 border border-zinc-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:border-zinc-900 dark:focus:border-zinc-50 bg-white dark:bg-zinc-900 text-sm"
                             />
                           </div>
                           
@@ -456,14 +456,14 @@ export default function LessonsPage() {
                                 key={subject._id}
                                 type="button"
                                 onClick={() => toggleSubject(subject._id)}
-                                className={`w-full flex items-center gap-3 rounded-xl border-2 px-4 py-3 text-sm font-bold transition-all text-left hover:scale-[1.02] ${
+                                className={`w-full flex items-center gap-3 rounded-md border px-4 py-2.5 text-sm font-medium transition-all text-left ${
                                   selectedSubjects.includes(subject._id)
-                                    ? 'border-pink-600 bg-pink-100 text-pink-900 shadow-xl dark:bg-pink-900 dark:text-pink-50'
-                                    : 'border-zinc-300 bg-zinc-50 hover:border-pink-400 hover:bg-pink-50 dark:border-zinc-700 dark:bg-zinc-800 hover:shadow-md'
+                                    ? 'border-zinc-900 bg-zinc-900 text-white dark:border-zinc-50 dark:bg-zinc-50 dark:text-zinc-900'
+                                    : 'border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-zinc-600'
                                 }`}
                               >
                                 <div 
-                                  className="h-6 w-6 rounded-full flex-shrink-0 border-2 border-white shadow-md" 
+                                  className="h-4 w-4 rounded-full flex-shrink-0 border border-zinc-300 dark:border-zinc-600" 
                                   style={{ backgroundColor: subject.color }}
                                 />
                                 <span className="truncate flex-1">{subject.name}</span>
@@ -474,11 +474,11 @@ export default function LessonsPage() {
                       </div>
 
                       {/* Column 3: Teachers */}
-                      <div className="flex flex-col overflow-hidden border-2 border-purple-300 dark:border-purple-700 rounded-xl shadow-lg">
-                        <div className="bg-gradient-to-r from-purple-500 to-violet-600 text-white px-6 py-4 font-bold text-lg flex items-center justify-between">
+                      <div className="flex flex-col overflow-hidden border border-zinc-200 dark:border-zinc-700 rounded-lg">
+                        <div className="bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-50 px-5 py-3 font-semibold text-sm flex items-center justify-between border-b border-zinc-200 dark:border-zinc-700">
                           <span>👨‍🏫 Select Teachers</span>
                           {selectedTeachers.length > 0 && (
-                            <span className="bg-white/30 px-3 py-1 rounded-full text-sm font-semibold">
+                            <span className="bg-zinc-200 dark:bg-zinc-700 px-2.5 py-0.5 rounded-full text-xs font-medium">
                               {selectedTeachers.length} selected
                             </span>
                           )}
@@ -493,7 +493,7 @@ export default function LessonsPage() {
                               placeholder="Search teachers..."
                               value={teacherSearchTerm}
                               onChange={(e) => setTeacherSearchTerm(e.target.value)}
-                              className="w-full pl-10 pr-4 py-3 border-2 border-zinc-300 dark:border-zinc-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 dark:bg-zinc-800"
+                              className="w-full pl-10 pr-4 py-2.5 border border-zinc-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:border-zinc-900 dark:focus:border-zinc-50 bg-white dark:bg-zinc-900 text-sm"
                             />
                           </div>
                           
@@ -508,10 +508,10 @@ export default function LessonsPage() {
                                 key={teacher._id}
                                 type="button"
                                 onClick={() => toggleTeacher(teacher._id)}
-                                className={`w-full rounded-xl border-2 px-4 py-3 text-sm font-bold transition-all text-left hover:scale-[1.02] ${
+                                className={`w-full rounded-md border px-4 py-2.5 text-sm font-medium transition-all text-left ${
                                   selectedTeachers.includes(teacher._id)
-                                    ? 'border-purple-600 bg-purple-100 text-purple-900 shadow-xl dark:bg-purple-900 dark:text-purple-50'
-                                    : 'border-zinc-300 bg-zinc-50 hover:border-purple-400 hover:bg-purple-50 dark:border-zinc-700 dark:bg-zinc-800 hover:shadow-md'
+                                    ? 'border-zinc-900 bg-zinc-900 text-white dark:border-zinc-50 dark:bg-zinc-50 dark:text-zinc-900'
+                                    : 'border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-zinc-600'
                                 }`}
                               >
                                 <div className="truncate font-semibold">{teacher.name}</div>
@@ -526,7 +526,7 @@ export default function LessonsPage() {
                     </div>
 
                     {/* Bottom Configuration Bar */}
-                    <div className="grid grid-cols-12 gap-4 border-2 border-zinc-300 dark:border-zinc-700 rounded-xl p-4 bg-zinc-50 dark:bg-zinc-800">
+                    <div className="grid grid-cols-12 gap-4 border border-zinc-200 dark:border-zinc-700 rounded-lg p-4 bg-white dark:bg-zinc-900">
                       {/* Lesson Name */}
                       <div className="col-span-6">
                         <label className="mb-2 block text-sm font-bold text-zinc-900 dark:text-zinc-100">
@@ -542,7 +542,7 @@ export default function LessonsPage() {
                           placeholder="e.g., Grade 6 Aesthetic Block"
                           required={selectedSubjects.length !== 1}
                           readOnly={selectedSubjects.length === 1}
-                          className={`w-full px-4 py-2.5 border-2 rounded-lg text-base font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900 ${
+                          className={`w-full px-4 py-2.5 border rounded-lg text-base font-medium focus:outline-none focus:border-zinc-900 dark:focus:border-zinc-50 dark:bg-zinc-800 ${
                             selectedSubjects.length === 1 
                               ? 'bg-green-50 border-green-300 text-green-900 cursor-not-allowed dark:bg-green-950 dark:border-green-700' 
                               : selectedSubjects.length > 1 && !formData.lessonName
@@ -563,7 +563,7 @@ export default function LessonsPage() {
                           max="35"
                           value={formData.numberOfSingles}
                           onChange={(e) => setFormData({ ...formData, numberOfSingles: parseInt(e.target.value) || 0 })}
-                          className="w-full px-3 py-2.5 border-2 border-zinc-300 dark:border-zinc-700 rounded-lg text-lg font-bold text-center focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900"
+                          className="w-full px-3 py-2.5 border border-zinc-200 dark:border-zinc-700 rounded-lg text-lg font-semibold text-center focus:outline-none focus:border-zinc-900 dark:focus:border-zinc-50 bg-white dark:bg-zinc-800"
                         />
                       </div>
 
@@ -578,7 +578,7 @@ export default function LessonsPage() {
                           max="17"
                           value={formData.numberOfDoubles}
                           onChange={(e) => setFormData({ ...formData, numberOfDoubles: parseInt(e.target.value) || 0 })}
-                          className="w-full px-3 py-2.5 border-2 border-zinc-300 dark:border-zinc-700 rounded-lg text-lg font-bold text-center focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-900"
+                          className="w-full px-3 py-2.5 border border-zinc-200 dark:border-zinc-700 rounded-lg text-lg font-semibold text-center focus:outline-none focus:border-zinc-900 dark:focus:border-zinc-50 bg-white dark:bg-zinc-800"
                         />
                       </div>
 
@@ -587,12 +587,12 @@ export default function LessonsPage() {
                         <label className="mb-2 block text-xs font-bold text-zinc-700 dark:text-zinc-300">
                           📊 Total Weekly Load
                         </label>
-                        <div className={`h-[44px] rounded-lg px-3 flex items-center justify-center text-xl font-black border-2 transition-all ${
+                        <div className={`h-[44px] rounded-lg px-3 flex items-center justify-center text-lg font-bold border transition-all ${
                           totalPeriods > 35 
-                            ? 'border-red-600 bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300 animate-pulse shadow-lg' 
+                            ? 'border-red-500 bg-red-50 text-red-700 dark:bg-red-950/20 dark:text-red-400 dark:border-red-800' 
                             : totalPeriods === 0
-                            ? 'border-zinc-400 bg-zinc-100 text-zinc-500 dark:bg-zinc-800'
-                            : 'border-green-600 bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300 shadow-md'
+                            ? 'border-zinc-200 bg-zinc-50 text-zinc-500 dark:bg-zinc-800 dark:border-zinc-700'
+                            : 'border-green-500 bg-green-50 text-green-700 dark:bg-green-950/20 dark:text-green-400 dark:border-green-800'
                         }`}>
                           {totalPeriods} <span className="text-sm font-normal ml-2">/ 35 max</span>
                         </div>
@@ -601,7 +601,7 @@ export default function LessonsPage() {
                   </div>
 
                   {/* Modal Footer */}
-                  <div className="flex items-center justify-between gap-4 px-8 py-5 border-t-2 border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900">
+                  <div className="flex items-center justify-between gap-4 px-8 py-4 border-t border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900">
                     <div className="text-sm text-zinc-600 dark:text-zinc-400">
                       {selectedClasses.length} class(es), {selectedSubjects.length} subject(s), {selectedTeachers.length} teacher(s)
                     </div>
@@ -609,14 +609,14 @@ export default function LessonsPage() {
                       <button
                         type="button"
                         onClick={() => handleDialogClose(false)}
-                        className="px-8 py-3 text-base font-semibold border-2 border-zinc-300 dark:border-zinc-700 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                        className="px-8 py-2.5 text-sm font-medium border border-zinc-300 dark:border-zinc-600 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
                       >
                         Cancel
                       </button>
                       <button
                         type="submit"
                         disabled={totalPeriods > 35 || (selectedSubjects.length > 1 && !formData.lessonName)}
-                        className="px-10 py-3 text-base font-bold bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg shadow-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-105"
+                        className="px-10 py-2.5 text-sm font-semibold bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-50 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >
                         {editingLesson ? '✨ Update Lesson' : '✨ Create Lesson'}
                       </button>

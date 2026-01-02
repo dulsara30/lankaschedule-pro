@@ -51,26 +51,38 @@ export async function GET(request: Request) {
     }
 
     // Fetch all data in parallel
-    const [slots, teachers, subjects, classes, lessons, versions] = await Promise.all([
-      TimetableSlot.find({ versionId })
-        .populate('classId')
-        .populate({
-          path: 'lessonId',
-          populate: [
-            { path: 'subjectIds' },
-            { path: 'teacherIds' },
-          ],
-        })
-        .lean(),
-      Teacher.find().lean(),
-      Subject.find().lean(),
-      Class.find().lean(),
-      Lesson.find()
+    const slots = await TimetableSlot.find({ versionId })
+      .populate('classId')
+      .populate({
+        path: 'lessonId',
+        populate: [
+          { path: 'subjectIds' },
+          { path: 'teacherIds' },
+        ],
+      })
+      .lean();
+
+    // Get schoolId from first slot for data scoping
+    const schoolId = slots[0]?.schoolId;
+    if (!schoolId) {
+      return NextResponse.json({
+        teacherWorkload: [],
+        subjectDistribution: [],
+        classSchedules: [],
+        versionComparison: [],
+      });
+    }
+
+    const [teachers, subjects, classes, lessons, versions] = await Promise.all([
+      Teacher.find({ schoolId }).lean(),
+      Subject.find({ schoolId }).lean(),
+      Class.find({ schoolId }).lean(),
+      Lesson.find({ schoolId })
         .populate('subjectIds')
         .populate('teacherIds')
         .populate('classIds')
         .lean(),
-      TimetableVersion.find().lean(),
+      TimetableVersion.find({ schoolId }).lean(),
     ]);
 
     // 1. Teacher Workload Distribution

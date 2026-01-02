@@ -82,6 +82,17 @@ export default function TimetablePage() {
 
       console.log('🔍 Client: Slots received:', slotsData.data?.length || 0);
       console.log('📦 Client: Sample slot:', slotsData.data?.[0]);
+      
+      // Debug: Check for double period flags
+      if (slotsData.data && slotsData.data.length > 0) {
+        const doubleStartSlots = slotsData.data.filter((s: TimetableSlot) => s.isDoubleStart).length;
+        const doubleEndSlots = slotsData.data.filter((s: TimetableSlot) => s.isDoubleEnd).length;
+        console.log('🔄 Double period stats:');
+        console.log(`   - Double starts: ${doubleStartSlots}`);
+        console.log(`   - Double ends: ${doubleEndSlots}`);
+        console.log(`   - Total slots: ${slotsData.data.length}`);
+      }
+      
       console.log('📋 Client: Classes:', classesData.data?.length || 0);
       console.log('⚙️ Client: Config:', configData.data);
 

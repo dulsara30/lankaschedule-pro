@@ -505,15 +505,12 @@ function undoChanges(
 
 /**
  * Convert grid map to array of timetable slots
- * Uses slotType metadata to set isDoubleStart and isDoubleEnd flags
+ * Creates BOTH periods for double blocks (start and end slots)
  */
 function gridToSlots(grid: TimetableGrid): TimetableSlot[] {
   const slots: TimetableSlot[] = [];
-  const processed = new Set<string>();
 
   for (const [key, gridSlot] of grid.entries()) {
-    if (processed.has(key)) continue;
-
     const [classId, day, periodStr] = key.split('-');
     const period = parseInt(periodStr);
 
@@ -521,6 +518,7 @@ function gridToSlots(grid: TimetableGrid): TimetableSlot[] {
     const isDoubleStart = gridSlot.slotType === 'double-start';
     const isDoubleEnd = gridSlot.slotType === 'double-end';
 
+    // Create a slot for EVERY period (including both parts of doubles)
     slots.push({
       classId,
       lessonId: gridSlot.lessonId,
@@ -529,15 +527,12 @@ function gridToSlots(grid: TimetableGrid): TimetableSlot[] {
       isDoubleStart,
       isDoubleEnd,
     });
-
-    processed.add(key);
-    
-    // If this is the start of a double block, skip the end period
-    if (isDoubleStart) {
-      const nextKey = `${classId}-${day}-${period + 1}`;
-      processed.add(nextKey);
-    }
   }
+
+  console.log(`📋 gridToSlots: Created ${slots.length} total slots`);
+  const doubleStarts = slots.filter(s => s.isDoubleStart).length;
+  const doubleEnds = slots.filter(s => s.isDoubleEnd).length;
+  console.log(`   - Double starts: ${doubleStarts}, Double ends: ${doubleEnds}`);
 
   return slots;
 }

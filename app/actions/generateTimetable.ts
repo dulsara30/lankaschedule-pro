@@ -111,8 +111,22 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
     // 5. Run the AI algorithm
     const result = generateTimetable(lessons, classes, scheduleConfig);
 
+    console.log('📊 Scheduler Results:');
+    console.log(`   Total slots: ${result.slots.length}`);
+    console.log(`   Scheduled lessons: ${result.stats.scheduledLessons}`);
+    console.log(`   Failed lessons: ${result.failedLessons.length}`);
+    
+    // Debug: Show sample slots with double period flags
+    const sampleSlots = result.slots.slice(0, 5);
+    console.log('📝 Sample slots from scheduler:');
+    sampleSlots.forEach((slot, idx) => {
+      console.log(`   ${idx + 1}. Day: ${slot.day}, Period: ${slot.periodNumber}, ` +
+        `DoubleStart: ${slot.isDoubleStart}, DoubleEnd: ${slot.isDoubleEnd}`);
+    });
+
     // 6. Clear existing timetable slots
-    await TimetableSlot.deleteMany({ schoolId: school._id });
+    const deleteResult = await TimetableSlot.deleteMany({ schoolId: school._id });
+    console.log(`🗑️  Deleted ${deleteResult.deletedCount} existing slots`);
 
     // 7. Save generated slots to database
     if (result.slots.length > 0) {
@@ -127,7 +141,16 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
         isLocked: false,
       }));
 
+      console.log('💾 Saving slots to database...');
+      console.log(`   Total slots to save: ${slotsToSave.length}`);
+      
+      // Debug: Show what we're saving
+      const doubleSlotsCount = slotsToSave.filter(s => s.isDoubleStart || s.isDoubleEnd).length;
+      console.log(`   Double period slots: ${doubleSlotsCount}`);
+      
       await TimetableSlot.insertMany(slotsToSave);
+      
+      console.log('✅ Slots saved successfully!');
     }
 
     // 8. Revalidate paths

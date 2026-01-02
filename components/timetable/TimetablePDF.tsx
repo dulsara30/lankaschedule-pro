@@ -15,20 +15,6 @@ const styles = StyleSheet.create({
     borderBottom: '2pt solid #000000',
     paddingBottom: 15,
   },
-  logoContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
-  },
-  logo: {
-    width: 45,
-    height: 45,
-    marginRight: 12,
-  },
-  headerTextContainer: {
-    alignItems: 'flex-start',
-  },
   schoolName: {
     fontSize: 24,
     fontWeight: 'bold',
@@ -216,9 +202,16 @@ const styles = StyleSheet.create({
     bottom: 20,
     left: 40,
     right: 40,
-    textAlign: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     borderTop: '1pt solid #CCCCCC',
     paddingTop: 8,
+  },
+  footerLogo: {
+    width: 15,
+    height: 15,
+    marginRight: 6,
   },
   footerText: {
     fontSize: 7,
@@ -383,21 +376,12 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
 
     return (
       <Page key={entity.id} size="A4" orientation="landscape" style={styles.page}>
-        {/* Enhanced Header with Logo */}
+        {/* Header */}
         <View style={styles.header}>
-          <View style={styles.logoContainer}>
-            {/* eslint-disable-next-line jsx-a11y/alt-text */}
-            <Image
-              src="/logo.png"
-              style={styles.logo}
-            />
-            <View style={styles.headerTextContainer}>
-              <Text style={styles.schoolName}>{schoolName}</Text>
-              {schoolAddress && (
-                <Text style={styles.schoolAddress}>{schoolAddress}</Text>
-              )}
-            </View>
-          </View>
+          <Text style={styles.schoolName}>{schoolName}</Text>
+          {schoolAddress && (
+            <Text style={styles.schoolAddress}>{schoolAddress}</Text>
+          )}
           <Text style={styles.versionName}>Timetable Version: {versionName}</Text>
           <Text style={styles.mainTitle}>
             {type === 'class' ? entity.name : `${entity.name} - Schedule`}
@@ -458,13 +442,21 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
                     }
 
                     const displayText = getSlotDisplayText(slot);
+                    
+                    // Calculate cell height: double periods get (24 * 2) + 1 = 49pt
+                    const baseHeight = 24;
+                    const cellHeight = isDoubleStart ? (baseHeight * 2) + 1 : baseHeight;
 
                     return (
                       <View 
                         key={`${day}-${period}`} 
                         style={[
                           dayIndex === DAYS.length - 1 ? styles.dayColLast : styles.dayCol,
-                          { width: dayColWidth }
+                          { 
+                            width: dayColWidth,
+                            minHeight: cellHeight,
+                            height: cellHeight
+                          }
                         ]}
                       >
                         {isDoubleStart ? (
@@ -515,8 +507,13 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
           </View>
         )}
 
-        {/* Footer */}
+        {/* Footer with Logo */}
         <View style={styles.footer} fixed>
+          {/* eslint-disable-next-line jsx-a11y/alt-text */}
+          <Image
+            src="/logo.png"
+            style={styles.footerLogo}
+          />
           <Text style={styles.footerText}>
             Powered by EduFlow AI — Intelligent School Scheduling — {currentDate}
           </Text>

@@ -128,7 +128,7 @@ export default function TimetablePage() {
       return slots.find(
         slot => slot.day === day && 
                 slot.periodNumber === period && 
-                slot.lessonId.teacherIds.some(t => t._id === selectedEntity)
+                slot.lessonId?.teacherIds?.some(t => t?._id === selectedEntity)
       );
     }
   };
@@ -139,14 +139,18 @@ export default function TimetablePage() {
     }
 
     const lesson = slot.lessonId;
+    if (!lesson || !lesson.subjectIds || !lesson.teacherIds || !lesson.classIds) {
+      return <div className="text-xs text-zinc-400 italic">Invalid data</div>;
+    }
+
     const subjects = lesson.subjectIds;
     
     // Generate gradient background
     const backgroundStyle = subjects.length === 1
-      ? { backgroundColor: subjects[0].color || '#3B82F6' }
+      ? { backgroundColor: subjects[0]?.color || '#3B82F6' }
       : {
           background: `linear-gradient(135deg, ${subjects.map((subject, idx) => {
-            const color = subject.color || '#3B82F6';
+            const color = subject?.color || '#3B82F6';
             const percentage = (idx / subjects.length) * 100;
             const nextPercentage = ((idx + 1) / subjects.length) * 100;
             return `${color} ${percentage}%, ${color} ${nextPercentage}%`;
@@ -163,8 +167,8 @@ export default function TimetablePage() {
         </div>
         <div className="text-xs opacity-90 mt-1">
           {viewMode === 'class' 
-            ? lesson.teacherIds.map(t => t.name).join(', ')
-            : lesson.classIds.map(c => c.name).join(', ')
+            ? lesson.teacherIds?.map(t => t?.name).filter(Boolean).join(', ') || 'No teacher'
+            : lesson.classIds?.map(c => c?.name).filter(Boolean).join(', ') || 'No class'
           }
         </div>
       </div>
@@ -190,11 +194,11 @@ export default function TimetablePage() {
     );
   }
 
-  const intervalAfterPeriod = config.intervalSlots.find(slot => slot.afterPeriod === 3)?.afterPeriod || 3;
-  const intervalDuration = config.intervalSlots.find(slot => slot.afterPeriod === 3)?.duration || 15;
+  const intervalAfterPeriod = config.intervalSlots?.find(slot => slot.afterPeriod === 3)?.afterPeriod || 3;
+  const intervalDuration = config.intervalSlots?.find(slot => slot.afterPeriod === 3)?.duration || 15;
 
   const entityList = viewMode === 'class' ? classes : teachers;
-  const selectedName = entityList.find(e => e._id === selectedEntity)?.name || '';
+  const selectedName = entityList?.find(e => e._id === selectedEntity)?.name || '';
 
   return (
     <div className="space-y-6">

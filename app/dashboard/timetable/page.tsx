@@ -8,9 +8,18 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Calendar, Users, User, Save, History, Trash2, Check, ChevronsUpDown, ChevronDown, ChevronUp } from 'lucide-react';
+import { Calendar, Users, User, Save, History, Trash2, Check, ChevronsUpDown, ChevronDown, ChevronUp, Download, RotateCcw, FileDown, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import dynamic from 'next/dynamic';
+import { pdf } from '@react-pdf/renderer';
+import TimetablePDF from '@/components/timetable/TimetablePDF';
+
+// Dynamically import PDFViewer to avoid SSR issues
+const PDFViewer = dynamic(
+  () => import('@react-pdf/renderer').then((mod) => mod.PDFViewer),
+  { ssr: false }
+);
 
 interface Subject {
   _id: string;
@@ -82,6 +91,13 @@ export default function TimetablePage() {
   const [savingVersion, setSavingVersion] = useState(false);
   const [isVersionManagerExpanded, setIsVersionManagerExpanded] = useState(false);
 
+  // PDF Export state
+  const [downloadDialogOpen, setDownloadDialogOpen] = useState(false);
+  const [lessonNameMap, setLessonNameMap] = useState<Record<string, string>>({});
+  const [exportType, setExportType] = useState<'single' | 'bulk' | 'teacher'>('single');
+  const [exportEntityId, setExportEntityId] = useState<string>('');
+  const [exportEntityComboOpen, setExportEntityComboOpen] = useState(false);
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -136,6 +152,21 @@ export default function TimetablePage() {
       if (slotsData.success) {
         setSlots(slotsData.data || []);
         if (slotsData.versionId) setCurrentVersionId(slotsData.versionId);
+        
+        // Initialize lesson name map for PDF export
+        const uniqueLessons = new Map<string, string>();
+        (slotsData.data || []).forEach((slot: TimetableSlot) => {
+          if (slot.lessonId && slot.lessonId._id && slot.lessonId.lessonName) {
+            uniqueLessons.set(slot.lessonId._id, slot.lessonId.lessonName);
+          }
+        });
+        
+        // Only update if we have lessons and the map is empty or has changed
+        const newMap: Record<string, string> = {};
+        uniqueLessons.forEach((name, id) => {
+          newMap[id] = lessonNameMap[id] || name; // Preserve existing custom names
+        });
+        setLessonNameMap(newMap);
       }
       if (versionsData.success) setVersions(versionsData.data || []);
       if (classesData.success) {
@@ -215,6 +246,110 @@ export default function TimetablePage() {
     } catch (error) {
       console.error('Error deleting version:', error);
       toast.error('Failed to delete version');
+    }
+  };
+
+  // PDF Export helper functions
+  const getUniqueLessons = (): Array<{ id: string; originalName: string; displayName: string }> => {
+    const lessonsMap = new Map<string, { originalName: string; displayName: string }>();
+    
+    slots.forEach((slot) => {
+      if (slot.lessonId && slot.lessonId._id && slot.lessonId.lessonName) {
+        const lessonId = slot.lessonId._id;
+        if (!lessonsMap.has(lessonId)) {
+          lessonsMap.set(lessonId, {
+            originalName: slot.lessonId.lessonName,
+            displayName: lessonNameMap[lessonId] || slot.lessonId.lessonName,
+          });
+        }
+      }
+    });
+
+    return Array.from(lessonsMap.entries()).map(([id, data]) => ({
+      id,
+      originalName: data.originalName,
+      displayName: data.displayName,
+    })).sort((a, b) => a.originalName.localeCompare(b.originalName));
+  };
+
+  const updateLessonDisplayName = (lessonId: string, newName: string) => {
+    setLessonNameMap(prev => ({
+      ...prev,
+      [lessonId]: newName,
+    }));
+  };
+
+  const resetLessonDisplayNames = () => {
+    const resetMap: Record<string, string> = {};
+    slots.forEach((slot) => {
+      if (slot.lessonId && slot.lessonId._id && slot.lessonId.lessonName) {
+        resetMap[slot.lessonId._id] = slot.lessonId.lessonName;
+      }
+    });
+    setLessonNameMap(resetMap);
+    toast.success('Reset all lesson names to defaults');
+  };
+
+  const handleOpenDownloadDialog = () => {
+    // Set default export entity based on current selection
+    if (exportType === 'single' || exportType === 'teacher') {
+      setExportEntityId(selectedEntity);
+    }
+    setDownloadDialogOpen(true);
+  };
+
+  const handleDownloadPDF = async () => {
+    try {
+      toast.info('Generating PDF...');
+
+      // Determine entity name and filtered slots based on export type
+      let entityName = '';
+      let filteredSlots = slots;
+      let pdfType: 'class' | 'teacher' = exportType === 'teacher' ? 'teacher' : 'class';
+
+      if (exportType === 'single') {
+        const classEntity = classes.find(c => c._id === exportEntityId);
+        entityName = classEntity?.name || 'Unknown Class';
+        filteredSlots = slots.filter(slot => slot.classId?._id === exportEntityId);
+      } else if (exportType === 'teacher') {
+        const teacherEntity = teachers.find(t => t._id === exportEntityId);
+        entityName = teacherEntity?.name || 'Unknown Teacher';
+        filteredSlots = slots.filter(slot => 
+          slot.lessonId?.teacherIds?.some((t: Teacher) => t._id === exportEntityId)
+        );
+      } else {
+        // Bulk export - we'll generate for all classes
+        toast.error('Bulk export feature coming soon!');
+        return;
+      }
+
+      const versionName = versions.find(v => v._id === currentVersionId)?.versionName || 'Current Version';
+
+      const blob = await pdf(
+        <TimetablePDF
+          type={pdfType}
+          entityName={entityName}
+          versionName={versionName}
+          slots={filteredSlots}
+          config={config!}
+          lessonNameMap={lessonNameMap}
+          schoolName="LankaSchedule Pro"
+        />
+      ).toBlob();
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Timetable_${entityName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast.success('PDF downloaded successfully!');
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      toast.error('Failed to generate PDF');
     }
   };
 
@@ -382,6 +517,15 @@ export default function TimetablePage() {
         </div>
         
         <div className="flex gap-3">
+          <Button
+            variant="outline"
+            onClick={handleOpenDownloadDialog}
+            disabled={slots.length === 0 || !config}
+            className="gap-2"
+          >
+            <Download className="h-4 w-4" />
+            Download PDF
+          </Button>
           <Button
             variant={viewMode === 'class' ? 'default' : 'outline'}
             onClick={() => {
@@ -754,6 +898,187 @@ export default function TimetablePage() {
           </Card>
         </>
       )}
+
+      {/* Download Settings Dialog */}
+      <Dialog open={downloadDialogOpen} onOpenChange={setDownloadDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Download PDF Settings</DialogTitle>
+            <DialogDescription>
+              Customize lesson names and select what to export
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6 py-4">
+            {/* Export Type Selection */}
+            <div className="space-y-3">
+              <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Export Type
+              </label>
+              <div className="grid grid-cols-3 gap-3">
+                <Button
+                  variant={exportType === 'single' ? 'default' : 'outline'}
+                  onClick={() => setExportType('single')}
+                  className="w-full"
+                >
+                  <Users className="mr-2 h-4 w-4" />
+                  Single Class
+                </Button>
+                <Button
+                  variant={exportType === 'teacher' ? 'default' : 'outline'}
+                  onClick={() => setExportType('teacher')}
+                  className="w-full"
+                >
+                  <User className="mr-2 h-4 w-4" />
+                  Teacher View
+                </Button>
+                <Button
+                  variant={exportType === 'bulk' ? 'default' : 'outline'}
+                  onClick={() => setExportType('bulk')}
+                  className="w-full"
+                  disabled
+                >
+                  <FileDown className="mr-2 h-4 w-4" />
+                  All Classes (Soon)
+                </Button>
+              </div>
+            </div>
+
+            {/* Entity Selection */}
+            {(exportType === 'single' || exportType === 'teacher') && (
+              <div className="space-y-3">
+                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  {exportType === 'single' ? 'Select Class' : 'Select Teacher'}
+                </label>
+                <Popover open={exportEntityComboOpen} onOpenChange={setExportEntityComboOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={exportEntityComboOpen}
+                      className="w-full justify-between"
+                    >
+                      {exportEntityId
+                        ? exportType === 'single'
+                          ? classes.find((c) => c._id === exportEntityId)?.name
+                          : teachers.find((t) => t._id === exportEntityId)?.name
+                        : `Select ${exportType === 'single' ? 'class' : 'teacher'}...`}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[400px] p-0">
+                    <Command>
+                      <CommandInput placeholder={`Search ${exportType === 'single' ? 'class' : 'teacher'}...`} />
+                      <CommandList>
+                        <CommandEmpty>No {exportType === 'single' ? 'class' : 'teacher'} found.</CommandEmpty>
+                        <CommandGroup>
+                          {(exportType === 'single' ? classes : teachers).map((entity) => (
+                            <CommandItem
+                              key={entity._id}
+                              value={entity.name}
+                              onSelect={() => {
+                                setExportEntityId(entity._id);
+                                setExportEntityComboOpen(false);
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  exportEntityId === entity._id ? "opacity-100" : "opacity-0"
+                                )}
+                              />
+                              {entity.name}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              </div>
+            )}
+
+            {/* Lesson Name Mapping */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  Customize Lesson Names (for PDF only)
+                </label>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={resetLessonDisplayNames}
+                  className="text-xs"
+                >
+                  <RotateCcw className="mr-1 h-3 w-3" />
+                  Reset All
+                </Button>
+              </div>
+              <div className="grid grid-cols-2 gap-3 max-h-60 overflow-y-auto border border-zinc-200 dark:border-zinc-800 rounded-md p-3">
+                {getUniqueLessons().map((lesson) => (
+                  <div key={lesson.id} className="space-y-1">
+                    <label className="text-xs text-zinc-500 dark:text-zinc-400">
+                      Original: {lesson.originalName}
+                    </label>
+                    <Input
+                      value={lesson.displayName}
+                      onChange={(e) => updateLessonDisplayName(lesson.id, e.target.value)}
+                      placeholder="Display name..."
+                      className="h-9 text-sm"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* PDF Preview */}
+            {exportEntityId && config && (
+              <div className="space-y-3">
+                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  PDF Preview
+                </label>
+                <div className="border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-hidden">
+                  <PDFViewer width="100%" height="500px">
+                    <TimetablePDF
+                      type={exportType === 'teacher' ? 'teacher' : 'class'}
+                      entityName={
+                        exportType === 'single'
+                          ? classes.find(c => c._id === exportEntityId)?.name || 'Unknown'
+                          : teachers.find(t => t._id === exportEntityId)?.name || 'Unknown'
+                      }
+                      versionName={versions.find(v => v._id === currentVersionId)?.versionName || 'Current Version'}
+                      slots={
+                        exportType === 'single'
+                          ? slots.filter(slot => slot.classId?._id === exportEntityId)
+                          : slots.filter(slot => 
+                              slot.lessonId?.teacherIds?.some((t: Teacher) => t._id === exportEntityId)
+                            )
+                      }
+                      config={config}
+                      lessonNameMap={lessonNameMap}
+                      schoolName="LankaSchedule Pro"
+                    />
+                  </PDFViewer>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDownloadDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleDownloadPDF}
+              disabled={!exportEntityId || !config}
+              className="gap-2"
+            >
+              <Download className="h-4 w-4" />
+              Download PDF
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -22,7 +22,6 @@ export default function LoginPage() {
   
   // Staff credentials
   const [staffIdentifier, setStaffIdentifier] = useState('');
-  const [staffPassword, setStaffPassword] = useState('');
   
   const [isLoading, setIsLoading] = useState(false);
   
@@ -62,12 +61,11 @@ export default function LoginPage() {
     try {
       const result = await signIn('staff-credentials', {
         identifier: staffIdentifier,
-        password: staffPassword,
         redirect: false,
       });
 
       if (result?.error) {
-        toast.error('Invalid staff credentials');
+        toast.error('No teacher found with that email or phone');
         setIsLoading(false);
         return;
       }
@@ -225,22 +223,6 @@ export default function LoginPage() {
                     />
                   </div>
 
-                  <div className="space-y-2">
-                    <label htmlFor="staffPassword" className="text-sm font-bold text-black dark:text-white">
-                      Password
-                    </label>
-                    <Input
-                      id="staffPassword"
-                      type="password"
-                      placeholder="Enter your password"
-                      value={staffPassword}
-                      onChange={(e) => setStaffPassword(e.target.value)}
-                      required
-                      disabled={isLoading}
-                      className="border-2 border-black dark:border-white focus:ring-0 focus:border-black dark:focus:border-white rounded-none h-11 bg-white dark:bg-black"
-                    />
-                  </div>
-
                   <Button
                     type="submit"
                     disabled={isLoading}
@@ -249,10 +231,10 @@ export default function LoginPage() {
                     {isLoading ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Signing In...
+                        Accessing...
                       </>
                     ) : (
-                      'Sign In as Teacher'
+                      'Access Staff Portal'
                     )}
                   </Button>
                 </form>

@@ -3,7 +3,6 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import dbConnect from '@/lib/dbConnect';
 import UserModel from '@/models/User';
 import Teacher from '@/models/Teacher';
-import bcrypt from 'bcryptjs';
 
 // Extend the built-in session types
 declare module 'next-auth' {
@@ -86,11 +85,10 @@ const authOptions: NextAuthOptions = {
       name: 'Staff Access',
       credentials: {
         identifier: { label: 'Email or Phone', type: 'text' },
-        password: { label: 'Password', type: 'password' },
       },
       async authorize(credentials) {
-        if (!credentials?.identifier || !credentials?.password) {
-          throw new Error('Identifier and password required');
+        if (!credentials?.identifier) {
+          throw new Error('Email or phone number required');
         }
 
         try {
@@ -106,16 +104,7 @@ const authOptions: NextAuthOptions = {
           const teacher = await Teacher.findOne(query);
           
           if (!teacher) {
-            throw new Error('Invalid credentials');
-          }
-
-          // For teachers, we'll use a simple password field (you'll need to add this to the Teacher model)
-          // For now, we'll use bcrypt to compare directly
-          // Note: You should add a password field to Teacher model similar to User model
-          const isPasswordValid = await bcrypt.compare(credentials.password, teacher.password || '');
-          
-          if (!isPasswordValid) {
-            throw new Error('Invalid credentials');
+            throw new Error('No teacher found with that email or phone');
           }
 
           return {

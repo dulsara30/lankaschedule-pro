@@ -342,7 +342,7 @@ export default function LessonsPage() {
                 Create Lesson
               </Button>
             </DialogTrigger>
-            <DialogContent className="w-[90vw] max-w-6xl max-h-[92vh] overflow-y-auto">
+            <DialogContent className="w-[95vw] max-w-[1600px] max-h-[92vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle className="text-2xl font-bold">
                   {editingLesson ? 'Edit Lesson' : 'Create New Lesson'}
@@ -376,21 +376,21 @@ export default function LessonsPage() {
                 </div>
 
                 {/* Row 2: 3-Column Professional Grid (Classes | Subjects | Teachers) */}
-                <div className="grid grid-cols-3 gap-8">
+                <div className="grid grid-cols-3 gap-12">
                   {/* Column 1: Classes Selection */}
                   <div className="flex flex-col">
-                    <label className="mb-3 block text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                    <label className="mb-3 block text-base font-bold text-zinc-700 dark:text-zinc-300">
                       📚 Select Classes
                     </label>
-                    <Card className="p-4 h-[380px] flex flex-col border-2">
+                    <Card className="p-5 h-[480px] flex flex-col border-2">
                       <div className="flex-1 overflow-y-auto space-y-2">
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-2 gap-3">
                           {classes.map((classItem) => (
                             <button
                               key={classItem._id}
                               type="button"
                               onClick={() => toggleClass(classItem._id)}
-                              className={`rounded-lg border-2 px-3 py-2.5 text-sm font-semibold transition-all hover:scale-105 ${
+                              className={`rounded-lg border-2 px-4 py-3.5 text-base font-semibold transition-all hover:scale-105 ${
                                 selectedClasses.includes(classItem._id)
                                   ? 'border-blue-600 bg-blue-50 text-blue-900 shadow-lg dark:bg-blue-900 dark:text-blue-50'
                                   : 'border-zinc-300 bg-white hover:border-blue-400 hover:bg-blue-50/50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-blue-700'
@@ -425,17 +425,17 @@ export default function LessonsPage() {
 
                   {/* Column 2: Subjects Selection */}
                   <div className="flex flex-col">
-                    <label className="mb-3 block text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                    <label className="mb-3 block text-base font-bold text-zinc-700 dark:text-zinc-300">
                       🎨 Select Subjects
                     </label>
-                    <Card className="p-4 h-[380px] flex flex-col border-2">
+                    <Card className="p-5 h-[480px] flex flex-col border-2">
                       <div className="mb-3">
                         <Input
                           type="text"
                           placeholder="🔍 Search subjects..."
                           value={subjectSearchTerm}
                           onChange={(e) => setSubjectSearchTerm(e.target.value)}
-                          className="h-9"
+                          className="h-10 text-base"
                         />
                       </div>
                       <div className="flex-1 overflow-y-auto space-y-2">
@@ -448,14 +448,14 @@ export default function LessonsPage() {
                             key={subject._id}
                             type="button"
                             onClick={() => toggleSubject(subject._id)}
-                            className={`w-full flex items-center gap-3 rounded-lg border-2 px-3 py-2.5 text-sm font-semibold transition-all text-left hover:scale-102 ${
+                            className={`w-full flex items-center gap-3 rounded-lg border-2 px-4 py-3.5 text-base font-semibold transition-all text-left hover:scale-102 ${
                               selectedSubjects.includes(subject._id)
                                 ? 'border-blue-600 bg-blue-50 text-blue-900 shadow-lg dark:bg-blue-900 dark:text-blue-50'
                                 : 'border-zinc-300 bg-white hover:border-blue-400 hover:bg-blue-50/50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-blue-700'
                             }`}
                           >
                             <div 
-                              className="h-5 w-5 rounded-full flex-shrink-0 border-2 border-white shadow-sm" 
+                              className="h-6 w-6 rounded-full flex-shrink-0 border-2 border-white shadow-sm" 
                               style={{ backgroundColor: subject.color }}
                             />
                             <span className="truncate flex-1">{subject.name}</span>
@@ -494,17 +494,17 @@ export default function LessonsPage() {
 
                   {/* Column 3: Teachers Selection */}
                   <div className="flex flex-col">
-                    <label className="mb-3 block text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                    <label className="mb-3 block text-base font-bold text-zinc-700 dark:text-zinc-300">
                       👨‍🏫 Select Teachers
                     </label>
-                    <Card className="p-4 h-[380px] flex flex-col border-2">
+                    <Card className="p-5 h-[480px] flex flex-col border-2">
                       <div className="mb-3">
                         <Input
                           type="text"
                           placeholder="🔍 Search teachers..."
                           value={teacherSearchTerm}
                           onChange={(e) => setTeacherSearchTerm(e.target.value)}
-                          className="h-9"
+                          className="h-10 text-base"
                         />
                       </div>
                       <div className="flex-1 overflow-y-auto space-y-2">
@@ -517,14 +517,14 @@ export default function LessonsPage() {
                             key={teacher._id}
                             type="button"
                             onClick={() => toggleTeacher(teacher._id)}
-                            className={`w-full rounded-lg border-2 px-3 py-2.5 text-sm font-semibold transition-all text-left hover:scale-102 ${
+                            className={`w-full rounded-lg border-2 px-4 py-3.5 text-base font-semibold transition-all text-left hover:scale-102 ${
                               selectedTeachers.includes(teacher._id)
                                 ? 'border-blue-600 bg-blue-50 text-blue-900 shadow-lg dark:bg-blue-900 dark:text-blue-50'
                                 : 'border-zinc-300 bg-white hover:border-blue-400 hover:bg-blue-50/50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-blue-700'
                             }`}
                           >
                             <div className="truncate">{teacher.name}</div>
-                            <div className="text-xs text-zinc-500 dark:text-zinc-400 truncate">{teacher.email}</div>
+                            <div className="text-sm text-zinc-500 dark:text-zinc-400 truncate">{teacher.email}</div>
                           </button>
                         ))}
                       </div>
@@ -552,9 +552,9 @@ export default function LessonsPage() {
                 </div>
 
                 {/* Row 3: Period Configuration (Horizontal) */}
-                <div className="grid grid-cols-3 gap-8">
+                <div className="grid grid-cols-3 gap-12">
                   <div>
-                    <label htmlFor="numberOfSingles" className="mb-2 block text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                    <label htmlFor="numberOfSingles" className="mb-2 block text-base font-bold text-zinc-700 dark:text-zinc-300">
                       ⏱️ Single Periods/Week
                     </label>
                     <Input
@@ -568,7 +568,7 @@ export default function LessonsPage() {
                     />
                   </div>
                   <div>
-                    <label htmlFor="numberOfDoubles" className="mb-2 block text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                    <label htmlFor="numberOfDoubles" className="mb-2 block text-base font-bold text-zinc-700 dark:text-zinc-300">
                       ⏰ Double Periods/Week
                     </label>
                     <Input
@@ -582,7 +582,7 @@ export default function LessonsPage() {
                     />
                   </div>
                   <div>
-                    <label className="mb-2 block text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                    <label className="mb-2 block text-base font-bold text-zinc-700 dark:text-zinc-300">
                       📈 Total Periods
                     </label>
                     <div className={`h-12 rounded-lg px-4 flex items-center justify-center gap-2 border-2 transition-colors ${
@@ -604,7 +604,7 @@ export default function LessonsPage() {
 
                 {/* Row 4: Notes */}
                 <div>
-                  <label htmlFor="notes" className="mb-2 block text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                  <label htmlFor="notes" className="mb-2 block text-base font-bold text-zinc-700 dark:text-zinc-300">
                     📝 Notes (Optional)
                   </label>
                   <textarea
@@ -620,7 +620,7 @@ export default function LessonsPage() {
                 {/* Row 5: Rainbow Gradient Preview */}
                 {selectedSubjects.length > 0 && (
                   <div>
-                    <label className="mb-2 block text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                    <label className="mb-2 block text-base font-bold text-zinc-700 dark:text-zinc-300">
                       🌈 Lesson Preview
                     </label>
                     <div className="relative h-16 rounded-lg overflow-hidden border-2 border-zinc-200 dark:border-zinc-800 shadow-sm">

@@ -1,123 +1,116 @@
 import React from 'react';
 import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
 
-// Pure black and white styles - professional and clean
+// Professional black and white styles for traditional timetable
 const styles = StyleSheet.create({
   page: {
     flexDirection: 'column',
     backgroundColor: '#FFFFFF',
-    padding: 30,
+    padding: 40,
     fontFamily: 'Helvetica',
   },
   header: {
-    marginBottom: 20,
-    borderBottom: '1pt solid #000000',
-    paddingBottom: 10,
+    marginBottom: 25,
+    alignItems: 'center',
+    borderBottom: '2pt solid #000000',
+    paddingBottom: 15,
   },
   schoolName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 5,
-    color: '#000000',
-  },
-  entityName: {
-    fontSize: 14,
+    fontSize: 24,
     fontWeight: 'bold',
     marginBottom: 3,
     color: '#000000',
+    textAlign: 'center',
+  },
+  schoolAddress: {
+    fontSize: 8,
+    color: '#666666',
+    marginBottom: 8,
+    textAlign: 'center',
   },
   versionName: {
-    fontSize: 10,
+    fontSize: 9,
     color: '#000000',
-    marginBottom: 3,
+    marginBottom: 8,
+    textAlign: 'center',
   },
-  generatedDate: {
-    fontSize: 8,
+  mainTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
     color: '#000000',
+    textAlign: 'center',
+    marginTop: 5,
   },
   table: {
     display: 'flex',
     width: 'auto',
     borderStyle: 'solid',
-    borderWidth: 0.5,
+    borderWidth: 1,
     borderColor: '#000000',
-    marginTop: 10,
+    marginTop: 15,
   },
   tableRow: {
     flexDirection: 'row',
-    borderBottomWidth: 0.5,
+    borderBottomWidth: 1,
     borderBottomColor: '#000000',
     borderBottomStyle: 'solid',
-    minHeight: 25,
+    minHeight: 28,
   },
   tableRowLast: {
     flexDirection: 'row',
-    minHeight: 25,
+    minHeight: 28,
   },
   tableColHeader: {
     width: '12%',
-    borderRightWidth: 0.5,
+    borderRightWidth: 1,
     borderRightColor: '#000000',
     borderRightStyle: 'solid',
-    backgroundColor: '#F5F5F5',
-    padding: 5,
+    backgroundColor: '#E8E8E8',
+    padding: 6,
     justifyContent: 'center',
     alignItems: 'center',
   },
   tableColHeaderLast: {
     width: '12%',
-    backgroundColor: '#F5F5F5',
-    padding: 5,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  tableCol: {
-    width: '12%',
-    borderRightWidth: 0.5,
-    borderRightColor: '#000000',
-    borderRightStyle: 'solid',
-    padding: 5,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  tableColLast: {
-    width: '12%',
-    padding: 5,
+    backgroundColor: '#E8E8E8',
+    padding: 6,
     justifyContent: 'center',
     alignItems: 'center',
   },
   periodCol: {
     width: '8%',
-    borderRightWidth: 0.5,
+    borderRightWidth: 1,
     borderRightColor: '#000000',
     borderRightStyle: 'solid',
-    backgroundColor: '#F5F5F5',
-    padding: 5,
+    backgroundColor: '#E8E8E8',
+    padding: 6,
     justifyContent: 'center',
     alignItems: 'center',
   },
   timeCol: {
     width: '12%',
-    borderRightWidth: 0.5,
+    borderRightWidth: 1,
     borderRightColor: '#000000',
     borderRightStyle: 'solid',
-    backgroundColor: '#F5F5F5',
-    padding: 5,
+    backgroundColor: '#E8E8E8',
+    padding: 6,
     justifyContent: 'center',
     alignItems: 'center',
   },
   dayCol: {
     width: '16%',
-    borderRightWidth: 0.5,
+    borderRightWidth: 1,
     borderRightColor: '#000000',
     borderRightStyle: 'solid',
-    padding: 5,
+    padding: 6,
     justifyContent: 'center',
+    minHeight: 28,
   },
   dayColLast: {
     width: '16%',
-    padding: 5,
+    padding: 6,
     justifyContent: 'center',
+    minHeight: 28,
   },
   headerText: {
     fontSize: 10,
@@ -136,7 +129,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   doublePeriodCell: {
-    padding: 8,
+    padding: 10,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -145,14 +138,20 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#000000',
     textAlign: 'center',
+    marginBottom: 2,
+  },
+  doublePeriodLabel: {
+    fontSize: 7,
+    color: '#666666',
+    textAlign: 'center',
   },
   intervalRow: {
     flexDirection: 'row',
-    borderBottomWidth: 0.5,
+    borderBottomWidth: 1,
     borderBottomColor: '#000000',
     borderBottomStyle: 'solid',
-    minHeight: 20,
-    backgroundColor: '#F5F5F5',
+    minHeight: 22,
+    backgroundColor: '#E8E8E8',
   },
   intervalCell: {
     width: '100%',
@@ -165,6 +164,19 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#000000',
     textAlign: 'center',
+  },
+  footer: {
+    position: 'absolute',
+    bottom: 20,
+    left: 40,
+    right: 40,
+    textAlign: 'center',
+    borderTop: '1pt solid #CCCCCC',
+    paddingTop: 8,
+  },
+  footerText: {
+    fontSize: 7,
+    color: '#666666',
   },
 });
 
@@ -210,27 +222,40 @@ interface SchoolConfig {
   intervalSlots: Array<{ afterPeriod: number; duration: number }>;
 }
 
+interface TimetableEntity {
+  id: string;
+  name: string;
+}
+
 interface TimetablePDFProps {
   type: 'class' | 'teacher';
-  entityName: string;
+  entities: TimetableEntity[]; // Support for bulk export
   versionName: string;
   slots: TimetableSlot[];
   config: SchoolConfig;
   lessonNameMap: Record<string, string>;
   schoolName?: string;
+  schoolAddress?: string;
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
 const TimetablePDF: React.FC<TimetablePDFProps> = ({
   type,
-  entityName,
+  entities,
   versionName,
   slots,
   config,
   lessonNameMap,
   schoolName = 'LankaSchedule Pro',
+  schoolAddress = '',
 }) => {
+  const currentDate = new Date().toLocaleDateString('en-US', { 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric' 
+  });
+
   // Calculate time for a given period
   const calculateTime = (periodNumber: number): string => {
     const [hours, minutes] = config.startTime.split(':').map(Number);
@@ -259,7 +284,6 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
                 slot.classId?._id === entityId
       );
     } else {
-      // For teacher view, find slots where this teacher is assigned
       return slots.find(
         slot => slot.day === day && 
                 slot.periodNumber === period &&
@@ -275,20 +299,13 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
     const lessonName = lessonNameMap[slot.lessonId._id] || slot.lessonId.lessonName;
     
     if (type === 'teacher' && slot.classId) {
-      // For teacher view, show "LessonName - ClassName"
       return `${lessonName} - ${slot.classId.name}`;
     }
     
-    // For class view, show only lesson name
     return lessonName;
   };
 
-  // Check if period has an interval after it
-  const hasIntervalAfter = (period: number): boolean => {
-    return config.intervalSlots.some(slot => slot.afterPeriod === period);
-  };
-
-  // Get interval duration and time
+  // Get interval info
   const getIntervalInfo = (period: number): { duration: number; startTime: string } | null => {
     const interval = config.intervalSlots.find(slot => slot.afterPeriod === period);
     if (!interval) return null;
@@ -300,31 +317,27 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
     };
   };
 
-  // For bulk export, we need the entity ID - extract from first matching slot
-  const entityId = type === 'class' 
-    ? slots.find(s => s.classId)?.classId._id || ''
-    : slots.find(s => s.lessonId?.teacherIds?.length)?.lessonId.teacherIds[0]._id || '';
+  // Render a single timetable page for an entity
+  const renderTimetablePage = (entity: TimetableEntity) => {
+    const hasIntervalAfter = (period: number): boolean => {
+      return config.intervalSlots.some(slot => slot.afterPeriod === period);
+    };
 
-  return (
-    <Document>
-      <Page size="A4" orientation="landscape" style={styles.page}>
-        {/* Header */}
+    return (
+      <Page key={entity.id} size="A4" orientation="landscape" style={styles.page}>
+        {/* Enhanced Header */}
         <View style={styles.header}>
           <Text style={styles.schoolName}>{schoolName}</Text>
-          <Text style={styles.entityName}>
-            {type === 'class' ? `Class: ${entityName}` : `Teacher: ${entityName}`}
-          </Text>
-          <Text style={styles.versionName}>Version: {versionName}</Text>
-          <Text style={styles.generatedDate}>
-            Generated on: {new Date().toLocaleDateString('en-US', { 
-              year: 'numeric', 
-              month: 'long', 
-              day: 'numeric' 
-            })}
+          {schoolAddress && (
+            <Text style={styles.schoolAddress}>{schoolAddress}</Text>
+          )}
+          <Text style={styles.versionName}>Timetable Version: {versionName}</Text>
+          <Text style={styles.mainTitle}>
+            {type === 'class' ? entity.name : `${entity.name} - Schedule`}
           </Text>
         </View>
 
-        {/* Timetable */}
+        {/* Timetable Grid */}
         <View style={styles.table}>
           {/* Header Row */}
           <View style={styles.tableRow}>
@@ -335,7 +348,7 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
               <Text style={styles.headerText}>Time</Text>
             </View>
             {DAYS.map((day, index) => (
-              <View key={day} style={index === DAYS.length - 1 ? styles.dayColLast : styles.dayCol}>
+              <View key={day} style={index === DAYS.length - 1 ? styles.tableColHeaderLast : styles.tableColHeader}>
                 <Text style={styles.headerText}>{day}</Text>
               </View>
             ))}
@@ -344,11 +357,12 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
           {/* Period Rows */}
           {Array.from({ length: config.numberOfPeriods }, (_, i) => i + 1).map((period) => {
             const intervalInfo = hasIntervalAfter(period) ? getIntervalInfo(period) : null;
+            const isLastPeriod = period === config.numberOfPeriods && !intervalInfo;
             
             return (
               <React.Fragment key={`period-${period}`}>
                 {/* Period Row */}
-                <View style={intervalInfo ? styles.tableRow : styles.tableRowLast}>
+                <View style={isLastPeriod ? styles.tableRowLast : styles.tableRow}>
                   <View style={styles.periodCol}>
                     <Text style={styles.cellText}>{period}</Text>
                   </View>
@@ -358,11 +372,10 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
                     </Text>
                   </View>
                   {DAYS.map((day, dayIndex) => {
-                    const slot = getSlotForPeriod(day, period, entityId);
+                    const slot = getSlotForPeriod(day, period, entity.id);
                     const isDoubleStart = slot?.isDoubleStart || false;
                     const isDoubleEnd = slot?.isDoubleEnd || false;
 
-                    // Skip rendering if this is the END of a double period
                     if (isDoubleEnd) {
                       return null;
                     }
@@ -377,7 +390,7 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
                         {isDoubleStart ? (
                           <View style={styles.doublePeriodCell}>
                             <Text style={styles.doublePeriodText}>{displayText}</Text>
-                            <Text style={styles.cellTextSmall}>(Double Period)</Text>
+                            <Text style={styles.doublePeriodLabel}>(Double Period)</Text>
                           </View>
                         ) : (
                           <Text style={styles.cellText}>{displayText}</Text>
@@ -392,7 +405,7 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
                   <View style={styles.intervalRow}>
                     <View style={styles.intervalCell}>
                       <Text style={styles.intervalText}>
-                        INTERVAL - {intervalInfo.duration} minutes (from {intervalInfo.startTime})
+                        INTERVAL — {intervalInfo.duration} minutes (from {intervalInfo.startTime})
                       </Text>
                     </View>
                   </View>
@@ -401,7 +414,20 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
             );
           })}
         </View>
+
+        {/* Footer */}
+        <View style={styles.footer} fixed>
+          <Text style={styles.footerText}>
+            Generated with LankaSchedule Pro — {currentDate}
+          </Text>
+        </View>
       </Page>
+    );
+  };
+
+  return (
+    <Document>
+      {entities.map(entity => renderTimetablePage(entity))}
     </Document>
   );
 };

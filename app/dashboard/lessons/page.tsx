@@ -342,7 +342,7 @@ export default function LessonsPage() {
                 Create Lesson
               </Button>
             </DialogTrigger>
-            <DialogContent className="w-[95vw] max-w-[1400px] max-h-[90vh] overflow-y-auto">
+            <DialogContent className="w-[98vw] max-w-none max-h-[95vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle className="text-xl font-bold">
                   {editingLesson ? 'Edit Lesson' : 'Create New Lesson'}
@@ -352,145 +352,116 @@ export default function LessonsPage() {
                 </DialogDescription>
               </DialogHeader>
               
-              <form onSubmit={handleSubmit} className="space-y-6 mt-6">
-                {/* Row 1: Three Large Selection Cards */}
+              <form onSubmit={handleSubmit} className="space-y-6 mt-4">
+                {/* Row 1: Three Selection Columns Side-by-Side */}
                 <div className="grid grid-cols-3 gap-6">
-                  {/* Classes Card */}
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Card className="h-[140px] flex flex-col items-center justify-center cursor-pointer hover:shadow-lg transition-all border-2 hover:border-blue-500 bg-gradient-to-br from-blue-50 to-white dark:from-blue-950 dark:to-zinc-900">
-                        <CardContent className="flex flex-col items-center justify-center p-6 w-full">
-                          <div className="text-5xl mb-3">📚</div>
-                          <h3 className="text-lg font-bold text-zinc-800 dark:text-zinc-200">Select Classes</h3>
-                          {selectedClasses.length > 0 && (
-                            <p className="text-sm text-blue-600 font-semibold mt-2">{selectedClasses.length} selected</p>
-                          )}
-                        </CardContent>
-                      </Card>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-2xl">
-                      <DialogHeader>
-                        <DialogTitle>Select Classes</DialogTitle>
-                      </DialogHeader>
-                      <div className="grid grid-cols-3 gap-3 max-h-[400px] overflow-y-auto p-4">
-                        {classes.map((classItem) => (
-                          <button
-                            key={classItem._id}
-                            type="button"
-                            onClick={() => toggleClass(classItem._id)}
-                            className={`rounded-lg border-2 px-4 py-3 text-sm font-semibold transition-all ${
-                              selectedClasses.includes(classItem._id)
-                                ? 'border-blue-600 bg-blue-50 text-blue-900 dark:bg-blue-900 dark:text-blue-50'
-                                : 'border-zinc-300 bg-white hover:border-blue-400 dark:border-zinc-700 dark:bg-zinc-900'
-                            }`}
-                          >
-                            {classItem.name}
-                          </button>
-                        ))}
-                      </div>
-                    </DialogContent>
-                  </Dialog>
+                  {/* Classes Column */}
+                  <div>
+                    <div className="bg-zinc-100 dark:bg-zinc-800 px-4 py-3 rounded-t-lg border-b-2 border-zinc-300 dark:border-zinc-600">
+                      <h3 className="font-bold text-sm">Select Classes</h3>
+                    </div>
+                    <Card className="rounded-t-none border-t-0">
+                      <CardContent className="p-4">
+                        <div className="grid grid-cols-3 gap-2 max-h-[280px] overflow-y-auto">
+                          {classes.map((classItem) => (
+                            <button
+                              key={classItem._id}
+                              type="button"
+                              onClick={() => toggleClass(classItem._id)}
+                              className={`rounded-md border-2 px-3 py-2 text-sm font-semibold transition-all ${
+                                selectedClasses.includes(classItem._id)
+                                  ? 'border-blue-600 bg-blue-50 text-blue-900 dark:bg-blue-900 dark:text-blue-50'
+                                  : 'border-zinc-300 bg-white hover:border-blue-400 dark:border-zinc-700 dark:bg-zinc-900'
+                              }`}
+                            >
+                              {classItem.name}
+                            </button>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
 
-                  {/* Subjects Card */}
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Card className="h-[140px] flex flex-col items-center justify-center cursor-pointer hover:shadow-lg transition-all border-2 hover:border-pink-500 bg-gradient-to-br from-pink-50 to-white dark:from-pink-950 dark:to-zinc-900">
-                        <CardContent className="flex flex-col items-center justify-center p-6 w-full">
-                          <div className="text-5xl mb-3">🎨</div>
-                          <h3 className="text-lg font-bold text-zinc-800 dark:text-zinc-200">Select Subjects</h3>
-                          {selectedSubjects.length > 0 && (
-                            <p className="text-sm text-pink-600 font-semibold mt-2">{selectedSubjects.length} selected</p>
-                          )}
-                        </CardContent>
-                      </Card>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-2xl">
-                      <DialogHeader>
-                        <DialogTitle>Select Subjects</DialogTitle>
-                      </DialogHeader>
-                      <div className="mb-3">
+                  {/* Subjects Column */}
+                  <div>
+                    <div className="bg-zinc-100 dark:bg-zinc-800 px-4 py-3 rounded-t-lg border-b-2 border-zinc-300 dark:border-zinc-600">
+                      <h3 className="font-bold text-sm">Select Subjects</h3>
+                    </div>
+                    <Card className="rounded-t-none border-t-0">
+                      <CardContent className="p-4">
                         <Input
                           type="text"
-                          placeholder="🔍 Search subjects..."
+                          placeholder="🔍 Search..."
                           value={subjectSearchTerm}
                           onChange={(e) => setSubjectSearchTerm(e.target.value)}
+                          className="mb-3 h-9"
                         />
-                      </div>
-                      <div className="space-y-2 max-h-[400px] overflow-y-auto p-4">
-                        {subjects
-                          .filter(subject => 
-                            subject.name.toLowerCase().includes(subjectSearchTerm.toLowerCase())
-                          )
-                          .map((subject) => (
-                          <button
-                            key={subject._id}
-                            type="button"
-                            onClick={() => toggleSubject(subject._id)}
-                            className={`w-full flex items-center gap-3 rounded-lg border-2 px-4 py-3 text-sm font-semibold transition-all text-left ${
-                              selectedSubjects.includes(subject._id)
-                                ? 'border-blue-600 bg-blue-50 text-blue-900 dark:bg-blue-900 dark:text-blue-50'
-                                : 'border-zinc-300 bg-white hover:border-blue-400 dark:border-zinc-700 dark:bg-zinc-900'
-                            }`}
-                          >
-                            <div 
-                              className="h-5 w-5 rounded-full flex-shrink-0 border-2 border-white shadow-sm" 
-                              style={{ backgroundColor: subject.color }}
-                            />
-                            <span className="truncate flex-1">{subject.name}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </DialogContent>
-                  </Dialog>
+                        <div className="space-y-2 max-h-[240px] overflow-y-auto">
+                          {subjects
+                            .filter(subject => 
+                              subject.name.toLowerCase().includes(subjectSearchTerm.toLowerCase())
+                            )
+                            .map((subject) => (
+                            <button
+                              key={subject._id}
+                              type="button"
+                              onClick={() => toggleSubject(subject._id)}
+                              className={`w-full flex items-center gap-2 rounded-md border-2 px-3 py-2 text-sm font-semibold transition-all text-left ${
+                                selectedSubjects.includes(subject._id)
+                                  ? 'border-blue-600 bg-blue-50 text-blue-900 dark:bg-blue-900 dark:text-blue-50'
+                                  : 'border-zinc-300 bg-white hover:border-blue-400 dark:border-zinc-700 dark:bg-zinc-900'
+                              }`}
+                            >
+                              <div 
+                                className="h-4 w-4 rounded-full flex-shrink-0 border border-white shadow-sm" 
+                                style={{ backgroundColor: subject.color }}
+                              />
+                              <span className="truncate flex-1 text-xs">{subject.name}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
 
-                  {/* Teachers Card */}
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Card className="h-[140px] flex flex-col items-center justify-center cursor-pointer hover:shadow-lg transition-all border-2 hover:border-purple-500 bg-gradient-to-br from-purple-50 to-white dark:from-purple-950 dark:to-zinc-900">
-                        <CardContent className="flex flex-col items-center justify-center p-6 w-full">
-                          <div className="text-5xl mb-3">👨‍🏫</div>
-                          <h3 className="text-lg font-bold text-zinc-800 dark:text-zinc-200">Select Teachers</h3>
-                          {selectedTeachers.length > 0 && (
-                            <p className="text-sm text-purple-600 font-semibold mt-2">{selectedTeachers.length} selected</p>
-                          )}
-                        </CardContent>
-                      </Card>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-2xl">
-                      <DialogHeader>
-                        <DialogTitle>Select Teachers</DialogTitle>
-                      </DialogHeader>
-                      <div className="mb-3">
+                  {/* Teachers Column */}
+                  <div>
+                    <div className="bg-zinc-100 dark:bg-zinc-800 px-4 py-3 rounded-t-lg border-b-2 border-zinc-300 dark:border-zinc-600">
+                      <h3 className="font-bold text-sm">Select Teachers</h3>
+                    </div>
+                    <Card className="rounded-t-none border-t-0">
+                      <CardContent className="p-4">
                         <Input
                           type="text"
-                          placeholder="🔍 Search teachers..."
+                          placeholder="🔍 Search..."
                           value={teacherSearchTerm}
                           onChange={(e) => setTeacherSearchTerm(e.target.value)}
+                          className="mb-3 h-9"
                         />
-                      </div>
-                      <div className="space-y-2 max-h-[400px] overflow-y-auto p-4">
-                        {teachers
-                          .filter(teacher => 
-                            teacher.name.toLowerCase().includes(teacherSearchTerm.toLowerCase())
-                          )
-                          .map((teacher) => (
-                          <button
-                            key={teacher._id}
-                            type="button"
-                            onClick={() => toggleTeacher(teacher._id)}
-                            className={`w-full rounded-lg border-2 px-4 py-3 text-sm font-semibold transition-all text-left ${
-                              selectedTeachers.includes(teacher._id)
-                                ? 'border-blue-600 bg-blue-50 text-blue-900 dark:bg-blue-900 dark:text-blue-50'
-                                : 'border-zinc-300 bg-white hover:border-blue-400 dark:border-zinc-700 dark:bg-zinc-900'
-                            }`}
-                          >
-                            <div className="truncate">{teacher.name}</div>
-                            <div className="text-xs text-zinc-500 dark:text-zinc-400 truncate">{teacher.email}</div>
-                          </button>
-                        ))}
-                      </div>
-                    </DialogContent>
-                  </Dialog>
+                        <div className="space-y-2 max-h-[240px] overflow-y-auto">
+                          {teachers
+                            .filter(teacher => 
+                              teacher.name.toLowerCase().includes(teacherSearchTerm.toLowerCase())
+                            )
+                            .map((teacher) => (
+                            <button
+                              key={teacher._id}
+                              type="button"
+                              onClick={() => toggleTeacher(teacher._id)}
+                              className={`w-full rounded-md border-2 px-3 py-2 text-sm font-semibold transition-all text-left ${
+                                selectedTeachers.includes(teacher._id)
+                                  ? 'border-blue-600 bg-blue-50 text-blue-900 dark:bg-blue-900 dark:text-blue-50'
+                                  : 'border-zinc-300 bg-white hover:border-blue-400 dark:border-zinc-700 dark:bg-zinc-900'
+                              }`}
+                            >
+                              <div className="truncate text-xs">{teacher.name}</div>
+                              <div className="text-[10px] text-zinc-500 dark:text-zinc-400 truncate">{teacher.email}</div>
+                            </button>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
                 </div>
 
                 {/* Row 2: Lesson Name */}
@@ -504,14 +475,14 @@ export default function LessonsPage() {
                     onChange={(e) => setFormData({ ...formData, lessonName: e.target.value })}
                     placeholder="e.g., Grade 6 Aesthetic Block, 10-Science Combined"
                     required={selectedSubjects.length !== 1}
-                    className="text-base h-11"
+                    className="h-10"
                   />
                 </div>
 
-                {/* Row 3: Periods Row */}
+                {/* Row 3: Periods */}
                 <div className="grid grid-cols-4 gap-4">
                   <div>
-                    <label htmlFor="numberOfSingles" className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                    <label htmlFor="numberOfSingles" className="mb-2 block text-xs font-medium text-zinc-700 dark:text-zinc-300">
                       ⏱️ Single Periods/Week
                     </label>
                     <Input
@@ -521,11 +492,11 @@ export default function LessonsPage() {
                       max="35"
                       value={formData.numberOfSingles}
                       onChange={(e) => setFormData({ ...formData, numberOfSingles: parseInt(e.target.value) || 0 })}
-                      className="text-base h-11"
+                      className="h-10"
                     />
                   </div>
                   <div>
-                    <label htmlFor="numberOfDoubles" className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                    <label htmlFor="numberOfDoubles" className="mb-2 block text-xs font-medium text-zinc-700 dark:text-zinc-300">
                       ⏰ Double Periods/Week
                     </label>
                     <Input
@@ -535,14 +506,14 @@ export default function LessonsPage() {
                       max="17"
                       value={formData.numberOfDoubles}
                       onChange={(e) => setFormData({ ...formData, numberOfDoubles: parseInt(e.target.value) || 0 })}
-                      className="text-base h-11"
+                      className="h-10"
                     />
                   </div>
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                    <label className="mb-2 block text-xs font-medium text-zinc-700 dark:text-zinc-300">
                       📊 Total Periods
                     </label>
-                    <div className={`h-11 rounded-md px-4 flex items-center justify-center gap-2 border-2 font-semibold ${
+                    <div className={`h-10 rounded-md px-3 flex items-center justify-center text-sm font-bold border-2 ${
                       totalPeriods > 35 
                         ? 'border-red-500 bg-red-50 text-red-700' 
                         : 'border-zinc-300 bg-zinc-50 text-zinc-700'
@@ -554,7 +525,7 @@ export default function LessonsPage() {
 
                 {/* Row 4: Notes */}
                 <div>
-                  <label htmlFor="notes" className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  <label htmlFor="notes" className="mb-2 block text-xs font-medium text-zinc-700 dark:text-zinc-300">
                     📝 Notes (Optional)
                   </label>
                   <textarea
@@ -568,7 +539,7 @@ export default function LessonsPage() {
                 </div>
 
                 {/* Submit Buttons */}
-                <div className="flex justify-end gap-3 pt-4 border-t">
+                <div className="flex justify-end gap-3 pt-3 border-t">
                   <Button type="button" variant="outline" onClick={() => handleDialogClose(false)} className="h-10 px-6">
                     Cancel
                   </Button>

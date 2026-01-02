@@ -132,9 +132,9 @@ export default function TeacherDashboard() {
   useEffect(() => {
     if (status === 'unauthenticated') {
       router.push('/');
-    } else if (status === 'authenticated' && session?.user.role !== 'teacher') {
+    } else if (status === 'authenticated' && session && session.user.role !== 'teacher') {
       router.push('/');
-    } else if (status === 'authenticated' && !hasFetched) {
+    } else if (status === 'authenticated' && session?.user?.role === 'teacher' && !hasFetched && !isLoading) {
       fetchDashboardData();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -221,7 +221,7 @@ export default function TeacherDashboard() {
                       }]}
                       slots={mySchedule.map(slot => ({
                         _id: slot._id,
-                        day: slot.day.trim(), // Ensure clean day string
+                        day: String(slot.day).trim(), // Absolute String conversion
                         periodNumber: Number(slot.periodNumber), // Ensure number type
                         isDoubleStart: slot.isDoubleStart || false,
                         isDoubleEnd: slot.isDoubleEnd || false,
@@ -231,7 +231,7 @@ export default function TeacherDashboard() {
                           grade: '',
                         },
                         lessonId: {
-                          _id: '',
+                          _id: slot._id, // Use actual slot ID
                           lessonName: slot.subject || '',
                           subjectIds: [],
                           teacherIds: [{ 
@@ -383,9 +383,9 @@ export default function TeacherDashboard() {
                       </div>
                     </td>
                     {days.map((day) => {
-                      // Strict case-insensitive comparison with type coercion
+                      // Absolute comparison with String() wrapper to handle any type or hidden space issues
                       const slot = schedule.find(
-                        (s) => s.day.trim().toLowerCase() === day.trim().toLowerCase() && 
+                        (s) => String(s.day).trim().toLowerCase() === String(day).trim().toLowerCase() && 
                                Number(s.periodNumber) === Number(period)
                       );
                       

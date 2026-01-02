@@ -32,6 +32,9 @@ export async function GET() {
       .sort({ day: 1, periodNumber: 1 })
       .lean();
 
+    console.log('✅ Timetable API: Fetched slots:', slots.length);
+    console.log('📊 Sample slot:', JSON.stringify(slots[0], null, 2));
+
     return NextResponse.json({
       success: true,
       data: slots,

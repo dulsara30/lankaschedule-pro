@@ -78,6 +78,11 @@ export default function TimetablePage() {
         configRes.json(),
       ]);
 
+      console.log('🔍 Client: Slots received:', slotsData.data?.length || 0);
+      console.log('📦 Client: Sample slot:', slotsData.data?.[0]);
+      console.log('📋 Client: Classes:', classesData.data?.length || 0);
+      console.log('⚙️ Client: Config:', configData.data);
+
       if (slotsData.success) setSlots(slotsData.data || []);
       if (classesData.success) {
         const classList = classesData.data || [];
@@ -85,8 +90,9 @@ export default function TimetablePage() {
         if (classList.length > 0) setSelectedEntity(classList[0]._id);
       }
       if (teachersData.success) setTeachers(teachersData.data || []);
-      if (configData.success) setConfig(configData.data);
+      if (configData.success) setConfig(configData.data?.config || configData.data);
     } catch (error) {
+      console.error('❌ Client: Error loading timetable:', error);
       toast.error('Failed to load timetable data');
     } finally {
       setLoading(false);
@@ -118,18 +124,20 @@ export default function TimetablePage() {
 
   const getSlotForPeriod = (day: string, period: number): TimetableSlot | undefined => {
     if (viewMode === 'class') {
-      return slots.find(
+      const slot = slots.find(
         slot => slot.day === day && 
                 slot.periodNumber === period && 
-                slot.classId._id === selectedEntity
+                slot.classId?._id === selectedEntity
       );
+      return slot;
     } else {
       // Teacher view: find any slot where this teacher is teaching
-      return slots.find(
+      const slot = slots.find(
         slot => slot.day === day && 
                 slot.periodNumber === period && 
                 slot.lessonId?.teacherIds?.some(t => t?._id === selectedEntity)
       );
+      return slot;
     }
   };
 
@@ -200,6 +208,20 @@ export default function TimetablePage() {
   const entityList = viewMode === 'class' ? classes : teachers;
   const selectedName = entityList?.find(e => e._id === selectedEntity)?.name || '';
 
+  // Debug: Log the filtering criteria
+  console.log('🎯 Filtering for:', { viewMode, selectedEntity, selectedName, totalSlots: slots.length });
+  
+  // Count slots for selected entity
+  const relevantSlots = slots.filter(slot => 
+    viewMode === 'class' 
+      ? slot.classId?._id === selectedEntity
+      : slot.lessonId?.teacherIds?.some(t => t?._id === selectedEntity)
+  );
+  console.log('✅ Relevant slots found:', relevantSlots.length);
+  if (relevantSlots.length > 0) {
+    console.log('📌 Sample relevant slot:', relevantSlots[0]);
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -249,6 +271,20 @@ export default function TimetablePage() {
             <Button onClick={() => window.location.href = '/dashboard/lessons'}>
               Go to Lessons
             </Button>
+          </CardContent>
+        </Card>
+      ) : relevantSlots.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <Calendar className="h-16 w-16 text-zinc-400 mb-4" />
+            <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50 mb-2">
+              No Slots Found for {selectedName}
+            </h3>
+            <p className="text-zinc-600 dark:text-zinc-400 text-center mb-4">
+              {slots.length} total slots exist in the database, but none match this {viewMode}.
+              <br />
+              Try selecting a different {viewMode} or regenerate the timetable.
+            </p>
           </CardContent>
         </Card>
       ) : (

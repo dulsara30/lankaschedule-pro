@@ -120,9 +120,4 @@ TimetableSlotSchema.pre('save', async function () {
   }
 });
 
-// Force model re-registration during development to ensure schema changes are picked up
-if (mongoose.models.TimetableSlot) {
-  delete mongoose.models.TimetableSlot;
-}
-
-export default mongoose.model<ITimetableSlot>('TimetableSlot', TimetableSlotSchema);
+export default mongoose.models.TimetableSlot || mongoose.model<ITimetableSlot>('TimetableSlot', TimetableSlotSchema);

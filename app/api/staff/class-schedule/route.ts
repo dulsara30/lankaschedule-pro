@@ -3,9 +3,10 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import dbConnect from '@/lib/dbConnect';
 import TimetableVersion from '@/models/TimetableVersion';
-import TimetableSlot from '@/models/TimetableSlot';
 import Subject from '@/models/Subject';
+import Class from '@/models/Class';
 import Lesson from '@/models/Lesson';
+import TimetableSlot from '@/models/TimetableSlot';
 
 export async function GET(request: Request) {
   try {
@@ -65,6 +66,7 @@ export async function GET(request: Request) {
     })
       .populate({
         path: 'lessonId',
+        model: 'Lesson',
         populate: [
           { path: 'subjectIds', model: 'Subject' },
         ]

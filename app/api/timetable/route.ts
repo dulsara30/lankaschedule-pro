@@ -76,6 +76,15 @@ export async function GET(request: Request) {
     console.log(`✅ Timetable API: Fetched ${slots.length} slots for version ${versionId}`);
     if (slots.length > 0) {
       console.log('📊 Sample slot:', JSON.stringify(slots[0], null, 2));
+      console.log('🔍 First slot versionId:', slots[0].versionId);
+      console.log('🔍 Queried versionId:', versionId);
+      if (slots[0].versionId && versionId) {
+        const firstSlotVersionId = slots[0].versionId.toString();
+        const queriedVersionId = versionId.toString();
+        console.log('🔍 Version IDs match:', firstSlotVersionId === queriedVersionId);
+      }
+    } else {
+      console.warn('⚠️ No slots found for versionId:', versionId);
     }
 
     return NextResponse.json({

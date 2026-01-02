@@ -40,7 +40,7 @@ const TimetableSlotSchema = new Schema<ITimetableSlot>(
     versionId: {
       type: Schema.Types.ObjectId,
       ref: 'TimetableVersion',
-      required: [true, 'Version ID is required'],
+      required: true,
       index: true,
     },
     classId: {
@@ -120,5 +120,9 @@ TimetableSlotSchema.pre('save', async function () {
   }
 });
 
-export default mongoose.models.TimetableSlot ||
-  mongoose.model<ITimetableSlot>('TimetableSlot', TimetableSlotSchema);
+// Force model re-registration during development to ensure schema changes are picked up
+if (mongoose.models.TimetableSlot) {
+  delete mongoose.models.TimetableSlot;
+}
+
+export default mongoose.model<ITimetableSlot>('TimetableSlot', TimetableSlotSchema);

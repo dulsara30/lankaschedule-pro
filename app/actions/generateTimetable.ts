@@ -1,5 +1,6 @@
 'use server';
 
+import mongoose from 'mongoose';
 import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/dbConnect';
 import School from '@/models/School';
@@ -125,18 +126,16 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
         `DoubleStart: ${slot.isDoubleStart}, DoubleEnd: ${slot.isDoubleEnd}`);
     });
 
-    // 6. Handle versioning: Check for existing draft version and cleanup
-    console.log('🔍 Checking for existing draft version...');
+    // 6. Handle versioning: Clean database state
+    console.log('🔍 Cleaning existing slots and draft versions...');
     
-    // First, delete any old slots without versionId (from before versioning was implemented)
-    const oldSlotsDeleted = await TimetableSlot.deleteMany({ 
-      schoolId: school._id,
-      versionId: { $exists: false }
+    // Delete ALL existing slots for this school to ensure clean state
+    const allSlotsDeleted = await TimetableSlot.deleteMany({ 
+      schoolId: school._id
     });
-    if (oldSlotsDeleted.deletedCount > 0) {
-      console.log(`🗑️  Cleaned up ${oldSlotsDeleted.deletedCount} old slots without versionId`);
-    }
+    console.log(`🗑️  Deleted ALL ${allSlotsDeleted.deletedCount} existing slots for clean state`);
     
+    // Delete existing draft version if any
     const existingDraft = await TimetableVersion.findOne({
       schoolId: school._id,
       isSaved: false,
@@ -144,11 +143,6 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
 
     if (existingDraft) {
       console.log(`🗑️  Found existing draft version: ${existingDraft.versionName}. Deleting...`);
-      // Delete all slots associated with this draft
-      const deletedSlots = await TimetableSlot.deleteMany({ versionId: existingDraft._id });
-      console.log(`   Deleted ${deletedSlots.deletedCount} slots from old draft`);
-      
-      // Delete the draft version itself
       await TimetableVersion.deleteOne({ _id: existingDraft._id });
       console.log('   Draft version deleted');
     }
@@ -174,9 +168,12 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
 
     // 8. Save generated slots to database with versionId
     if (result.slots.length > 0) {
+      // Explicitly cast versionId to mongoose.Types.ObjectId to ensure type compatibility
+      const versionObjectId = new mongoose.Types.ObjectId(newVersion._id.toString());
+      
       const slotsToSave = result.slots.map((slot) => ({
         schoolId: school._id,
-        versionId: newVersion._id, // Explicitly link to the version
+        versionId: versionObjectId, // Explicitly cast to ObjectId
         classId: slot.classId,
         lessonId: slot.lessonId,
         day: slot.day,

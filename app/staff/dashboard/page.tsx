@@ -324,7 +324,6 @@ export default function TeacherDashboard() {
                     <SelectValue placeholder="Select a class" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Classes</SelectItem>
                     {filteredClasses.map((cls) => (
                       <SelectItem key={cls._id} value={cls._id}>
                         {cls.name} (Grade {cls.grade})

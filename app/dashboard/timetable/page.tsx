@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Calendar, Users, User } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -161,26 +162,36 @@ export default function TimetablePage() {
     }
   };
 
-  const renderSlotContent = (slot: TimetableSlot | undefined, isDoubleStart: boolean = false) => {
+  const renderSlotContent = (slot: TimetableSlot | undefined, isDoubleStart: boolean = false, periodNumber?: number) => {
     if (!slot) {
-      return <div className="text-xs text-zinc-400 italic p-2">Free</div>;
+      return <div className="text-xs text-zinc-500 dark:text-zinc-400 italic p-3 font-medium">Free</div>;
     }
 
     const lesson = slot.lessonId;
     if (!lesson || !lesson.subjectIds || !lesson.teacherIds || !lesson.classIds) {
-      return <div className="text-xs text-zinc-400 italic p-2">Invalid data</div>;
+      return <div className="text-xs text-zinc-500 dark:text-zinc-400 italic p-3 font-medium">Invalid data</div>;
     }
 
     const subjects = lesson.subjectIds;
     
-    // Rainbow gradient background - continuous vertical flow for double periods
+    // Modern styling: solid slightly transparent color for double periods, subtle gradient for singles
     let backgroundStyle: React.CSSProperties;
+    let textColorClass = 'text-white';
     
     if (subjects.length === 1) {
-      // Single subject - solid color
-      backgroundStyle = { backgroundColor: subjects[0]?.color || '#3B82F6' };
+      const color = subjects[0]?.color || '#3B82F6';
+      
+      if (isDoubleStart) {
+        // Double period: solid semi-transparent color
+        backgroundStyle = { backgroundColor: color + 'E6' }; // 90% opacity
+      } else {
+        // Single period: subtle gradient for depth
+        backgroundStyle = {
+          background: `linear-gradient(135deg, ${color} 0%, ${color}DD 100%)`,
+        };
+      }
     } else {
-      // Multiple subjects - create smooth rainbow gradient (top to bottom)
+      // Multiple subjects: smooth gradient (top to bottom for doubles, diagonal for singles)
       const gradientStops = subjects.map((subject, idx) => {
         const color = subject?.color || '#3B82F6';
         const start = (idx / subjects.length) * 100;
@@ -189,25 +200,48 @@ export default function TimetablePage() {
       }).join(', ');
       
       backgroundStyle = {
-        background: `linear-gradient(180deg, ${gradientStops})`,
+        background: isDoubleStart 
+          ? `linear-gradient(180deg, ${gradientStops})` 
+          : `linear-gradient(135deg, ${gradientStops})`,
       };
     }
 
+    // Time range calculation for tooltip
+    const startTime = calculateTime(periodNumber || slot.periodNumber);
+    const endPeriodNumber = (periodNumber || slot.periodNumber) + (isDoubleStart ? 2 : 1);
+    const endTime = calculateTime(endPeriodNumber);
+    const timeRange = `${startTime} - ${endTime}`;
+
+    const tooltipContent = (
+      <div className="space-y-1">
+        <div className="font-semibold">{lesson.lessonName}</div>
+        <div className="text-xs">
+          <span className="opacity-80">Teacher:</span> {lesson.teacherIds?.map(t => t?.name).filter(Boolean).join(', ') || 'N/A'}
+        </div>
+        <div className="text-xs">
+          <span className="opacity-80">Class:</span> {lesson.classIds?.map(c => c?.name).filter(Boolean).join(', ') || 'N/A'}
+        </div>
+        <div className="text-xs">
+          <span className="opacity-80">Time:</span> {timeRange}
+        </div>
+      </div>
+    );
+
     return (
       <div 
-        className="h-full w-full flex flex-col justify-center items-center text-white relative"
+        className={`h-full w-full flex flex-col justify-center items-center ${textColorClass} relative p-4 transition-all hover:scale-[1.02]`}
         style={backgroundStyle}
       >
-        {/* Double period indicator badge - only show on start */}
+        {/* Modern double period badge - frosted glass effect in corner */}
         {isDoubleStart && (
-          <div className="absolute top-2 right-2 bg-black/40 text-white text-xs px-2 py-1 rounded-md font-bold shadow-lg z-10">
+          <div className="absolute top-1.5 right-1.5 bg-white/30 backdrop-blur-md text-white text-[10px] px-2 py-0.5 rounded-full font-bold shadow-sm z-10">
             DOUBLE
           </div>
         )}
-        <div className="text-sm font-bold leading-tight text-center px-2">
+        <div className="text-sm font-bold leading-tight text-center drop-shadow-sm">
           {lesson.lessonName}
         </div>
-        <div className="text-xs opacity-95 mt-2 text-center px-2">
+        <div className="text-xs opacity-95 mt-1.5 text-center font-medium">
           {viewMode === 'class' 
             ? lesson.teacherIds?.map(t => t?.name).filter(Boolean).join(', ') || 'No teacher'
             : lesson.classIds?.map(c => c?.name).filter(Boolean).join(', ') || 'No class'
@@ -351,16 +385,16 @@ export default function TimetablePage() {
                 <table className="w-full border-collapse">
                   <thead>
                     <tr>
-                      <th className="border border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 p-3 text-left font-semibold">
+                      <th className="border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 p-4 text-left font-bold text-sm uppercase tracking-wide text-zinc-700 dark:text-zinc-300">
                         Period
                       </th>
-                      <th className="border border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 p-3 text-left font-semibold">
+                      <th className="border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 p-4 text-left font-bold text-sm uppercase tracking-wide text-zinc-700 dark:text-zinc-300">
                         Time
                       </th>
                       {DAYS.map((day) => (
                         <th
                           key={day}
-                          className="border border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 p-3 text-center font-semibold"
+                          className="border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 p-4 text-center font-bold text-sm uppercase tracking-wide text-zinc-700 dark:text-zinc-300"
                         >
                           {day}
                         </th>
@@ -378,10 +412,10 @@ export default function TimetablePage() {
                         <React.Fragment key={`period-${period}`}>
                           {/* Period Row */}
                           <tr>
-                            <td className="border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900 p-3 font-medium">
+                            <td className="border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 p-4 font-semibold text-sm text-zinc-700 dark:text-zinc-300">
                               Period {period}
                             </td>
-                            <td className="border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900 p-3 text-sm text-zinc-600 dark:text-zinc-400">
+                            <td className="border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 p-4 text-sm text-zinc-600 dark:text-zinc-400 font-medium">
                               {calculateTime(period)}
                             </td>
                             {DAYS.map((day) => {
@@ -409,38 +443,67 @@ export default function TimetablePage() {
                               }
                               
                               return (
-                                <td
-                                  key={`${day}-${period}`}
-                                  rowSpan={rowSpan}
-                                  className={`relative overflow-hidden ${
-                                    isDoubleStart && rowSpan === 2 ? 'h-40' : 'h-20'
-                                  } ${
-                                    isDoubleStart 
-                                      ? 'border-l-4 border-r-4 border-t-4 border-b-4 border-blue-600 dark:border-blue-400' 
-                                      : 'border border-zinc-300 dark:border-zinc-700'
-                                  }`}
-                                  style={{
-                                    minWidth: '150px',
-                                  }}
-                                >
-                                  {renderSlotContent(slot, isDoubleStart)}
-                                </td>
+                                <TooltipProvider key={`${day}-${period}`} delayDuration={200}>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <td
+                                        rowSpan={rowSpan}
+                                        className={`relative overflow-hidden cursor-pointer transition-all ${
+                                          isDoubleStart && rowSpan === 2 ? 'h-40' : 'h-24'
+                                        } ${
+                                          isDoubleStart 
+                                            ? 'border-[3px] border-blue-500 dark:border-blue-400 shadow-md' 
+                                            : 'border border-zinc-200 dark:border-zinc-800'
+                                        } ${
+                                          slot ? 'hover:shadow-lg' : ''
+                                        }`}
+                                        style={{
+                                          minWidth: '160px',
+                                        }}
+                                      >
+                                        {renderSlotContent(slot, isDoubleStart, period)}
+                                      </td>
+                                    </TooltipTrigger>
+                                    {slot && (
+                                      <TooltipContent side="top" className="bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 border-zinc-700 dark:border-zinc-300">
+                                        <div className="space-y-1">
+                                          <div className="font-semibold">{slot.lessonId?.lessonName}</div>
+                                          <div className="text-xs">
+                                            <span className="opacity-80">Teacher:</span> {slot.lessonId?.teacherIds?.map(t => t?.name).filter(Boolean).join(', ') || 'N/A'}
+                                          </div>
+                                          <div className="text-xs">
+                                            <span className="opacity-80">Class:</span> {slot.lessonId?.classIds?.map(c => c?.name).filter(Boolean).join(', ') || 'N/A'}
+                                          </div>
+                                          <div className="text-xs">
+                                            <span className="opacity-80">Time:</span> {calculateTime(period)} - {calculateTime(period + (isDoubleStart ? 2 : 1))}
+                                          </div>
+                                        </div>
+                                      </TooltipContent>
+                                    )}
+                                  </Tooltip>
+                                </TooltipProvider>
                               );
                             })}
                           </tr>
                           
                           {/* Interval Row - appears immediately after the period */}
                           {intervalAfterThisPeriod && (
-                            <tr>
+                            <tr className="bg-gradient-to-r from-amber-50 via-amber-100 to-amber-50 dark:from-amber-950/20 dark:via-amber-900/30 dark:to-amber-950/20">
                               <td
                                 colSpan={2}
-                                className="border border-zinc-300 dark:border-zinc-700 bg-yellow-100 dark:bg-yellow-900/30 p-3 text-center font-semibold text-zinc-700 dark:text-zinc-300"
+                                className="border border-zinc-200 dark:border-zinc-800 p-4 text-center font-bold text-sm uppercase tracking-wider text-amber-700 dark:text-amber-400"
+                                style={{
+                                  backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(251, 191, 36, 0.1) 10px, rgba(251, 191, 36, 0.1) 20px)',
+                                }}
                               >
-                                INTERVAL
+                                ☕ INTERVAL
                               </td>
                               <td
                                 colSpan={5}
-                                className="border border-zinc-300 dark:border-zinc-700 bg-yellow-100 dark:bg-yellow-900/30 p-3 text-center text-sm text-zinc-600 dark:text-zinc-400"
+                                className="border border-zinc-200 dark:border-zinc-800 p-4 text-center text-sm text-amber-700 dark:text-amber-400 font-semibold"
+                                style={{
+                                  backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(251, 191, 36, 0.1) 10px, rgba(251, 191, 36, 0.1) 20px)',
+                                }}
                               >
                                 {intervalAfterThisPeriod.duration} minutes • {calculateIntervalTime(period)}
                               </td>

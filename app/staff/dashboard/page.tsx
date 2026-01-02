@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,13 +12,7 @@ import { toast } from 'sonner';
 import { signOut } from 'next-auth/react';
 import Image from 'next/image';
 import { PDFDownloadLink } from '@react-pdf/renderer';
-import dynamic from 'next/dynamic';
-
-// Dynamically import TimetablePDF to avoid SSR issues
-const TimetablePDF = dynamic(
-  () => import('@/components/timetable/TimetablePDF'),
-  { ssr: false }
-);
+import TimetablePDF from '@/components/timetable/TimetablePDF';
 
 interface TimetableSlot {
   _id: string;

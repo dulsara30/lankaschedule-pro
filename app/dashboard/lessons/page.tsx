@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Pencil, Trash2, Sparkles, MoreVertical, X, Search } from 'lucide-react';
+import { Plus, Pencil, Trash2, Sparkles, MoreVertical, X, Search, Lightbulb } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
@@ -21,6 +21,7 @@ interface Teacher {
   _id: string;
   name: string;
   email: string;
+  subjectsTaught: string[];
 }
 
 interface Class {
@@ -77,6 +78,60 @@ export default function LessonsPage() {
       setFormData(prev => ({ ...prev, lessonName: '' }));
     }
   }, [selectedSubjects, subjects, editingLesson, formData.lessonName]);
+
+  // Smart Teacher Suggestion: Sort teachers based on selected subjects
+  const sortedTeachers = useMemo(() => {
+    if (selectedSubjects.length === 0) {
+      // No subjects selected, return original order
+      return teachers;
+    }
+
+    // Get selected subject names
+    const selectedSubjectNames = selectedSubjects
+      .map(subjectId => subjects.find(s => s._id === subjectId)?.name)
+      .filter(Boolean) as string[];
+
+    // Partition teachers into suggested and others
+    const suggested: Teacher[] = [];
+    const others: Teacher[] = [];
+
+    teachers.forEach(teacher => {
+      // Check if teacher teaches any of the selected subjects
+      const teachesSelectedSubject = teacher.subjectsTaught.some(subject =>
+        selectedSubjectNames.includes(subject)
+      );
+
+      if (teachesSelectedSubject) {
+        suggested.push(teacher);
+      } else {
+        others.push(teacher);
+      }
+    });
+
+    // Return suggested teachers first, then others
+    return [...suggested, ...others];
+  }, [teachers, selectedSubjects, subjects]);
+
+  // Filter sorted teachers by search term
+  const filteredTeachers = useMemo(() => {
+    return sortedTeachers.filter(teacher =>
+      teacher.name.toLowerCase().includes(teacherSearchTerm.toLowerCase()) ||
+      teacher.email.toLowerCase().includes(teacherSearchTerm.toLowerCase())
+    );
+  }, [sortedTeachers, teacherSearchTerm]);
+
+  // Check if a teacher is suggested (teaches selected subjects)
+  const isTeacherSuggested = (teacher: Teacher) => {
+    if (selectedSubjects.length === 0) return false;
+
+    const selectedSubjectNames = selectedSubjects
+      .map(subjectId => subjects.find(s => s._id === subjectId)?.name)
+      .filter(Boolean) as string[];
+
+    return teacher.subjectsTaught.some(subject =>
+      selectedSubjectNames.includes(subject)
+    );
+  };
 
   useEffect(() => {
     fetchData();
@@ -318,7 +373,7 @@ export default function LessonsPage() {
             onClick={handleGenerateTimetable}
             disabled={isGenerating || lessons.length === 0}
             variant="outline"
-            className="bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 border-0"
+            className="bg-linear-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 border-0"
           >
             {isGenerating ? (
               <>
@@ -341,7 +396,7 @@ export default function LessonsPage() {
           {dialogOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
               {/* Modal Container */}
-              <div className="w-[95vw] max-w-[1600px] h-[92vh] bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+              <div className="w-[95vw] max-w-400 h-[92vh] bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
                 {/* Modal Header */}
                 <div className="px-8 py-5 border-b border-zinc-200 dark:border-zinc-700 flex items-center justify-between bg-white dark:bg-zinc-900">
                   <div>
@@ -366,7 +421,7 @@ export default function LessonsPage() {
                   <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-5">
                     
                     {/* Three-Column Selection Grid */}
-                    <div className="grid grid-cols-3 gap-4 h-[45vh] min-h-[400px]">
+                    <div className="grid grid-cols-3 gap-4 h-[45vh] min-h-100">
                       
                       {/* Column 1: Classes */}
                       <div className="flex flex-col overflow-hidden border border-zinc-200 dark:border-zinc-700 rounded-lg">
@@ -460,7 +515,7 @@ export default function LessonsPage() {
                                 }`}
                               >
                                 <div 
-                                  className="h-4 w-4 rounded-full flex-shrink-0 border border-zinc-300 dark:border-zinc-600" 
+                                  className="h-4 w-4 rounded-full shrink-0 border border-zinc-300 dark:border-zinc-600" 
                                   style={{ backgroundColor: subject.color }}
                                 />
                                 <span className="truncate flex-1">{subject.name}</span>
@@ -496,27 +551,52 @@ export default function LessonsPage() {
                           
                           {/* Scrollable Teacher List */}
                           <div className="flex-1 overflow-y-auto pr-2 space-y-2">
-                            {teachers
-                              .filter(teacher => 
-                                teacher.name.toLowerCase().includes(teacherSearchTerm.toLowerCase())
-                              )
-                              .map((teacher) => (
-                              <button
-                                key={teacher._id}
-                                type="button"
-                                onClick={() => toggleTeacher(teacher._id)}
-                                className={`w-full rounded-md border px-4 py-2.5 text-sm font-medium transition-all text-left ${
-                                  selectedTeachers.includes(teacher._id)
-                                    ? 'border-zinc-900 bg-zinc-900 text-white dark:border-zinc-50 dark:bg-zinc-50 dark:text-zinc-900'
-                                    : 'border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-zinc-600'
-                                }`}
-                              >
-                                <div className="truncate font-semibold">{teacher.name}</div>
-                                <div className="text-xs text-zinc-600 dark:text-zinc-400 truncate mt-0.5">
-                                  {teacher.email}
-                                </div>
-                              </button>
-                            ))}
+                            {filteredTeachers.length === 0 ? (
+                              <div className="text-center py-8 text-sm text-zinc-500">
+                                No teachers found
+                              </div>
+                            ) : (
+                              filteredTeachers.map((teacher) => {
+                                const isSuggested = isTeacherSuggested(teacher);
+                                const isSelected = selectedTeachers.includes(teacher._id);
+                                
+                                return (
+                                  <button
+                                    key={teacher._id}
+                                    type="button"
+                                    onClick={() => toggleTeacher(teacher._id)}
+                                    className={`w-full rounded-md border px-4 py-2.5 text-sm font-medium transition-all text-left relative ${
+                                      isSelected
+                                        ? 'border-zinc-900 bg-zinc-900 text-white dark:border-zinc-50 dark:bg-zinc-50 dark:text-zinc-900'
+                                        : isSuggested
+                                        ? 'border-green-300 bg-green-50 hover:bg-green-100 dark:border-green-700 dark:bg-green-950/30 dark:hover:bg-green-950/50'
+                                        : 'border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-zinc-600'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2">
+                                          <span className="truncate font-semibold">{teacher.name}</span>
+                                          {isSuggested && !isSelected && (
+                                            <span className="flex items-center gap-1 px-1.5 py-0.5 bg-green-200 dark:bg-green-900 text-green-800 dark:text-green-200 rounded text-xs font-semibold shrink-0">
+                                              <Lightbulb className="h-3 w-3" />
+                                              Match
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className={`text-xs truncate mt-0.5 ${
+                                          isSelected 
+                                            ? 'text-zinc-300 dark:text-zinc-600'
+                                            : 'text-zinc-600 dark:text-zinc-400'
+                                        }`}>
+                                          {teacher.email || 'No email'}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </button>
+                                );
+                              })
+                            )}
                           </div>
                         </div>
                       </div>
@@ -584,7 +664,7 @@ export default function LessonsPage() {
                         <label className="mb-2 block text-xs font-bold text-zinc-700 dark:text-zinc-300">
                           📊 Total Weekly Load
                         </label>
-                        <div className={`h-[44px] rounded-lg px-3 flex items-center justify-center text-lg font-bold border transition-all ${
+                        <div className={`h-11 rounded-lg px-3 flex items-center justify-center text-lg font-bold border transition-all ${
                           totalPeriods > 35 
                             ? 'border-red-500 bg-red-50 text-red-700 dark:bg-red-950/20 dark:text-red-400 dark:border-red-800' 
                             : totalPeriods === 0
@@ -650,7 +730,7 @@ export default function LessonsPage() {
                 {lessons.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center text-zinc-500 py-8">
-                      No lessons created yet. Click "Create Lesson" to get started.
+                      No lessons created yet. Click &quot;Create Lesson&quot; to get started.
                     </TableCell>
                   </TableRow>
                 ) : (

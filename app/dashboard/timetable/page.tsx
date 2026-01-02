@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Calendar, Users, User } from 'lucide-react';
@@ -105,13 +105,12 @@ export default function TimetablePage() {
     const [hours, minutes] = config.startTime.split(':').map(Number);
     let totalMinutes = hours * 60 + minutes;
     
-    // Add period durations and intervals
-    for (let i = 1; i < periodNumber; i++) {
-      totalMinutes += config.periodDuration;
-      
-      // Add interval time if applicable
-      const interval = config.intervalSlots.find(slot => slot.afterPeriod === i);
-      if (interval) {
+    // Add duration for periods before this one
+    totalMinutes += (periodNumber - 1) * config.periodDuration;
+    
+    // Add interval durations for intervals that occurred before this period
+    for (const interval of config.intervalSlots) {
+      if (interval.afterPeriod < periodNumber) {
         totalMinutes += interval.duration;
       }
     }
@@ -120,6 +119,14 @@ export default function TimetablePage() {
     const resultMinutes = totalMinutes % 60;
     
     return `${String(resultHours).padStart(2, '0')}:${String(resultMinutes).padStart(2, '0')}`;
+  };
+
+  const calculateIntervalTime = (afterPeriod: number): string => {
+    if (!config) return '';
+    
+    // Calculate end time of the period after which interval occurs
+    const periodEndTime = calculateTime(afterPeriod + 1);
+    return periodEndTime;
   };
 
   const getSlotForPeriod = (day: string, period: number): TimetableSlot | undefined => {
@@ -153,17 +160,25 @@ export default function TimetablePage() {
 
     const subjects = lesson.subjectIds;
     
-    // Generate gradient background
-    const backgroundStyle = subjects.length === 1
-      ? { backgroundColor: subjects[0]?.color || '#3B82F6' }
-      : {
-          background: `linear-gradient(135deg, ${subjects.map((subject, idx) => {
-            const color = subject?.color || '#3B82F6';
-            const percentage = (idx / subjects.length) * 100;
-            const nextPercentage = ((idx + 1) / subjects.length) * 100;
-            return `${color} ${percentage}%, ${color} ${nextPercentage}%`;
-          }).join(', ')})`,
-        };
+    // Fixed gradient background - properly handle multiple subjects
+    let backgroundStyle: React.CSSProperties;
+    
+    if (subjects.length === 1) {
+      // Single subject - solid color
+      backgroundStyle = { backgroundColor: subjects[0]?.color || '#3B82F6' };
+    } else {
+      // Multiple subjects - create proper gradient
+      const gradientStops = subjects.map((subject, idx) => {
+        const color = subject?.color || '#3B82F6';
+        const start = (idx / subjects.length) * 100;
+        const end = ((idx + 1) / subjects.length) * 100;
+        return `${color} ${start}%, ${color} ${end}%`;
+      }).join(', ');
+      
+      backgroundStyle = {
+        background: `linear-gradient(135deg, ${gradientStops})`,
+      };
+    }
 
     return (
       <div 
@@ -201,9 +216,6 @@ export default function TimetablePage() {
       </div>
     );
   }
-
-  const intervalAfterPeriod = config.intervalSlots?.find(slot => slot.afterPeriod === 3)?.afterPeriod || 3;
-  const intervalDuration = config.intervalSlots?.find(slot => slot.afterPeriod === 3)?.duration || 15;
 
   const entityList = viewMode === 'class' ? classes : teachers;
   const selectedName = entityList?.find(e => e._id === selectedEntity)?.name || '';
@@ -337,38 +349,52 @@ export default function TimetablePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {Array.from({ length: config.numberOfPeriods }, (_, i) => i + 1).map((period) => (
-                      <>
-                        <tr key={period}>
-                          <td className="border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900 p-3 font-medium">
-                            Period {period}
-                          </td>
-                          <td className="border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900 p-3 text-sm text-zinc-600 dark:text-zinc-400">
-                            {calculateTime(period)}
-                          </td>
-                          {DAYS.map((day) => (
-                            <td
-                              key={`${day}-${period}`}
-                              className="border border-zinc-300 dark:border-zinc-700 p-2 min-w-[150px] h-20"
-                            >
-                              {renderSlotContent(getSlotForPeriod(day, period))}
-                            </td>
-                          ))}
-                        </tr>
-                        
-                        {/* Interval Row after period 3 */}
-                        {period === intervalAfterPeriod && (
+                    {Array.from({ length: config.numberOfPeriods }, (_, i) => i + 1).map((period) => {
+                      // Check if there's an interval after this period
+                      const intervalAfterThisPeriod = config.intervalSlots.find(
+                        slot => slot.afterPeriod === period
+                      );
+                      
+                      return (
+                        <React.Fragment key={`period-${period}`}>
+                          {/* Period Row */}
                           <tr>
-                            <td
-                              colSpan={7}
-                              className="border border-zinc-300 dark:border-zinc-700 bg-zinc-200 dark:bg-zinc-800 p-3 text-center font-semibold text-zinc-600 dark:text-zinc-400"
-                            >
-                              INTERVAL ({intervalDuration} minutes)
+                            <td className="border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900 p-3 font-medium">
+                              Period {period}
                             </td>
+                            <td className="border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900 p-3 text-sm text-zinc-600 dark:text-zinc-400">
+                              {calculateTime(period)}
+                            </td>
+                            {DAYS.map((day) => (
+                              <td
+                                key={`${day}-${period}`}
+                                className="border border-zinc-300 dark:border-zinc-700 p-2 min-w-37.5 h-20"
+                              >
+                                {renderSlotContent(getSlotForPeriod(day, period))}
+                              </td>
+                            ))}
                           </tr>
-                        )}
-                      </>
-                    ))}
+                          
+                          {/* Interval Row - appears immediately after the period */}
+                          {intervalAfterThisPeriod && (
+                            <tr>
+                              <td
+                                colSpan={2}
+                                className="border border-zinc-300 dark:border-zinc-700 bg-yellow-100 dark:bg-yellow-900/30 p-3 text-center font-semibold text-zinc-700 dark:text-zinc-300"
+                              >
+                                INTERVAL
+                              </td>
+                              <td
+                                colSpan={5}
+                                className="border border-zinc-300 dark:border-zinc-700 bg-yellow-100 dark:bg-yellow-900/30 p-3 text-center text-sm text-zinc-600 dark:text-zinc-400"
+                              >
+                                {intervalAfterThisPeriod.duration} minutes • {calculateIntervalTime(period)}
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

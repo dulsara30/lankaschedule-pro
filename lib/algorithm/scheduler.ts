@@ -1,8 +1,12 @@
 /**
- * LankaSchedule Pro AI Engine - Constraint Satisfaction Algorithm
+ * LankaSchedule Pro AI Engine - Ultimate Clash-Free Scheduling
  * 
- * Implements backtracking with heuristics to generate clash-free timetables
- * for Sri Lankan schools with dynamic constraints based on school configuration.
+ * Implements strict constraint satisfaction with:
+ * 1. Dynamic grid configuration from school config
+ * 2. Double period integrity (no splitting across intervals)
+ * 3. Daily subject limit (one appearance per day per class)
+ * 4. Weekly quota enforcement (exact singles/doubles)
+ * 5. LCV heuristic for optimal slot selection
  */
 
 // Types
@@ -32,8 +36,8 @@ export interface TimetableSlot {
 }
 
 export interface ScheduleConfig {
-  numberOfPeriods: number; // From school config
-  intervalSlots: number[]; // Array of period numbers where intervals occur (e.g., [2, 4])
+  numberOfPeriods: number; // STRICT: Must match school config
+  intervalSlots: number[]; // Array of period numbers after which intervals occur
   daysOfWeek: string[]; // ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
 }
 
@@ -58,11 +62,15 @@ type TimetableGrid = Map<string, string>;
 // Busy tracking: Map<"teacherId-day-period" | "classId-day-period", boolean>
 type BusyMap = Map<string, boolean>;
 
-const MAX_RECURSIONS = 50000;
+// Daily lesson tracking: Map<"classId-day-lessonId", boolean>
+// Ensures a lesson only appears once per day for a class
+type DailyLessonMap = Map<string, boolean>;
+
+const MAX_RECURSIONS = 100000; // Increased for complex schedules
 let recursionCount = 0;
 
 /**
- * Main scheduling function
+ * Main scheduling function with strict constraint enforcement
  */
 export function generateTimetable(
   lessons: ScheduleLesson[],
@@ -72,30 +80,37 @@ export function generateTimetable(
   recursionCount = 0;
   const grid: TimetableGrid = new Map();
   const busyMap: BusyMap = new Map();
+  const dailyLessonMap: DailyLessonMap = new Map();
   const scheduledLessons = new Set<string>();
   const failedLessons: { lesson: ScheduleLesson; reason: string }[] = [];
 
   // Sort lessons by constraint difficulty (most constrained first)
   const sortedLessons = sortByConstraints(lessons);
 
-  // Expand lessons into individual scheduling tasks
+  // Expand lessons into individual scheduling tasks with weekly quota tracking
   const tasks = expandLessonsToTasks(sortedLessons);
 
+  console.log(`🚀 Scheduler: Starting with ${tasks.length} tasks for ${lessons.length} lessons`);
+  console.log(`📊 Config: ${config.numberOfPeriods} periods, intervals after: ${config.intervalSlots.join(', ')}`);
+
   // Run backtracking algorithm
-  const success = backtrack(tasks, 0, grid, busyMap, scheduledLessons, config);
+  const success = backtrack(tasks, 0, grid, busyMap, dailyLessonMap, scheduledLessons, config);
 
   // Convert grid to slots array
   const slots = gridToSlots(grid);
 
-  // Identify failed lessons
+  // Identify failed lessons with detailed reasons
   for (const lesson of lessons) {
     if (!scheduledLessons.has(lesson._id)) {
+      const requiredPeriods = lesson.numberOfSingles + (lesson.numberOfDoubles * 2);
       failedLessons.push({
         lesson,
-        reason: 'Could not find valid slots without clashes',
+        reason: `Could not schedule ${requiredPeriods} periods without conflicts`,
       });
     }
   }
+
+  console.log(`✅ Scheduler: ${success ? 'Success' : 'Partial'} - ${slots.length} slots, ${recursionCount} recursions`);
 
   return {
     success,
@@ -159,20 +174,22 @@ function expandLessonsToTasks(lessons: ScheduleLesson[]): ScheduleTask[] {
 }
 
 /**
- * Backtracking algorithm with recursion limit
+ * Backtracking algorithm with strict daily subject limit and LCV heuristic
  */
 function backtrack(
   tasks: ScheduleTask[],
   taskIndex: number,
   grid: TimetableGrid,
   busyMap: BusyMap,
+  dailyLessonMap: DailyLessonMap,
   scheduledLessons: Set<string>,
   config: ScheduleConfig
 ): boolean {
   // Check recursion limit
   recursionCount++;
   if (recursionCount >= MAX_RECURSIONS) {
-    return false; // Timeout - return partial solution
+    console.warn('⚠️ Recursion limit reached - returning partial solution');
+    return false;
   }
 
   // Base case: all tasks scheduled
@@ -183,22 +200,27 @@ function backtrack(
   const task = tasks[taskIndex];
   const { lesson, isDouble } = task;
 
-  // Get all valid slots for this task (MRV heuristic)
-  const validSlots = findValidSlots(lesson, isDouble, grid, busyMap, config);
+  // Get all valid slots for this task with LCV heuristic
+  const validSlots = findValidSlotsWithLCV(lesson, isDouble, grid, busyMap, dailyLessonMap, config);
 
-  // Try each valid slot
+  // Try each valid slot (already sorted by LCV)
   for (const slot of validSlots) {
+    // HARD CONSTRAINT CHECK: Daily subject limit
+    if (!canScheduleOnDay(lesson, slot.day, dailyLessonMap)) {
+      continue; // Skip this day - lesson already scheduled
+    }
+
     // Place lesson in slot(s)
-    const changes = placeLesson(lesson, slot, isDouble, grid, busyMap);
+    const changes = placeLesson(lesson, slot, isDouble, grid, busyMap, dailyLessonMap);
 
     // Recurse to next task
-    if (backtrack(tasks, taskIndex + 1, grid, busyMap, scheduledLessons, config)) {
+    if (backtrack(tasks, taskIndex + 1, grid, busyMap, dailyLessonMap, scheduledLessons, config)) {
       scheduledLessons.add(lesson._id);
       return true;
     }
 
     // Backtrack: undo changes
-    undoChanges(changes, grid, busyMap);
+    undoChanges(changes, grid, busyMap, dailyLessonMap);
   }
 
   // No valid slot found for this task
@@ -206,39 +228,65 @@ function backtrack(
 }
 
 /**
- * Find all valid slots for a lesson
- * Returns array of {day, period} that satisfy all constraints
+ * Check if a lesson can be scheduled on a specific day for all its classes
+ * HARD CONSTRAINT: A lesson can only appear once per day per class
+ */
+function canScheduleOnDay(
+  lesson: ScheduleLesson,
+  day: string,
+  dailyLessonMap: DailyLessonMap
+): boolean {
+  for (const classId of lesson.classIds) {
+    const key = `${classId}-${day}-${lesson._id}`;
+    if (dailyLessonMap.has(key)) {
+      return false; // Lesson already scheduled for this class on this day
+    }
+  }
+  return true;
+}
+
+/**
+ * Find valid slots with Least Constraining Value (LCV) heuristic
+ * Returns slots sorted by how much flexibility they leave for remaining tasks
  */
 interface SlotPosition {
   day: string;
   period: number;
+  lcvScore?: number; // Higher score = more flexibility for future tasks
 }
 
-function findValidSlots(
+function findValidSlotsWithLCV(
   lesson: ScheduleLesson,
   isDouble: boolean,
   grid: TimetableGrid,
   busyMap: BusyMap,
+  dailyLessonMap: DailyLessonMap,
   config: ScheduleConfig
 ): SlotPosition[] {
   const validSlots: SlotPosition[] = [];
   const { daysOfWeek, numberOfPeriods, intervalSlots } = config;
 
   for (const day of daysOfWeek) {
+    // Check daily subject limit first
+    if (!canScheduleOnDay(lesson, day, dailyLessonMap)) {
+      continue; // Skip entire day if lesson already scheduled
+    }
+
     for (let period = 1; period <= numberOfPeriods; period++) {
       if (isDouble) {
-        // Double period constraints:
+        // HARD CONSTRAINT: Double period integrity
         // 1. Must have consecutive period available
-        // 2. Cannot span across an interval slot
+        // 2. CANNOT span across an interval slot
         // 3. Cannot start at the last period
         
         if (period === numberOfPeriods) {
           continue; // Can't start double at last period
         }
 
-        // Check if there's an interval between this period and the next
+        // CRITICAL FIX: Check if there's an interval AFTER this period
+        // If period 3 is followed by an interval, we CANNOT do a double at period 3
         if (intervalSlots.includes(period)) {
-          continue; // Can't start double right before an interval
+          continue; // Cannot start double right before an interval
         }
 
         const nextPeriod = period + 1;
@@ -248,18 +296,54 @@ function findValidSlots(
           isSlotFree(lesson, day, period, grid, busyMap) &&
           isSlotFree(lesson, day, nextPeriod, grid, busyMap)
         ) {
-          validSlots.push({ day, period });
+          // Calculate LCV score (how many slots remain free)
+          const lcvScore = calculateLCVScore(lesson, day, period, isDouble, grid, busyMap, config);
+          validSlots.push({ day, period, lcvScore });
         }
       } else {
         // Single period: just check if slot is free
         if (isSlotFree(lesson, day, period, grid, busyMap)) {
-          validSlots.push({ day, period });
+          const lcvScore = calculateLCVScore(lesson, day, period, isDouble, grid, busyMap, config);
+          validSlots.push({ day, period, lcvScore });
         }
       }
     }
   }
 
+  // Sort by LCV score descending (pick slots that constrain future choices least)
+  validSlots.sort((a, b) => (b.lcvScore || 0) - (a.lcvScore || 0));
+
   return validSlots;
+}
+
+/**
+ * Calculate LCV score: count how many future slots would remain available
+ * Higher score = more flexibility
+ */
+function calculateLCVScore(
+  lesson: ScheduleLesson,
+  day: string,
+  period: number,
+  isDouble: boolean,
+  grid: TimetableGrid,
+  busyMap: BusyMap,
+  config: ScheduleConfig
+): number {
+  let score = 0;
+  const { daysOfWeek, numberOfPeriods } = config;
+
+  // Count free slots in other days for this lesson's classes and teachers
+  for (const otherDay of daysOfWeek) {
+    if (otherDay === day) continue; // Skip current day
+    
+    for (let p = 1; p <= numberOfPeriods; p++) {
+      if (isSlotFree(lesson, otherDay, p, grid, busyMap)) {
+        score++;
+      }
+    }
+  }
+
+  return score;
 }
 
 /**
@@ -292,11 +376,11 @@ function isSlotFree(
 }
 
 /**
- * Place a lesson in the grid and mark busy
+ * Place a lesson in the grid and mark busy + daily lesson tracking
  * Returns array of changes for backtracking
  */
 interface Change {
-  type: 'grid' | 'busy';
+  type: 'grid' | 'busy' | 'daily';
   key: string;
 }
 
@@ -305,7 +389,8 @@ function placeLesson(
   slot: SlotPosition,
   isDouble: boolean,
   grid: TimetableGrid,
-  busyMap: BusyMap
+  busyMap: BusyMap,
+  dailyLessonMap: DailyLessonMap
 ): Change[] {
   const changes: Change[] = [];
   const { day, period } = slot;
@@ -334,18 +419,32 @@ function placeLesson(
     }
   }
 
+  // Mark daily lesson tracking (once per day, not per period)
+  for (const classId of lesson.classIds) {
+    const dailyKey = `${classId}-${day}-${lesson._id}`;
+    dailyLessonMap.set(dailyKey, true);
+    changes.push({ type: 'daily', key: dailyKey });
+  }
+
   return changes;
 }
 
 /**
- * Undo changes for backtracking
+ * Undo changes for backtracking (including daily lesson map)
  */
-function undoChanges(changes: Change[], grid: TimetableGrid, busyMap: BusyMap): void {
+function undoChanges(
+  changes: Change[],
+  grid: TimetableGrid,
+  busyMap: BusyMap,
+  dailyLessonMap: DailyLessonMap
+): void {
   for (const change of changes) {
     if (change.type === 'grid') {
       grid.delete(change.key);
-    } else {
+    } else if (change.type === 'busy') {
       busyMap.delete(change.key);
+    } else if (change.type === 'daily') {
+      dailyLessonMap.delete(change.key);
     }
   }
 }

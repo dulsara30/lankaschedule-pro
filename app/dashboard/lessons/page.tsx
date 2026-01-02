@@ -342,80 +342,103 @@ export default function LessonsPage() {
                 Create Lesson
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-[95vw] max-h-[90vh] overflow-y-auto">
+            <DialogContent className="w-[90vw] max-w-6xl max-h-[92vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>
+                <DialogTitle className="text-2xl font-bold">
                   {editingLesson ? 'Edit Lesson' : 'Create New Lesson'}
                 </DialogTitle>
-                <DialogDescription>
-                  Build a lesson unit with subjects, teachers, and classes in a smart horizontal layout
+                <DialogDescription className="text-base">
+                  Build a comprehensive lesson unit with subjects, teachers, and classes in a professional horizontal layout
                 </DialogDescription>
               </DialogHeader>
               
-              <form onSubmit={handleSubmit} className="space-y-5">
-                {/* Row 1: Lesson Name */}
+              <form onSubmit={handleSubmit} className="space-y-8">
+                {/* Row 1: Lesson Name with Smart Highlight */}
                 <div>
-                  <label htmlFor="lessonName" className="mb-2 block text-sm font-medium">
-                    Lesson Name {selectedSubjects.length === 1 ? '(Auto-filled from subject)' : '(Required for multiple subjects)'}
+                  <label htmlFor="lessonName" className="mb-2 block text-sm font-semibold">
+                    Lesson Name 
+                    {selectedSubjects.length === 0 && <span className="text-zinc-500 font-normal ml-2">(Select subjects first)</span>}
+                    {selectedSubjects.length === 1 && <span className="text-green-600 font-normal ml-2">(✓ Auto-filled from subject)</span>}
+                    {selectedSubjects.length > 1 && <span className="text-orange-600 font-semibold ml-2">(⚠ Required - Enter a name for this multi-subject lesson)</span>}
                   </label>
                   <Input
                     id="lessonName"
                     value={formData.lessonName}
                     onChange={(e) => setFormData({ ...formData, lessonName: e.target.value })}
-                    placeholder="e.g., Grade 6 Aesthetic Block, 10-Science"
+                    placeholder="e.g., Grade 6 Aesthetic Block, 10-Science Combined"
                     required={selectedSubjects.length !== 1}
-                    className="text-lg font-semibold"
+                    className={`text-lg font-semibold h-12 ${
+                      selectedSubjects.length > 1 && !formData.lessonName 
+                        ? 'border-orange-500 ring-2 ring-orange-200 dark:ring-orange-900' 
+                        : ''
+                    }`}
                   />
                 </div>
 
-                {/* Row 2: Classes, Subjects, and Teachers (3 Columns Side-by-Side) */}
-                <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-                  {/* Classes Selection */}
-                  <div>
-                    <label className="mb-2 block text-sm font-medium">
-                      Classes
+                {/* Row 2: 3-Column Professional Grid (Classes | Subjects | Teachers) */}
+                <div className="grid grid-cols-3 gap-8">
+                  {/* Column 1: Classes Selection */}
+                  <div className="flex flex-col">
+                    <label className="mb-3 block text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                      📚 Select Classes
                     </label>
-                    <Card className="p-3 h-[320px] overflow-y-auto">
-                      <div className="grid grid-cols-2 gap-1.5">
-                        {classes.map((classItem) => (
-                          <button
-                            key={classItem._id}
-                            type="button"
-                            onClick={() => toggleClass(classItem._id)}
-                            className={`rounded-md border-2 px-2 py-1.5 text-xs font-medium transition-all ${
-                              selectedClasses.includes(classItem._id)
-                                ? 'border-blue-600 bg-blue-50 text-blue-900 shadow-sm dark:bg-blue-900 dark:text-blue-50'
-                                : 'border-zinc-200 bg-white hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-900'
-                            }`}
-                          >
-                            {classItem.name}
-                          </button>
-                        ))}
+                    <Card className="p-4 h-[380px] flex flex-col border-2">
+                      <div className="flex-1 overflow-y-auto space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          {classes.map((classItem) => (
+                            <button
+                              key={classItem._id}
+                              type="button"
+                              onClick={() => toggleClass(classItem._id)}
+                              className={`rounded-lg border-2 px-3 py-2.5 text-sm font-semibold transition-all hover:scale-105 ${
+                                selectedClasses.includes(classItem._id)
+                                  ? 'border-blue-600 bg-blue-50 text-blue-900 shadow-lg dark:bg-blue-900 dark:text-blue-50'
+                                  : 'border-zinc-300 bg-white hover:border-blue-400 hover:bg-blue-50/50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-blue-700'
+                              }`}
+                            >
+                              {classItem.name}
+                            </button>
+                          ))}
+                        </div>
                       </div>
+                      
+                      {/* Selected Classes Badges */}
                       {selectedClasses.length > 0 && (
-                        <div className="mt-2 pt-2 border-t text-xs font-medium text-blue-600">
-                          ✓ {selectedClasses.length} selected
+                        <div className="mt-3 pt-3 border-t">
+                          <div className="flex flex-wrap gap-1.5">
+                            {selectedClasses.map(classId => {
+                              const classItem = classes.find(c => c._id === classId);
+                              return classItem ? (
+                                <Badge key={classId} variant="secondary" className="text-xs">
+                                  {classItem.name}
+                                </Badge>
+                              ) : null;
+                            })}
+                          </div>
+                          <div className="text-xs font-semibold text-blue-600 mt-2">
+                            ✓ {selectedClasses.length} class{selectedClasses.length !== 1 ? 'es' : ''} selected
+                          </div>
                         </div>
                       )}
                     </Card>
                   </div>
 
-                  {/* Subject Selection */}
-                  <div>
-                    <label className="mb-2 block text-sm font-medium">
-                      Subjects
+                  {/* Column 2: Subjects Selection */}
+                  <div className="flex flex-col">
+                    <label className="mb-3 block text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                      🎨 Select Subjects
                     </label>
-                    <Card className="p-3 h-[320px] flex flex-col">
-                      <div className="mb-2">
+                    <Card className="p-4 h-[380px] flex flex-col border-2">
+                      <div className="mb-3">
                         <Input
                           type="text"
-                          placeholder="🔍 Search..."
+                          placeholder="🔍 Search subjects..."
                           value={subjectSearchTerm}
                           onChange={(e) => setSubjectSearchTerm(e.target.value)}
-                          className="h-8 text-sm"
+                          className="h-9"
                         />
                       </div>
-                      <div className="flex-1 overflow-y-auto space-y-1.5">
+                      <div className="flex-1 overflow-y-auto space-y-2">
                         {subjects
                           .filter(subject => 
                             subject.name.toLowerCase().includes(subjectSearchTerm.toLowerCase())
@@ -425,44 +448,66 @@ export default function LessonsPage() {
                             key={subject._id}
                             type="button"
                             onClick={() => toggleSubject(subject._id)}
-                            className={`w-full flex items-center gap-2 rounded-md border-2 px-2 py-1.5 text-xs font-medium transition-all text-left ${
+                            className={`w-full flex items-center gap-3 rounded-lg border-2 px-3 py-2.5 text-sm font-semibold transition-all text-left hover:scale-102 ${
                               selectedSubjects.includes(subject._id)
-                                ? 'border-blue-600 bg-blue-50 text-blue-900 shadow-sm dark:bg-blue-900 dark:text-blue-50'
-                                : 'border-zinc-200 bg-white hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-900'
+                                ? 'border-blue-600 bg-blue-50 text-blue-900 shadow-lg dark:bg-blue-900 dark:text-blue-50'
+                                : 'border-zinc-300 bg-white hover:border-blue-400 hover:bg-blue-50/50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-blue-700'
                             }`}
                           >
                             <div 
-                              className="h-3 w-3 rounded-full flex-shrink-0" 
+                              className="h-5 w-5 rounded-full flex-shrink-0 border-2 border-white shadow-sm" 
                               style={{ backgroundColor: subject.color }}
                             />
-                            <span className="truncate">{subject.name}</span>
+                            <span className="truncate flex-1">{subject.name}</span>
                           </button>
                         ))}
                       </div>
+                      
+                      {/* Selected Subjects Badges */}
                       {selectedSubjects.length > 0 && (
-                        <div className="mt-2 pt-2 border-t text-xs font-medium text-blue-600">
-                          ✓ {selectedSubjects.length} selected
+                        <div className="mt-3 pt-3 border-t">
+                          <div className="flex flex-wrap gap-1.5">
+                            {selectedSubjects.map(subjectId => {
+                              const subject = subjects.find(s => s._id === subjectId);
+                              return subject ? (
+                                <Badge 
+                                  key={subjectId} 
+                                  className="text-xs"
+                                  style={{ 
+                                    backgroundColor: subject.color,
+                                    color: '#fff',
+                                    borderColor: subject.color
+                                  }}
+                                >
+                                  {subject.name}
+                                </Badge>
+                              ) : null;
+                            })}
+                          </div>
+                          <div className="text-xs font-semibold text-blue-600 mt-2">
+                            ✓ {selectedSubjects.length} subject{selectedSubjects.length !== 1 ? 's' : ''} selected
+                          </div>
                         </div>
                       )}
                     </Card>
                   </div>
 
-                  {/* Teacher Selection */}
-                  <div>
-                    <label className="mb-2 block text-sm font-medium">
-                      Teachers
+                  {/* Column 3: Teachers Selection */}
+                  <div className="flex flex-col">
+                    <label className="mb-3 block text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                      👨‍🏫 Select Teachers
                     </label>
-                    <Card className="p-3 h-[320px] flex flex-col">
-                      <div className="mb-2">
+                    <Card className="p-4 h-[380px] flex flex-col border-2">
+                      <div className="mb-3">
                         <Input
                           type="text"
-                          placeholder="🔍 Search..."
+                          placeholder="🔍 Search teachers..."
                           value={teacherSearchTerm}
                           onChange={(e) => setTeacherSearchTerm(e.target.value)}
-                          className="h-8 text-sm"
+                          className="h-9"
                         />
                       </div>
-                      <div className="flex-1 overflow-y-auto space-y-1.5">
+                      <div className="flex-1 overflow-y-auto space-y-2">
                         {teachers
                           .filter(teacher => 
                             teacher.name.toLowerCase().includes(teacherSearchTerm.toLowerCase())
@@ -472,30 +517,45 @@ export default function LessonsPage() {
                             key={teacher._id}
                             type="button"
                             onClick={() => toggleTeacher(teacher._id)}
-                            className={`w-full rounded-md border-2 px-2 py-1.5 text-xs font-medium transition-all text-left ${
+                            className={`w-full rounded-lg border-2 px-3 py-2.5 text-sm font-semibold transition-all text-left hover:scale-102 ${
                               selectedTeachers.includes(teacher._id)
-                                ? 'border-blue-600 bg-blue-50 text-blue-900 shadow-sm dark:bg-blue-900 dark:text-blue-50'
-                                : 'border-zinc-200 bg-white hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-900'
+                                ? 'border-blue-600 bg-blue-50 text-blue-900 shadow-lg dark:bg-blue-900 dark:text-blue-50'
+                                : 'border-zinc-300 bg-white hover:border-blue-400 hover:bg-blue-50/50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-blue-700'
                             }`}
                           >
                             <div className="truncate">{teacher.name}</div>
+                            <div className="text-xs text-zinc-500 dark:text-zinc-400 truncate">{teacher.email}</div>
                           </button>
                         ))}
                       </div>
+                      
+                      {/* Selected Teachers Badges */}
                       {selectedTeachers.length > 0 && (
-                        <div className="mt-2 pt-2 border-t text-xs font-medium text-blue-600">
-                          ✓ {selectedTeachers.length} selected
+                        <div className="mt-3 pt-3 border-t">
+                          <div className="flex flex-wrap gap-1.5">
+                            {selectedTeachers.map(teacherId => {
+                              const teacher = teachers.find(t => t._id === teacherId);
+                              return teacher ? (
+                                <Badge key={teacherId} variant="secondary" className="text-xs">
+                                  {teacher.name}
+                                </Badge>
+                              ) : null;
+                            })}
+                          </div>
+                          <div className="text-xs font-semibold text-blue-600 mt-2">
+                            ✓ {selectedTeachers.length} teacher{selectedTeachers.length !== 1 ? 's' : ''} selected
+                          </div>
                         </div>
                       )}
                     </Card>
                   </div>
                 </div>
 
-                {/* Row 3: Period Inputs and Notes (Side-by-Side) */}
-                <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                {/* Row 3: Period Configuration (Horizontal) */}
+                <div className="grid grid-cols-3 gap-8">
                   <div>
-                    <label htmlFor="numberOfSingles" className="mb-2 block text-sm font-medium">
-                      Single Periods/Week
+                    <label htmlFor="numberOfSingles" className="mb-2 block text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                      ⏱️ Single Periods/Week
                     </label>
                     <Input
                       id="numberOfSingles"
@@ -504,12 +564,12 @@ export default function LessonsPage() {
                       max="35"
                       value={formData.numberOfSingles}
                       onChange={(e) => setFormData({ ...formData, numberOfSingles: parseInt(e.target.value) || 0 })}
-                      className="text-lg"
+                      className="text-lg font-semibold h-12"
                     />
                   </div>
                   <div>
-                    <label htmlFor="numberOfDoubles" className="mb-2 block text-sm font-medium">
-                      Double Periods/Week
+                    <label htmlFor="numberOfDoubles" className="mb-2 block text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                      ⏰ Double Periods/Week
                     </label>
                     <Input
                       id="numberOfDoubles"
@@ -518,18 +578,24 @@ export default function LessonsPage() {
                       max="17"
                       value={formData.numberOfDoubles}
                       onChange={(e) => setFormData({ ...formData, numberOfDoubles: parseInt(e.target.value) || 0 })}
-                      className="text-lg"
+                      className="text-lg font-semibold h-12"
                     />
                   </div>
                   <div>
-                    <label className="mb-2 block text-sm font-medium">
-                      Total Periods
+                    <label className="mb-2 block text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                      📈 Total Periods
                     </label>
-                    <div className="h-[42px] rounded-md bg-blue-50 dark:bg-blue-900/20 px-3 flex items-center justify-between border-2 border-blue-200 dark:border-blue-800">
-                      <span className="text-lg font-bold text-blue-900 dark:text-blue-100">
+                    <div className={`h-12 rounded-lg px-4 flex items-center justify-center gap-2 border-2 transition-colors ${
+                      totalPeriods > 35 
+                        ? 'border-red-500 bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300' 
+                        : totalPeriods === 0
+                        ? 'border-zinc-300 bg-zinc-50 text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400'
+                        : 'border-green-500 bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300'
+                    }`}>
+                      <span className="text-xl font-bold">
                         {totalPeriods}
                       </span>
-                      <span className="text-xs text-blue-700 dark:text-blue-300">
+                      <span className="text-sm font-medium">
                         / 35 max
                       </span>
                     </div>
@@ -538,8 +604,8 @@ export default function LessonsPage() {
 
                 {/* Row 4: Notes */}
                 <div>
-                  <label htmlFor="notes" className="mb-2 block text-sm font-medium">
-                    Notes (Optional)
+                  <label htmlFor="notes" className="mb-2 block text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                    📝 Notes (Optional)
                   </label>
                   <textarea
                     id="notes"
@@ -547,17 +613,50 @@ export default function LessonsPage() {
                     onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                     placeholder="Additional information about this lesson..."
                     rows={2}
-                    className="flex w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm ring-offset-white placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-950 dark:ring-offset-zinc-950 dark:placeholder:text-zinc-400 dark:focus-visible:ring-zinc-300"
+                    className="flex w-full rounded-lg border-2 border-zinc-200 bg-white px-4 py-3 text-sm ring-offset-white placeholder:text-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-950 dark:ring-offset-zinc-950 dark:placeholder:text-zinc-500 dark:focus-visible:ring-blue-400"
                   />
                 </div>
 
+                {/* Row 5: Rainbow Gradient Preview */}
+                {selectedSubjects.length > 0 && (
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                      🌈 Lesson Preview
+                    </label>
+                    <div className="relative h-16 rounded-lg overflow-hidden border-2 border-zinc-200 dark:border-zinc-800 shadow-sm">
+                      <div 
+                        className="absolute inset-0" 
+                        style={{
+                          background: selectedSubjects.length === 1
+                            ? subjects.find(s => s._id === selectedSubjects[0])?.color || '#6366f1'
+                            : `linear-gradient(90deg, ${selectedSubjects.map((subjectId, index) => {
+                                const subject = subjects.find(s => s._id === subjectId);
+                                const color = subject?.color || '#6366f1';
+                                const position = (index / (selectedSubjects.length - 1)) * 100;
+                                return `${color} ${position}%`;
+                              }).join(', ')})`
+                        }}
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center backdrop-blur-[1px] bg-white/10">
+                        <span className="text-white font-bold text-lg drop-shadow-lg px-4 py-2 rounded-md bg-black/20">
+                          {formData.lessonName || 'Enter lesson name'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Submit Buttons */}
-                <div className="flex justify-end gap-3 pt-4 border-t">
-                  <Button type="button" variant="outline" onClick={() => handleDialogClose(false)}>
+                <div className="flex justify-end gap-4 pt-4 border-t-2">
+                  <Button type="button" variant="outline" onClick={() => handleDialogClose(false)} className="h-11 px-6 text-sm font-semibold">
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={totalPeriods > 35}>
-                    {editingLesson ? 'Update Lesson' : 'Create Lesson'}
+                  <Button 
+                    type="submit" 
+                    disabled={totalPeriods > 35}
+                    className="h-11 px-8 text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-md"
+                  >
+                    {editingLesson ? '✨ Update Lesson' : '✨ Create Lesson'}
                   </Button>
                 </div>
               </form>

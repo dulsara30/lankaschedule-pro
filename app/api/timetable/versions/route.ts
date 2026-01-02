@@ -25,12 +25,15 @@ export async function GET() {
     const versionsWithStats = await Promise.all(
       versions.map(async (version) => {
         const slotCount = await TimetableSlot.countDocuments({ versionId: version._id });
+        console.log(`📊 Version "${version.versionName}" (${version.isSaved ? 'Saved' : 'Draft'}): ${slotCount} slots`);
         return {
           ...version,
           slotCount,
         };
       })
     );
+
+    console.log(`✅ Versions API: Returning ${versionsWithStats.length} versions`);
 
     return NextResponse.json({
       success: true,
@@ -120,8 +123,11 @@ export async function DELETE(request: Request) {
       );
     }
 
-    // Delete all slots associated with this version
+    console.log(`🗑️  Deleting version: ${versionId}`);
+
+    // Delete all slots associated with this specific version
     const deletedSlots = await TimetableSlot.deleteMany({ versionId });
+    console.log(`   Deleted ${deletedSlots.deletedCount} slots from this version`);
     
     // Delete the version itself
     const deletedVersion = await TimetableVersion.findByIdAndDelete(versionId);
@@ -132,6 +138,8 @@ export async function DELETE(request: Request) {
         { status: 404 }
       );
     }
+
+    console.log(`✅ Version "${deletedVersion.versionName}" deleted successfully`);
 
     return NextResponse.json({
       success: true,

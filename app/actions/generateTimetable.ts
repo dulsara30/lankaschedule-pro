@@ -126,37 +126,42 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
         `DoubleStart: ${slot.isDoubleStart}, DoubleEnd: ${slot.isDoubleEnd}`);
     });
 
-    // 6. Handle versioning: Clean database state
-    console.log('🔍 Cleaning existing slots and draft versions...');
+    // 6. Handle versioning: ONLY delete draft version slots
+    console.log('🔍 Checking for existing draft version...');
     
-    // Delete ALL existing slots for this school to ensure clean state
-    const allSlotsDeleted = await TimetableSlot.deleteMany({ 
-      schoolId: school._id
-    });
-    console.log(`🗑️  Deleted ALL ${allSlotsDeleted.deletedCount} existing slots for clean state`);
-    
-    // Delete existing draft version if any
+    // Find existing draft version (if any)
     const existingDraft = await TimetableVersion.findOne({
       schoolId: school._id,
       isSaved: false,
     });
 
     if (existingDraft) {
-      console.log(`🗑️  Found existing draft version: ${existingDraft.versionName}. Deleting...`);
+      console.log(`🗑️  Found existing draft version: ${existingDraft.versionName} (ID: ${existingDraft._id})`);
+      
+      // Delete ONLY slots belonging to this specific draft version
+      const draftSlotsDeleted = await TimetableSlot.deleteMany({ 
+        versionId: existingDraft._id 
+      });
+      console.log(`   Deleted ${draftSlotsDeleted.deletedCount} slots from draft version`);
+      
+      // Delete the draft version metadata itself
       await TimetableVersion.deleteOne({ _id: existingDraft._id });
       console.log('   Draft version deleted');
+    } else {
+      console.log('✅ No existing draft found. Saved versions are preserved.');
     }
+    
+    // Verify saved versions are intact
+    const savedVersionCount = await TimetableVersion.countDocuments({
+      schoolId: school._id,
+      isSaved: true,
+    });
+    console.log(`📚 Saved versions protected: ${savedVersionCount} versions remain intact`);
 
     // 7. Create new draft version
     console.log('📦 Creating new draft version...');
     
-    // Calculate version name based on existing saved versions
-    const existingVersions = await TimetableVersion.countDocuments({
-      schoolId: school._id,
-      isSaved: true,
-    });
-    
-    const versionName = `Version ${existingVersions + 1}.0 (Draft)`;
+    const versionName = `Version ${savedVersionCount + 1}.0 (Draft)`;
     
     const newVersion = await TimetableVersion.create({
       schoolId: school._id,

@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Calendar, Users, User, Save, History, Trash2, Check, ChevronsUpDown, ChevronDown, ChevronUp, Download, RotateCcw, FileDown, Eye } from 'lucide-react';
+import { Calendar, Users, User, Save, History, Trash2, Check, ChevronsUpDown, ChevronDown, ChevronUp, Download, RotateCcw, FileDown, Eye, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import dynamic from 'next/dynamic';

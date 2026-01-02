@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/dbConnect';
 import TimetableSlot from '@/models/TimetableSlot';
+import TimetableVersion from '@/models/TimetableVersion';
 import School from '@/models/School';
 
 // GET: Fetch all timetable slots with populated references
-export async function GET() {
+// Supports optional versionId query parameter
+export async function GET(request: Request) {
   try {
     await dbConnect();
 
@@ -16,7 +18,33 @@ export async function GET() {
       }, { status: 400 });
     }
 
-    const slots = await TimetableSlot.find({ schoolId: school._id })
+    // Extract versionId from query params if provided
+    const { searchParams } = new URL(request.url);
+    const versionIdParam = searchParams.get('versionId');
+    
+    let versionId = versionIdParam;
+    
+    // If no versionId specified, fetch the latest (draft or most recent saved)
+    if (!versionId) {
+      const latestVersion = await TimetableVersion.findOne({ schoolId: school._id })
+        .sort({ isSaved: 1, createdAt: -1 }) // Draft first, then by date
+        .lean();
+      
+      if (!latestVersion) {
+        return NextResponse.json({
+          success: true,
+          data: [],
+          message: 'No timetable versions found',
+        });
+      }
+      
+      versionId = latestVersion._id.toString();
+    }
+
+    const slots = await TimetableSlot.find({ 
+      schoolId: school._id,
+      versionId 
+    })
       .populate({
         path: 'classId',
         select: 'name grade',
@@ -32,12 +60,15 @@ export async function GET() {
       .sort({ day: 1, periodNumber: 1 })
       .lean();
 
-    console.log('✅ Timetable API: Fetched slots:', slots.length);
-    console.log('📊 Sample slot:', JSON.stringify(slots[0], null, 2));
+    console.log(`✅ Timetable API: Fetched ${slots.length} slots for version ${versionId}`);
+    if (slots.length > 0) {
+      console.log('📊 Sample slot:', JSON.stringify(slots[0], null, 2));
+    }
 
     return NextResponse.json({
       success: true,
       data: slots,
+      versionId,
     });
   } catch (error) {
     console.error('Error fetching timetable slots:', error);

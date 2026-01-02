@@ -17,15 +17,13 @@ import mongoose, { Document, Schema } from 'mongoose';
 
 export interface ITimetableSlot extends Document {
   schoolId: mongoose.Types.ObjectId;
+  versionId: mongoose.Types.ObjectId; // Links to TimetableVersion
   classId: mongoose.Types.ObjectId; // The class this slot belongs to
   lessonId: mongoose.Types.ObjectId; // The lesson assigned to this slot
   day: 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday';
   periodNumber: number; // 1-7 (or as configured in school settings)
   isDoubleStart?: boolean; // TRUE if this is the first period of a double block
   isDoubleEnd?: boolean; // TRUE if this is the second period of a double block
-  weekNumber?: number; // Optional: for schools with rotating schedules
-  academicYear?: string; // e.g., "2026"
-  term?: string; // e.g., "Term 1", "Term 2", "Term 3"
   isLocked?: boolean; // Prevent auto-generation from modifying this slot
   createdAt: Date;
   updatedAt: Date;
@@ -37,6 +35,12 @@ const TimetableSlotSchema = new Schema<ITimetableSlot>(
       type: Schema.Types.ObjectId,
       ref: 'School',
       required: [true, 'School ID is required'],
+      index: true,
+    },
+    versionId: {
+      type: Schema.Types.ObjectId,
+      ref: 'TimetableVersion',
+      required: [true, 'Version ID is required'],
       index: true,
     },
     classId: {
@@ -71,19 +75,6 @@ const TimetableSlotSchema = new Schema<ITimetableSlot>(
       default: false,
       index: true,
     },
-    weekNumber: {
-      type: Number,
-      min: [1, 'Week number must be at least 1'],
-      default: 1,
-    },
-    academicYear: {
-      type: String,
-      default: () => new Date().getFullYear().toString(),
-    },
-    term: {
-      type: String,
-      default: 'Term 1',
-    },
     isLocked: {
       type: Boolean,
       default: false,
@@ -95,20 +86,23 @@ const TimetableSlotSchema = new Schema<ITimetableSlot>(
 );
 
 // Compound indexes for efficient queries and constraints
-// Ensure no duplicate slots for the same class on the same day/period
+// Ensure no duplicate slots for the same class on the same day/period in a version
 TimetableSlotSchema.index(
-  { schoolId: 1, classId: 1, day: 1, periodNumber: 1, weekNumber: 1, academicYear: 1, term: 1 },
+  { schoolId: 1, classId: 1, day: 1, periodNumber: 1, versionId: 1 },
   { unique: true }
 );
 
-// Find all slots for a specific class
-TimetableSlotSchema.index({ schoolId: 1, classId: 1, academicYear: 1, term: 1 });
+// Find all slots for a specific version
+TimetableSlotSchema.index({ versionId: 1 });
 
-// Find all slots for a specific lesson
-TimetableSlotSchema.index({ schoolId: 1, lessonId: 1, academicYear: 1, term: 1 });
+// Find all slots for a specific class in a version
+TimetableSlotSchema.index({ schoolId: 1, classId: 1, versionId: 1 });
+
+// Find all slots for a specific lesson in a version
+TimetableSlotSchema.index({ schoolId: 1, lessonId: 1, versionId: 1 });
 
 // Find all slots for a specific day
-TimetableSlotSchema.index({ schoolId: 1, day: 1, periodNumber: 1 });
+TimetableSlotSchema.index({ schoolId: 1, day: 1, periodNumber: 1, versionId: 1 });
 
 // Pre-save validation: Check if periodNumber is within school's configured range
 TimetableSlotSchema.pre('save', async function () {

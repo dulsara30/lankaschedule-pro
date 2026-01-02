@@ -6,6 +6,7 @@ import School from '@/models/School';
 import Lesson from '@/models/Lesson';
 import Class from '@/models/Class';
 import TimetableSlot from '@/models/TimetableSlot';
+import TimetableVersion from '@/models/TimetableVersion';
 import { generateTimetable, ScheduleLesson, ScheduleClass } from '@/lib/algorithm/scheduler';
 
 export interface GenerateTimetableResult {
@@ -124,14 +125,48 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
         `DoubleStart: ${slot.isDoubleStart}, DoubleEnd: ${slot.isDoubleEnd}`);
     });
 
-    // 6. Clear existing timetable slots
-    const deleteResult = await TimetableSlot.deleteMany({ schoolId: school._id });
-    console.log(`🗑️  Deleted ${deleteResult.deletedCount} existing slots`);
+    // 6. Handle versioning: Check for existing draft version
+    console.log('🔍 Checking for existing draft version...');
+    const existingDraft = await TimetableVersion.findOne({
+      schoolId: school._id,
+      isSaved: false,
+    });
 
-    // 7. Save generated slots to database
+    if (existingDraft) {
+      console.log(`🗑️  Found existing draft version: ${existingDraft.versionName}. Deleting...`);
+      // Delete all slots associated with this draft
+      const deletedSlots = await TimetableSlot.deleteMany({ versionId: existingDraft._id });
+      console.log(`   Deleted ${deletedSlots.deletedCount} slots from old draft`);
+      
+      // Delete the draft version itself
+      await TimetableVersion.deleteOne({ _id: existingDraft._id });
+      console.log('   Draft version deleted');
+    }
+
+    // 7. Create new draft version
+    console.log('📦 Creating new draft version...');
+    
+    // Calculate version name based on existing saved versions
+    const existingVersions = await TimetableVersion.countDocuments({
+      schoolId: school._id,
+      isSaved: true,
+    });
+    
+    const versionName = `Version ${existingVersions + 1}.0 (Draft)`;
+    
+    const newVersion = await TimetableVersion.create({
+      schoolId: school._id,
+      versionName,
+      isSaved: false,
+    });
+    
+    console.log(`✅ Created new version: ${newVersion.versionName} (ID: ${newVersion._id})`);
+
+    // 8. Save generated slots to database with versionId
     if (result.slots.length > 0) {
       const slotsToSave = result.slots.map((slot) => ({
         schoolId: school._id,
+        versionId: newVersion._id,
         classId: slot.classId,
         lessonId: slot.lessonId,
         day: slot.day,
@@ -153,11 +188,11 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
       console.log('✅ Slots saved successfully!');
     }
 
-    // 8. Revalidate paths
+    // 9. Revalidate paths
     revalidatePath('/dashboard/timetable');
     revalidatePath('/dashboard/lessons');
 
-    // 9. Return result
+    // 10. Return result
     if (result.failedLessons.length > 0) {
       return {
         success: true,

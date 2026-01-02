@@ -3,8 +3,10 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Calendar, Users, User } from 'lucide-react';
+import { Calendar, Users, User, Save, History, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Subject {
@@ -42,6 +44,14 @@ interface TimetableSlot {
   isDoubleEnd?: boolean;    // Second period of a double block
 }
 
+interface TimetableVersion {
+  _id: string;
+  versionName: string;
+  isSaved: boolean;
+  createdAt: string;
+  slotCount: number;
+}
+
 interface SchoolConfig {
   startTime: string;
   periodDuration: number;
@@ -59,26 +69,37 @@ export default function TimetablePage() {
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'class' | 'teacher'>('class');
   const [selectedEntity, setSelectedEntity] = useState<string>('');
+  
+  // Version management state
+  const [versions, setVersions] = useState<TimetableVersion[]>([]);
+  const [currentVersionId, setCurrentVersionId] = useState<string>('');
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [newVersionName, setNewVersionName] = useState('');
+  const [savingVersion, setSavingVersion] = useState(false);
 
   useEffect(() => {
     fetchData();
   }, []);
 
-  const fetchData = async () => {
+  const fetchData = async (versionId?: string) => {
     try {
       setLoading(true);
-      const [slotsRes, classesRes, teachersRes, configRes] = await Promise.all([
-        fetch('/api/timetable', { cache: 'no-store' }),
+      const timetableUrl = versionId ? `/api/timetable?versionId=${versionId}` : '/api/timetable';
+      
+      const [slotsRes, classesRes, teachersRes, configRes, versionsRes] = await Promise.all([
+        fetch(timetableUrl, { cache: 'no-store' }),
         fetch('/api/classes', { cache: 'no-store' }),
         fetch('/api/teachers', { cache: 'no-store' }),
         fetch('/api/school/config', { cache: 'no-store' }),
+        fetch('/api/timetable/versions', { cache: 'no-store' }),
       ]);
 
-      const [slotsData, classesData, teachersData, configData] = await Promise.all([
+      const [slotsData, classesData, teachersData, configData, versionsData] = await Promise.all([
         slotsRes.json(),
         classesRes.json(),
         teachersRes.json(),
         configRes.json(),
+        versionsRes.json(),
       ]);
 
       console.log('🔍 Client: Slots received:', slotsData.data?.length || 0);
@@ -96,8 +117,13 @@ export default function TimetablePage() {
       
       console.log('📋 Client: Classes:', classesData.data?.length || 0);
       console.log('⚙️ Client: Config:', configData.data);
+      console.log('📚 Client: Versions:', versionsData.data?.length || 0);
 
-      if (slotsData.success) setSlots(slotsData.data || []);
+      if (slotsData.success) {
+        setSlots(slotsData.data || []);
+        if (slotsData.versionId) setCurrentVersionId(slotsData.versionId);
+      }
+      if (versionsData.success) setVersions(versionsData.data || []);
       if (classesData.success) {
         const classList = classesData.data || [];
         setClasses(classList);
@@ -110,6 +136,71 @@ export default function TimetablePage() {
       toast.error('Failed to load timetable data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveVersion = async () => {
+    if (!newVersionName.trim()) {
+      toast.error('Please enter a version name');
+      return;
+    }
+
+    try {
+      setSavingVersion(true);
+      const response = await fetch('/api/timetable/versions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          versionId: currentVersionId,
+          versionName: newVersionName,
+          isSaved: true,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success('Version saved successfully!');
+        setSaveDialogOpen(false);
+        setNewVersionName('');
+        await fetchData(currentVersionId);
+      } else {
+        toast.error(data.error || 'Failed to save version');
+      }
+    } catch (error) {
+      console.error('Error saving version:', error);
+      toast.error('Failed to save version');
+    } finally {
+      setSavingVersion(false);
+    }
+  };
+
+  const handleSwitchVersion = async (versionId: string) => {
+    await fetchData(versionId);
+    toast.success('Switched to selected version');
+  };
+
+  const handleDeleteVersion = async (versionId: string, versionName: string) => {
+    if (!confirm(`Are you sure you want to delete "${versionName}"? This will also delete all associated timetable slots.`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/timetable/versions?versionId=${versionId}`, {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success('Version deleted successfully');
+        await fetchData();
+      } else {
+        toast.error(data.error || 'Failed to delete version');
+      }
+    } catch (error) {
+      console.error('Error deleting version:', error);
+      toast.error('Failed to delete version');
     }
   };
 
@@ -299,6 +390,114 @@ export default function TimetablePage() {
           </Button>
         </div>
       </div>
+
+      {/* Version Management Section */}
+      {slots.length > 0 && versions.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <History className="h-5 w-5" />
+              Version Management
+            </CardTitle>
+            <CardDescription>
+              Save, switch between, and manage different timetable versions
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col lg:flex-row gap-4">
+              {/* Current Version Info */}
+              <div className="flex-1">
+                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2 block">
+                  Current Version
+                </label>
+                <div className="flex items-center gap-3">
+                  <select
+                    value={currentVersionId}
+                    onChange={(e) => handleSwitchVersion(e.target.value)}
+                    className="flex-1 h-10 rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-950 dark:ring-offset-zinc-950 dark:focus-visible:ring-zinc-300"
+                  >
+                    {versions.map((version) => (
+                      <option key={version._id} value={version._id}>
+                        {version.versionName} {version.isSaved ? '' : '(Draft)'} - {version.slotCount} slots
+                      </option>
+                    ))}
+                  </select>
+                  
+                  {/* Save Version Button */}
+                  {versions.find(v => v._id === currentVersionId)?.isSaved === false && (
+                    <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
+                      <DialogTrigger asChild>
+                        <Button variant="default" size="sm" className="whitespace-nowrap">
+                          <Save className="mr-2 h-4 w-4" />
+                          Save Version
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Save Timetable Version</DialogTitle>
+                          <DialogDescription>
+                            Give this version a name to save it permanently. You can generate new drafts without affecting saved versions.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="py-4">
+                          <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2 block">
+                            Version Name
+                          </label>
+                          <Input
+                            placeholder="e.g., Final Version, Term 1 2026"
+                            value={newVersionName}
+                            onChange={(e) => setNewVersionName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleSaveVersion();
+                            }}
+                          />
+                        </div>
+                        <DialogFooter>
+                          <Button variant="outline" onClick={() => setSaveDialogOpen(false)}>
+                            Cancel
+                          </Button>
+                          <Button onClick={handleSaveVersion} disabled={savingVersion}>
+                            {savingVersion ? 'Saving...' : 'Save Version'}
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  )}
+                </div>
+              </div>
+
+              {/* Saved Versions List */}
+              {versions.filter(v => v.isSaved).length > 0 && (
+                <div className="flex-1">
+                  <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2 block">
+                    Saved Versions ({versions.filter(v => v.isSaved).length})
+                  </label>
+                  <div className="space-y-2 max-h-32 overflow-y-auto border border-zinc-200 dark:border-zinc-800 rounded-md p-3">
+                    {versions.filter(v => v.isSaved).map((version) => (
+                      <div
+                        key={version._id}
+                        className="flex items-center justify-between text-sm py-1"
+                      >
+                        <span className="text-zinc-700 dark:text-zinc-300">
+                          {version.versionName}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteVersion(version._id, version.versionName)}
+                          className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {slots.length === 0 ? (
         <Card>

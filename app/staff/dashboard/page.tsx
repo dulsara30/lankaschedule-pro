@@ -40,7 +40,7 @@ interface SchoolInfo {
 export default function TeacherDashboard() {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
   const [adminNote, setAdminNote] = useState<string>('');
   const [versionName, setVersionName] = useState<string>('');
@@ -54,15 +54,16 @@ export default function TeacherDashboard() {
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
   const fetchDashboardData = async () => {
-    // Absolute guard: prevent any duplicate fetch attempts
-    if (hasFetched || isLoading) {
-      console.log('Already fetched or loading, skipping...');
+    // Absolute guard: prevent duplicate fetch attempts
+    if (hasFetched) {
+      console.log('Already fetched, skipping...');
       return;
     }
     
-    // Set fetched flag as the ABSOLUTE FIRST action
+    // Set flags as the ABSOLUTE FIRST actions
     setHasFetched(true);
     setIsLoading(true);
+    
     try {
       console.log('Fetching dashboard data...');
       
@@ -127,6 +128,7 @@ export default function TeacherDashboard() {
       toast.error('Failed to load dashboard data');
     } finally {
       setIsLoading(false);
+      console.log('DEBUG: Loading state cleared, ready to render');
     }
   };
 
@@ -212,9 +214,9 @@ export default function TeacherDashboard() {
     // Diagnostic log
     console.log('DEBUG: School periods:', schoolInfo.numberOfPeriods, 'My slots count:', schedule.length);
     
-    // Fix NaN: Explicitly convert schoolInfo.numberOfPeriods to Number and handle empty schedule
+    // Fix NaN: Explicitly convert to Number with fallback to 5
     const periodsCount = Math.max(
-      Number(schoolInfo?.numberOfPeriods || 0),
+      Number(schoolInfo?.numberOfPeriods || 5),
       ...schedule.map(s => Number(s.periodNumber) || 0)
     );
     

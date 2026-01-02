@@ -5,6 +5,8 @@ import dbConnect from '@/lib/dbConnect';
 import TimetableVersion from '@/models/TimetableVersion';
 import TimetableSlot from '@/models/TimetableSlot';
 import Subject from '@/models/Subject';
+import Lesson from '@/models/Lesson';
+import Teacher from '@/models/Teacher';
 
 export async function GET() {
   try {

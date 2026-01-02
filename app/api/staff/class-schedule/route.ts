@@ -4,7 +4,6 @@ import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import dbConnect from '@/lib/dbConnect';
 import TimetableVersion from '@/models/TimetableVersion';
 import TimetableSlot from '@/models/TimetableSlot';
-import Lesson from '@/models/Lesson';
 import Subject from '@/models/Subject';
 
 export async function GET(request: Request) {
@@ -63,13 +62,18 @@ export async function GET(request: Request) {
     for (const slot of slots) {
       const lesson = slot.lessonId as any;
       if (lesson) {
-        const subject = await Subject.findById(lesson.subjectId);
+        // Get all subjects for this lesson
+        const subjects = await Subject.find({
+          _id: { $in: lesson.subjectIds || [] }
+        }).lean();
+        
+        const subjectNames = subjects.map(s => s.name).join(', ') || 'Unknown Subject';
         
         schedule.push({
           _id: slot._id.toString(),
           day: slot.day,
           periodNumber: slot.periodNumber,
-          subject: subject?.name || 'Unknown Subject',
+          subject: subjectNames,
           className: null, // Not needed for class view
           isDoubleStart: slot.isDoubleStart,
           isDoubleEnd: slot.isDoubleEnd,

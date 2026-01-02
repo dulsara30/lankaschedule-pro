@@ -1,16 +1,24 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Calendar, Clock, BookOpen, Users, Search, LogOut } from 'lucide-react';
+import { Loader2, Calendar, Clock, Users, Search, LogOut, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { signOut } from 'next-auth/react';
 import Image from 'next/image';
+import { PDFDownloadLink } from '@react-pdf/renderer';
+import dynamic from 'next/dynamic';
+
+// Dynamically import TimetablePDF to avoid SSR issues
+const TimetablePDF = dynamic(
+  () => import('@/components/timetable/TimetablePDF'),
+  { ssr: false }
+);
 
 interface TimetableSlot {
   _id: string;
@@ -40,12 +48,15 @@ export default function TeacherDashboard() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
   const [adminNote, setAdminNote] = useState<string>('');
+  const [versionName, setVersionName] = useState<string>('');
   const [mySchedule, setMySchedule] = useState<TimetableSlot[]>([]);
   const [classes, setClasses] = useState<ClassOption[]>([]);
   const [selectedClass, setSelectedClass] = useState<string>('');
   const [classSchedule, setClassSchedule] = useState<TimetableSlot[]>([]);
   const [schoolInfo, setSchoolInfo] = useState<SchoolInfo | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showPDFDownload, setShowPDFDownload] = useState(false);
+  const [showClassPDF, setShowClassPDF] = useState(false);
 
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
@@ -68,7 +79,9 @@ export default function TeacherDashboard() {
         const data = await publishedRes.json();
         if (data.success) {
           setAdminNote(data.version?.adminNote || '');
+          setVersionName(data.version?.versionName || 'Current Timetable');
           setMySchedule(data.mySchedule || []);
+          setShowPDFDownload(data.mySchedule && data.mySchedule.length > 0);
         }
       }
 
@@ -104,6 +117,7 @@ export default function TeacherDashboard() {
         const data = await res.json();
         if (data.success) {
           setClassSchedule(data.schedule || []);
+          setShowClassPDF(data.schedule && data.schedule.length > 0);
         }
       }
     } catch (error) {
@@ -118,6 +132,7 @@ export default function TeacherDashboard() {
       fetchClassSchedule(classId);
     } else {
       setClassSchedule([]);
+      setShowClassPDF(false);
     }
   };
 
@@ -139,7 +154,7 @@ export default function TeacherDashboard() {
     return `${String(startHours).padStart(2, '0')}:${String(startMins).padStart(2, '0')} - ${String(endHours).padStart(2, '0')}:${String(endMins).padStart(2, '0')}`;
   };
 
-  const renderScheduleGrid = (schedule: TimetableSlot[], title: string) => {
+  const renderScheduleGrid = (schedule: TimetableSlot[], title: string, isTeacherSchedule: boolean = false) => {
     if (!schoolInfo) return null;
 
     const periods = Array.from({ length: schoolInfo.numberOfPeriods }, (_, i) => i + 1);
@@ -147,19 +162,92 @@ export default function TeacherDashboard() {
     return (
       <Card className="border-2 border-black dark:border-white rounded-none">
         <CardHeader className="border-b-2 border-black dark:border-white">
-          <CardTitle className="text-lg font-bold text-black dark:text-white">{title}</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg font-bold text-black dark:text-white">{title}</CardTitle>
+            {/* Download Button */}
+            {isTeacherSchedule && showPDFDownload && schoolInfo && (
+              <PDFDownloadLink
+                document={
+                  <TimetablePDF
+                    slots={mySchedule.map(slot => ({
+                      ...slot,
+                      lessonName: slot.subject,
+                      classNames: [slot.className],
+                    }))}
+                    schoolName={schoolInfo.name}
+                    versionName={versionName}
+                    config={{
+                      startTime: schoolInfo.startTime,
+                      periodDuration: schoolInfo.periodDuration,
+                      numberOfPeriods: schoolInfo.numberOfPeriods,
+                    }}
+                    title={`${session?.user.name}'s Teaching Schedule`}
+                  />
+                }
+                fileName={`${session?.user.name}-schedule.pdf`}
+              >
+                {({ loading }) => (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={loading}
+                    className="border-2 border-black dark:border-white rounded-none hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black font-bold"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    {loading ? 'Preparing...' : 'Download PDF'}
+                  </Button>
+                )}
+              </PDFDownloadLink>
+            )}
+            {!isTeacherSchedule && showClassPDF && schoolInfo && selectedClass && (
+              <PDFDownloadLink
+                document={
+                  <TimetablePDF
+                    slots={classSchedule.map(slot => ({
+                      ...slot,
+                      lessonName: slot.subject,
+                      classNames: [classes.find(c => c._id === selectedClass)?.name || 'Class'],
+                    }))}
+                    schoolName={schoolInfo.name}
+                    versionName={versionName}
+                    config={{
+                      startTime: schoolInfo.startTime,
+                      periodDuration: schoolInfo.periodDuration,
+                      numberOfPeriods: schoolInfo.numberOfPeriods,
+                    }}
+                    title={`${classes.find(c => c._id === selectedClass)?.name} Timetable`}
+                  />
+                }
+                fileName={`${classes.find(c => c._id === selectedClass)?.name}-timetable.pdf`}
+              >
+                {({ loading }) => (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={loading}
+                    className="border-2 border-black dark:border-white rounded-none hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black font-bold"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    {loading ? 'Preparing...' : 'Download PDF'}
+                  </Button>
+                )}
+              </PDFDownloadLink>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="p-0">
+          {/* Mobile Responsive: Horizontal scroll on small screens */}
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
+            <table className="w-full border-collapse min-w-[640px]">
               <thead>
                 <tr className="border-b-2 border-black dark:border-white bg-zinc-50 dark:bg-zinc-900">
-                  <th className="border-r-2 border-black dark:border-white p-3 text-left font-bold text-black dark:text-white text-sm min-w-[120px]">
+                  <th className="border-r-2 border-black dark:border-white p-2 md:p-3 text-left font-bold text-black dark:text-white text-xs md:text-sm min-w-[100px] md:min-w-[120px]">
                     Period / Day
                   </th>
                   {days.map((day) => (
-                    <th key={day} className="border-r-2 border-black dark:border-white p-3 text-center font-bold text-black dark:text-white text-sm min-w-[150px] last:border-r-0">
-                      {day}
+                    <th key={day} className="border-r-2 border-black dark:border-white p-2 md:p-3 text-center font-bold text-black dark:text-white text-xs md:text-sm min-w-[120px] md:min-w-[150px] last:border-r-0">
+                      <span className="hidden md:inline">{day}</span>
+                      <span className="md:hidden">{day.slice(0, 3)}</span>
                     </th>
                   ))}
                 </tr>
@@ -167,10 +255,10 @@ export default function TeacherDashboard() {
               <tbody>
                 {periods.map((period) => (
                   <tr key={period} className="border-b-2 border-black dark:border-white last:border-b-0">
-                    <td className="border-r-2 border-black dark:border-white p-3 font-bold text-black dark:text-white text-sm bg-zinc-50 dark:bg-zinc-900">
+                    <td className="border-r-2 border-black dark:border-white p-2 md:p-3 font-bold text-black dark:text-white text-xs md:text-sm bg-zinc-50 dark:bg-zinc-900">
                       <div className="flex flex-col">
-                        <span>Period {period}</span>
-                        <span className="text-xs text-zinc-500 dark:text-zinc-400 font-normal">
+                        <span>P{period}</span>
+                        <span className="text-[10px] md:text-xs text-zinc-500 dark:text-zinc-400 font-normal whitespace-nowrap">
                           {calculatePeriodTime(period)}
                         </span>
                       </div>
@@ -183,26 +271,26 @@ export default function TeacherDashboard() {
                       return (
                         <td
                           key={`${day}-${period}`}
-                          className="border-r-2 border-black dark:border-white p-2 text-xs last:border-r-0 align-top"
+                          className="border-r-2 border-black dark:border-white p-1 md:p-2 text-xs last:border-r-0 align-top"
                         >
                           {slot ? (
-                            <div className={`p-2 ${slot.isDoubleStart ? 'border-2 border-blue-500 bg-blue-50 dark:bg-blue-950' : ''}`}>
-                              <div className="font-bold text-black dark:text-white truncate">
+                            <div className={`p-1 md:p-2 ${slot.isDoubleStart ? 'border-2 border-blue-500 bg-blue-50 dark:bg-blue-950' : ''}`}>
+                              <div className="font-bold text-black dark:text-white truncate text-[10px] md:text-xs">
                                 {slot.subject}
                               </div>
                               {slot.className && (
-                                <div className="text-zinc-600 dark:text-zinc-400 truncate">
+                                <div className="text-zinc-600 dark:text-zinc-400 truncate text-[9px] md:text-xs mt-0.5">
                                   {slot.className}
                                 </div>
                               )}
                               {slot.isDoubleStart && (
-                                <div className="text-blue-600 dark:text-blue-400 text-[10px] mt-1">
+                                <div className="text-blue-600 dark:text-blue-400 text-[8px] md:text-[10px] mt-1">
                                   Double Period
                                 </div>
                               )}
                             </div>
                           ) : (
-                            <div className="p-2 text-zinc-400 dark:text-zinc-600 text-center">—</div>
+                            <div className="p-1 md:p-2 text-zinc-400 dark:text-zinc-600 text-center">—</div>
                           )}
                         </td>
                       );
@@ -284,7 +372,7 @@ export default function TeacherDashboard() {
             <h2 className="text-2xl font-bold text-black dark:text-white">My Teaching Schedule</h2>
           </div>
           {mySchedule.length > 0 ? (
-            renderScheduleGrid(mySchedule, 'Your Weekly Schedule')
+            renderScheduleGrid(mySchedule, 'Your Weekly Schedule', true)
           ) : (
             <Card className="border-2 border-black dark:border-white rounded-none">
               <CardContent className="pt-6 text-center">
@@ -309,7 +397,7 @@ export default function TeacherDashboard() {
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-6 space-y-4">
-              <div className="flex gap-3">
+              <div className="flex flex-col sm:flex-row gap-3">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-zinc-500" />
                   <Input
@@ -320,7 +408,7 @@ export default function TeacherDashboard() {
                   />
                 </div>
                 <Select value={selectedClass} onValueChange={handleClassSelect}>
-                  <SelectTrigger className="w-[250px] border-2 border-black dark:border-white rounded-none">
+                  <SelectTrigger className="w-full sm:w-[250px] border-2 border-black dark:border-white rounded-none">
                     <SelectValue placeholder="Select a class" />
                   </SelectTrigger>
                   <SelectContent>
@@ -340,7 +428,8 @@ export default function TeacherDashboard() {
             <div className="mt-6">
               {renderScheduleGrid(
                 classSchedule,
-                `Schedule for ${classes.find((c) => c._id === selectedClass)?.name || 'Selected Class'}`
+                `Schedule for ${classes.find((c) => c._id === selectedClass)?.name || 'Selected Class'}`,
+                false
               )}
             </div>
           )}

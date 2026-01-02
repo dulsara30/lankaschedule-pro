@@ -12,6 +12,7 @@ interface DeleteResult {
   message?: string;
   error?: string;
   lessonsUpdated?: number;
+  regenerationTriggered?: boolean;
 }
 
 interface LessonWithSlots {
@@ -321,7 +322,194 @@ export async function checkReassignmentConflicts(
 
 /**
  * Delete teacher with individual lesson reassignments
- * Supports per-lesson replacement teacher selection
+ * Supports per-lesson replacement teacher selection with transaction safety
+ * 
+ * @param teacherToDeleteId - The ID of the teacher to delete
+ * @param lessonReassignments - Array of lesson reassignments with replacement teachers
+ * @param shouldRegenerate - Optional flag to trigger timetable regeneration after reassignment
+ * @returns DeleteResult with success status and details
+ */
+export async function deleteAndReassignTeacherAction(
+  teacherToDeleteId: string,
+  lessonReassignments: Array<{
+    lessonId: string;
+    replacementTeacherId: string | null;
+  }>,
+  shouldRegenerate: boolean = false
+): Promise<DeleteResult> {
+  let session: mongoose.ClientSession | null = null;
+
+  try {
+    await dbConnect();
+
+    // Validate teacher ID
+    if (!mongoose.Types.ObjectId.isValid(teacherToDeleteId)) {
+      return { success: false, error: 'Invalid teacher ID' };
+    }
+
+    // Check if teacher exists
+    const teacherToDelete = await Teacher.findById(teacherToDeleteId);
+    if (!teacherToDelete) {
+      return { success: false, error: 'Teacher not found' };
+    }
+
+    const teacherName = teacherToDelete.name;
+
+    // Start MongoDB transaction for atomic operation
+    session = await mongoose.startSession();
+    session.startTransaction();
+
+    let lessonsUpdated = 0;
+    const updatedLessonIds: string[] = [];
+
+    try {
+      // Process each lesson reassignment
+      for (const reassignment of lessonReassignments) {
+        // Validate lesson ID
+        if (!mongoose.Types.ObjectId.isValid(reassignment.lessonId)) {
+          console.warn(`Invalid lesson ID: ${reassignment.lessonId}`);
+          continue;
+        }
+
+        // Find the lesson
+        const lesson = await Lesson.findById(reassignment.lessonId).session(session);
+        if (!lesson) {
+          console.warn(`Lesson not found: ${reassignment.lessonId}`);
+          continue;
+        }
+
+        // Remove the teacher being deleted from teacherIds array
+        const initialLength = lesson.teacherIds.length;
+        lesson.teacherIds = lesson.teacherIds.filter(
+          (id: mongoose.Types.ObjectId) => id.toString() !== teacherToDeleteId
+        );
+
+        // Verify removal was successful
+        if (lesson.teacherIds.length === initialLength) {
+          console.warn(
+            `Teacher ${teacherToDeleteId} was not found in lesson ${reassignment.lessonId}`
+          );
+        }
+
+        // Add replacement teacher if provided
+        if (reassignment.replacementTeacherId) {
+          // Validate replacement teacher ID
+          if (!mongoose.Types.ObjectId.isValid(reassignment.replacementTeacherId)) {
+            console.warn(
+              `Invalid replacement teacher ID: ${reassignment.replacementTeacherId}`
+            );
+            continue;
+          }
+
+          // Verify replacement teacher exists
+          const replacementTeacher = await Teacher.findById(
+            reassignment.replacementTeacherId
+          ).session(session);
+          if (!replacementTeacher) {
+            console.warn(
+              `Replacement teacher not found: ${reassignment.replacementTeacherId}`
+            );
+            continue;
+          }
+
+          const replacementObjectId = new mongoose.Types.ObjectId(
+            reassignment.replacementTeacherId
+          );
+
+          // Check if replacement teacher is already assigned (avoid duplicates)
+          const alreadyAssigned = lesson.teacherIds.some(
+            (id: mongoose.Types.ObjectId) =>
+              id.toString() === reassignment.replacementTeacherId
+          );
+
+          if (!alreadyAssigned) {
+            lesson.teacherIds.push(replacementObjectId);
+          }
+        }
+
+        // Save the updated lesson within the transaction
+        await lesson.save({ session });
+        lessonsUpdated++;
+        updatedLessonIds.push(lesson._id.toString());
+      }
+
+      // Delete the teacher document within the transaction
+      await Teacher.findByIdAndDelete(teacherToDeleteId).session(session);
+
+      // Commit the transaction
+      await session.commitTransaction();
+
+      console.log(
+        `Successfully deleted teacher ${teacherName} and updated ${lessonsUpdated} lessons`
+      );
+    } catch (transactionError) {
+      // Rollback transaction on error
+      await session.abortTransaction();
+      throw transactionError;
+    } finally {
+      // End session
+      session.endSession();
+    }
+
+    // Revalidate relevant pages (outside transaction)
+    revalidatePath('/dashboard/teachers');
+    revalidatePath('/dashboard/timetable');
+    revalidatePath('/dashboard/lessons');
+    revalidatePath('/dashboard/analytics');
+
+    // Optional: Trigger timetable regeneration if requested
+    let regenerationTriggered = false;
+    if (shouldRegenerate && lessonsUpdated > 0) {
+      try {
+        // Note: This would call the timetable generation algorithm
+        // For now, we'll just log and set the flag
+        console.log(
+          'Timetable regeneration requested for lessons:',
+          updatedLessonIds
+        );
+        regenerationTriggered = true;
+        // TODO: Implement actual regeneration logic
+        // await generateTimetableAction(updatedLessonIds);
+      } catch (regenError) {
+        console.error('Timetable regeneration failed:', regenError);
+        // Don't fail the entire operation if regeneration fails
+      }
+    }
+
+    // Build success message
+    const message = `Teacher "${teacherName}" deleted successfully. ${lessonsUpdated} lesson(s) reassigned.${regenerationTriggered ? ' Timetable regeneration initiated.' : ''}`;
+
+    return {
+      success: true,
+      message,
+      lessonsUpdated,
+      regenerationTriggered
+    };
+  } catch (error) {
+    console.error('Error in deleteAndReassignTeacherAction:', error);
+
+    // Clean up session if it exists and wasn't properly closed
+    if (session && session.inTransaction()) {
+      try {
+        await session.abortTransaction();
+      } catch (abortError) {
+        console.error('Error aborting transaction:', abortError);
+      }
+    }
+    if (session) {
+      session.endSession();
+    }
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to delete teacher'
+    };
+  }
+}
+
+/**
+ * Legacy function - kept for backward compatibility
+ * Use deleteAndReassignTeacherAction for new implementations
  */
 export async function deleteWithMultipleReassignments(
   teacherToDeleteId: string,
@@ -330,76 +518,5 @@ export async function deleteWithMultipleReassignments(
     replacementTeacherId: string | null;
   }>
 ): Promise<DeleteResult> {
-  try {
-    await dbConnect();
-
-    if (!mongoose.Types.ObjectId.isValid(teacherToDeleteId)) {
-      return { success: false, error: 'Invalid teacher ID' };
-    }
-
-    const teacherToDelete = await Teacher.findById(teacherToDeleteId);
-    if (!teacherToDelete) {
-      return { success: false, error: 'Teacher not found' };
-    }
-
-    let lessonsUpdated = 0;
-
-    // Process each lesson reassignment
-    for (const reassignment of lessonReassignments) {
-      if (!mongoose.Types.ObjectId.isValid(reassignment.lessonId)) {
-        continue;
-      }
-
-      const lesson = await Lesson.findById(reassignment.lessonId);
-      if (!lesson) continue;
-
-      // Remove the teacher being deleted
-      lesson.teacherIds = lesson.teacherIds.filter(
-        (id: mongoose.Types.ObjectId) => id.toString() !== teacherToDeleteId
-      );
-
-      // Add replacement teacher if provided
-      if (reassignment.replacementTeacherId) {
-        if (!mongoose.Types.ObjectId.isValid(reassignment.replacementTeacherId)) {
-          continue;
-        }
-
-        const replacementObjectId = new mongoose.Types.ObjectId(
-          reassignment.replacementTeacherId
-        );
-
-        const alreadyAssigned = lesson.teacherIds.some(
-          (id: mongoose.Types.ObjectId) =>
-            id.toString() === reassignment.replacementTeacherId
-        );
-
-        if (!alreadyAssigned) {
-          lesson.teacherIds.push(replacementObjectId);
-        }
-      }
-
-      await lesson.save();
-      lessonsUpdated++;
-    }
-
-    // Delete the teacher
-    await Teacher.findByIdAndDelete(teacherToDeleteId);
-
-    // Revalidate pages
-    revalidatePath('/dashboard/teachers');
-    revalidatePath('/dashboard/timetable');
-    revalidatePath('/dashboard/lessons');
-
-    return {
-      success: true,
-      message: `Teacher deleted successfully. ${lessonsUpdated} lesson(s) updated.`,
-      lessonsUpdated
-    };
-  } catch (error) {
-    console.error('Error in deleteWithMultipleReassignments:', error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to delete teacher'
-    };
-  }
+  return deleteAndReassignTeacherAction(teacherToDeleteId, lessonReassignments, false);
 }

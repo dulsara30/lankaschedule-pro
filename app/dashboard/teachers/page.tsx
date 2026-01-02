@@ -11,7 +11,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Plus, Pencil, Trash2, Search, X, Check, ChevronsUpDown, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { deleteAndReassignTeacher, getTeacherLessonCount, getTeacherLessonsWithSlots, checkReassignmentConflicts, deleteWithMultipleReassignments } from '@/app/actions/teacherActions';
+import { deleteAndReassignTeacher, getTeacherLessonCount, getTeacherLessonsWithSlots, checkReassignmentConflicts, deleteAndReassignTeacherAction } from '@/app/actions/teacherActions';
 
 interface LessonWithSlots {
   _id: string;
@@ -272,9 +272,12 @@ export default function TeachersPage() {
 
     setDeletingTeacher(true);
     try {
-      const result = await deleteWithMultipleReassignments(
+      // Call the enhanced backend with transaction safety
+      // Set shouldRegenerate to false by default (can be made configurable later)
+      const result = await deleteAndReassignTeacherAction(
         teacherToDelete._id,
-        lessonReassignments
+        lessonReassignments,
+        false // shouldRegenerate parameter
       );
 
       if (result.success) {

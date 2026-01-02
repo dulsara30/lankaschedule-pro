@@ -98,10 +98,52 @@ export default function TimetablePage() {
   const [exportType, setExportType] = useState<'single' | 'bulk-classes' | 'bulk-teachers' | 'teacher'>('single');
   const [exportEntityId, setExportEntityId] = useState<string>('');
   const [exportEntityComboOpen, setExportEntityComboOpen] = useState(false);
+  
+  // Resizable sidebar state
+  const [sidebarWidth, setSidebarWidth] = useState(450);
+  const [isResizing, setIsResizing] = useState(false);
+  const MIN_SIDEBAR_WIDTH = 350;
+  const MAX_SIDEBAR_WIDTH = typeof window !== 'undefined' ? window.innerWidth * 0.5 : 600;
 
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Resizable sidebar handlers
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      
+      const newWidth = e.clientX;
+      if (newWidth >= MIN_SIDEBAR_WIDTH && newWidth <= MAX_SIDEBAR_WIDTH) {
+        setSidebarWidth(newWidth);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    if (isResizing) {
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizing]);
+
+  const handleResizeStart = () => {
+    setIsResizing(true);
+  };
 
   const fetchData = async (versionId?: string) => {
     try {
@@ -929,9 +971,12 @@ export default function TimetablePage() {
 
       {/* Full-Screen PDF Studio */}
       {downloadDialogOpen && (
-        <div className="fixed inset-0 z-50 bg-white dark:bg-zinc-950 flex">
-          {/* Left Sidebar - Fixed Width */}
-          <div className="w-[380px] border-r border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 flex flex-col h-screen overflow-hidden">
+        <div className="fixed inset-0 z-50 bg-white dark:bg-zinc-950 flex select-none">
+          {/* Left Sidebar - Resizable */}
+          <div 
+            className="border-r border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 flex flex-col h-screen overflow-hidden"
+            style={{ width: `${sidebarWidth}px` }}
+          >
             {/* Sidebar Header */}
             <div className="p-6 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
               <div className="flex items-center justify-between mb-4">
@@ -1125,6 +1170,18 @@ export default function TimetablePage() {
                 )}
               </Button>
             </div>
+          </div>
+
+          {/* Drag Handle */}
+          <div
+            className={cn(
+              "w-1 bg-zinc-200 dark:bg-zinc-800 hover:bg-blue-500 dark:hover:bg-blue-500 transition-colors cursor-col-resize relative group",
+              isResizing && "bg-blue-500"
+            )}
+            onMouseDown={handleResizeStart}
+          >
+            {/* Visual indicator on hover */}
+            <div className="absolute inset-y-0 -left-1 -right-1 group-hover:bg-blue-500/10" />
           </div>
 
           {/* Right Main Area - Expansive PDF Preview */}

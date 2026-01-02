@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import dbConnect from '@/lib/dbConnect';
 import TimetableVersion from '@/models/TimetableVersion';
 import TimetableSlot from '@/models/TimetableSlot';
@@ -7,14 +9,27 @@ import School from '@/models/School';
 // GET: Fetch all versions
 export async function GET() {
   try {
+    const session = await getServerSession(authOptions);
+    
+    if (!session || !session.user.schoolId) {
+      return NextResponse.json({
+        success: true,
+        data: [],
+        versions: [],
+        message: 'No school configured yet',
+      });
+    }
+
     await dbConnect();
 
-    const school = await School.findOne();
+    const school = await School.findById(session.user.schoolId);
     if (!school) {
       return NextResponse.json({
-        success: false,
-        error: 'School not configured',
-      }, { status: 400 });
+        success: true,
+        data: [],
+        versions: [],
+        message: 'School not found',
+      });
     }
 
     const versions = await TimetableVersion.find({ schoolId: school._id })
@@ -38,6 +53,7 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       data: versionsWithStats,
+      versions: versionsWithStats,
     });
   } catch (error) {
     console.error('Error fetching versions:', error);
@@ -54,14 +70,23 @@ export async function GET() {
 // POST: Save/update a version (e.g., rename and mark as saved)
 export async function POST(request: Request) {
   try {
-    await dbConnect();
-
-    const school = await School.findOne();
-    if (!school) {
+    const session = await getServerSession(authOptions);
+    
+    if (!session || !session.user.schoolId) {
       return NextResponse.json({
         success: false,
         error: 'School not configured',
       }, { status: 400 });
+    }
+
+    await dbConnect();
+
+    const school = await School.findById(session.user.schoolId);
+    if (!school) {
+      return NextResponse.json({
+        success: false,
+        error: 'School not found',
+      }, { status: 404 });
     }
 
     const body = await request.json();
@@ -111,6 +136,15 @@ export async function POST(request: Request) {
 // DELETE: Delete a version and all its slots
 export async function DELETE(request: Request) {
   try {
+    const session = await getServerSession(authOptions);
+    
+    if (!session || !session.user.schoolId) {
+      return NextResponse.json({
+        success: false,
+        error: 'Unauthorized',
+      }, { status: 401 });
+    }
+
     await dbConnect();
 
     const { searchParams } = new URL(request.url);

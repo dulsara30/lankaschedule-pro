@@ -29,6 +29,14 @@ export async function GET() {
 
     await dbConnect();
 
+    // Force Mongoose to register models before any query runs
+    // This prevents MissingSchemaError during populate operations
+    [Lesson, Subject, Teacher, Class].forEach(model => {
+      if (model && model.modelName) {
+        console.log('DEBUG: Model registered:', model.modelName);
+      }
+    });
+
     // Emergency Debug Logs
     console.log('DEBUG: Session School ID:', session.user.schoolId);
     console.log('DEBUG: Teacher ID:', session.user.id);

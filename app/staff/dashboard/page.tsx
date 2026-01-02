@@ -49,8 +49,6 @@ export default function TeacherDashboard() {
   const [classSchedule, setClassSchedule] = useState<TimetableSlot[]>([]);
   const [schoolInfo, setSchoolInfo] = useState<SchoolInfo | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [showPDFDownload, setShowPDFDownload] = useState(false);
-  const [showClassPDF, setShowClassPDF] = useState(false);
 
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
@@ -80,7 +78,6 @@ export default function TeacherDashboard() {
           setVersionName(data.version?.versionName || '');
           const scheduleData = data.mySchedule || [];
           setMySchedule(scheduleData);
-          setShowPDFDownload(scheduleData.length > 0 && data.version);
           
           // Show feedback if version exists but no lessons assigned
           if (data.version && scheduleData.length === 0) {
@@ -129,7 +126,6 @@ export default function TeacherDashboard() {
         const data = await res.json();
         if (data.success) {
           setClassSchedule(data.schedule || []);
-          setShowClassPDF(data.schedule && data.schedule.length > 0);
         }
       }
     } catch (error) {
@@ -167,7 +163,17 @@ export default function TeacherDashboard() {
   };
 
   const renderScheduleGrid = (schedule: TimetableSlot[], title: string, isTeacherSchedule: boolean = false) => {
-    if (!schoolInfo) return null;
+    // Strict guard: Do not render if essential data is missing
+    if (!schoolInfo || !schedule) {
+      return (
+        <Card className="border-2 border-black dark:border-white rounded-none">
+          <CardContent className="pt-6 text-center">
+            <Loader2 className="h-6 w-6 animate-spin text-black dark:text-white mx-auto mb-2" />
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">Loading schedule data...</p>
+          </CardContent>
+        </Card>
+      );
+    }
 
     const periods = Array.from({ length: schoolInfo.numberOfPeriods }, (_, i) => i + 1);
 
@@ -178,7 +184,13 @@ export default function TeacherDashboard() {
             <CardTitle className="text-lg font-bold text-black dark:text-white">{title}</CardTitle>
             {/* Download Button - Only show when data is ready */}
             {isTeacherSchedule && (
-              status === 'authenticated' && mySchedule.length > 0 && versionName && schoolInfo && session?.user?.name ? (
+              // Strict PDF guard: verify ALL required data exists
+              status === 'authenticated' && 
+              mySchedule && 
+              mySchedule.length > 0 && 
+              versionName && 
+              schoolInfo && 
+              session?.user?.name ? (
                 <PDFDownloadLink
                   document={
                     <TimetablePDF
@@ -202,7 +214,7 @@ export default function TeacherDashboard() {
                           _id: '',
                           lessonName: slot.subject,
                           subjectIds: [],
-                          teacherIds: [{ _id: session.user.id, name: session.user.name }],
+                          teacherIds: [{ _id: session.user.id, name: session.user.name || 'Teacher' }],
                           classIds: [],
                         },
                       }))}
@@ -245,7 +257,13 @@ export default function TeacherDashboard() {
               ) : null
             )}
             {!isTeacherSchedule && (
-              status === 'authenticated' && classSchedule.length > 0 && versionName && schoolInfo && selectedClass ? (
+              // Strict PDF guard: verify ALL required data exists
+              status === 'authenticated' && 
+              classSchedule && 
+              classSchedule.length > 0 && 
+              versionName && 
+              schoolInfo && 
+              selectedClass ? (
                 <PDFDownloadLink
                   document={
                     <TimetablePDF

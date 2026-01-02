@@ -92,9 +92,6 @@ TimetableSlotSchema.index(
   { unique: true }
 );
 
-// Find all slots for a specific version
-TimetableSlotSchema.index({ versionId: 1 });
-
 // Find all slots for a specific class in a version
 TimetableSlotSchema.index({ schoolId: 1, classId: 1, versionId: 1 });
 

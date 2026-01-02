@@ -114,6 +114,7 @@ export default function TimetablePage() {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing) return;
       
+      e.preventDefault();
       const newWidth = e.clientX;
       if (newWidth >= MIN_SIDEBAR_WIDTH && newWidth <= MAX_SIDEBAR_WIDTH) {
         setSidebarWidth(newWidth);
@@ -129,13 +130,13 @@ export default function TimetablePage() {
     if (isResizing) {
       document.body.style.cursor = 'col-resize';
       document.body.style.userSelect = 'none';
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
     }
 
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
@@ -1175,14 +1176,19 @@ export default function TimetablePage() {
           {/* Drag Handle */}
           <div
             className={cn(
-              "w-1 bg-zinc-200 dark:bg-zinc-800 hover:bg-blue-500 dark:hover:bg-blue-500 transition-colors cursor-col-resize relative group",
-              isResizing && "bg-blue-500"
+              "w-1.5 bg-zinc-300 dark:bg-zinc-700 hover:bg-blue-500 dark:hover:bg-blue-400 transition-all duration-150 cursor-col-resize relative group hover:w-2",
+              isResizing && "bg-blue-500 w-2"
             )}
             onMouseDown={handleResizeStart}
           >
-            {/* Visual indicator on hover */}
-            <div className="absolute inset-y-0 -left-1 -right-1 group-hover:bg-blue-500/10" />
+            {/* Expanded hover area for easier grabbing */}
+            <div className="absolute inset-y-0 -left-2 -right-2 group-hover:bg-blue-500/5" />
           </div>
+
+          {/* Transparent Overlay - Prevents PDF iframe from stealing mouse events */}
+          {isResizing && (
+            <div className="fixed inset-0 z-50 cursor-col-resize" />
+          )}
 
           {/* Right Main Area - Expansive PDF Preview */}
           <div className="flex-1 bg-zinc-100 dark:bg-zinc-900 h-screen overflow-hidden">

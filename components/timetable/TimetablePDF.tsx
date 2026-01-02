@@ -54,11 +54,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#000000',
     borderBottomStyle: 'solid',
-    minHeight: 28,
+    minHeight: 24,
   },
   tableRowLast: {
     flexDirection: 'row',
-    minHeight: 28,
+    minHeight: 24,
   },
   tableColHeader: {
     width: '12%',
@@ -66,14 +66,16 @@ const styles = StyleSheet.create({
     borderRightColor: '#000000',
     borderRightStyle: 'solid',
     backgroundColor: '#E8E8E8',
-    padding: 6,
+    padding: 4,
+    display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
   },
   tableColHeaderLast: {
     width: '12%',
     backgroundColor: '#E8E8E8',
-    padding: 6,
+    padding: 4,
+    display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -83,7 +85,8 @@ const styles = StyleSheet.create({
     borderRightColor: '#000000',
     borderRightStyle: 'solid',
     backgroundColor: '#E8E8E8',
-    padding: 6,
+    padding: 4,
+    display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -93,7 +96,8 @@ const styles = StyleSheet.create({
     borderRightColor: '#000000',
     borderRightStyle: 'solid',
     backgroundColor: '#E8E8E8',
-    padding: 6,
+    padding: 4,
+    display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -102,15 +106,19 @@ const styles = StyleSheet.create({
     borderRightWidth: 1,
     borderRightColor: '#000000',
     borderRightStyle: 'solid',
-    padding: 6,
+    padding: 3,
+    display: 'flex',
     justifyContent: 'center',
-    minHeight: 28,
+    alignItems: 'center',
+    minHeight: 24,
   },
   dayColLast: {
     width: '16%',
-    padding: 6,
+    padding: 3,
+    display: 'flex',
     justifyContent: 'center',
-    minHeight: 28,
+    alignItems: 'center',
+    minHeight: 24,
   },
   headerText: {
     fontSize: 10,
@@ -129,16 +137,17 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   doublePeriodCell: {
-    padding: 10,
+    padding: 5,
+    display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
   },
   doublePeriodText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: 'bold',
     color: '#000000',
     textAlign: 'center',
-    marginBottom: 2,
+    marginBottom: 1,
   },
   doublePeriodLabel: {
     fontSize: 7,
@@ -150,18 +159,41 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#000000',
     borderBottomStyle: 'solid',
-    minHeight: 22,
+    minHeight: 20,
     backgroundColor: '#E8E8E8',
   },
   intervalCell: {
     width: '100%',
-    padding: 5,
+    padding: 3,
+    display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
   },
   intervalText: {
     fontSize: 9,
     fontWeight: 'bold',
+    color: '#000000',
+    textAlign: 'center',
+  },
+  signatureSection: {
+    position: 'absolute',
+    bottom: 60,
+    left: 40,
+    right: 40,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 30,
+  },
+  signatureBox: {
+    width: '45%',
+  },
+  signatureLine: {
+    borderTop: '1pt solid #000000',
+    marginTop: 30,
+    paddingTop: 5,
+  },
+  signatureText: {
+    fontSize: 8,
     color: '#000000',
     textAlign: 'center',
   },
@@ -413,6 +445,20 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
               </React.Fragment>
             );
           })}
+        </View>
+
+        {/* Signature Section */}
+        <View style={styles.signatureSection}>
+          <View style={styles.signatureBox}>
+            <View style={styles.signatureLine}>
+              <Text style={styles.signatureText}>Principal Signature</Text>
+            </View>
+          </View>
+          <View style={styles.signatureBox}>
+            <View style={styles.signatureLine}>
+              <Text style={styles.signatureText}>Class Teacher Signature</Text>
+            </View>
+          </View>
         </View>
 
         {/* Footer */}

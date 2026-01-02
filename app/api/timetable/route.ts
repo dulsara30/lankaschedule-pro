@@ -3,6 +3,10 @@ import dbConnect from '@/lib/dbConnect';
 import TimetableSlot from '@/models/TimetableSlot';
 import TimetableVersion from '@/models/TimetableVersion';
 import School from '@/models/School';
+import Subject from '@/models/Subject';
+import Teacher from '@/models/Teacher';
+import Class from '@/models/Class';
+import Lesson from '@/models/Lesson';
 
 // GET: Fetch all timetable slots with populated references
 // Supports optional versionId query parameter

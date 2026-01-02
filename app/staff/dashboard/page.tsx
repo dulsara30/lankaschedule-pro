@@ -41,6 +41,7 @@ export default function TeacherDashboard() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
+  const [hasFetched, setHasFetched] = useState(false);
   const [adminNote, setAdminNote] = useState<string>('');
   const [versionName, setVersionName] = useState<string>('');
   const [mySchedule, setMySchedule] = useState<TimetableSlot[]>([]);
@@ -57,26 +58,30 @@ export default function TeacherDashboard() {
       router.push('/');
     } else if (status === 'authenticated' && session?.user.role !== 'teacher') {
       router.push('/');
-    } else if (status === 'authenticated') {
+    } else if (status === 'authenticated' && !hasFetched) {
       fetchDashboardData();
     }
-  }, [status, session, router]);
+  }, [status, session?.user.role, hasFetched, router]);
 
   const fetchDashboardData = async () => {
     setIsLoading(true);
     try {
       console.log('Fetching dashboard data...');
       
-      // Fetch published timetable with admin note
-      const publishedRes = await fetch('/api/staff/published-timetable');
+      // Fetch published timetable with admin note (no cache)
+      const publishedRes = await fetch('/api/staff/published-timetable', {
+        cache: 'no-store',
+      });
       if (publishedRes.ok) {
         const data = await publishedRes.json();
         console.log('Published timetable response:', data);
+        console.log('My schedule slots:', data.mySchedule);
         
         if (data.success) {
           setAdminNote(data.version?.adminNote || '');
           setVersionName(data.version?.versionName || '');
           const scheduleData = data.mySchedule || [];
+          console.log('Setting mySchedule with', scheduleData.length, 'slots');
           setMySchedule(scheduleData);
           
           // Show feedback if version exists but no lessons assigned
@@ -94,8 +99,10 @@ export default function TeacherDashboard() {
         console.error('Failed to fetch published timetable with status:', publishedRes.status);
       }
 
-      // Fetch school info
-      const schoolRes = await fetch('/api/staff/school-info');
+      // Fetch school info (no cache)
+      const schoolRes = await fetch('/api/staff/school-info', {
+        cache: 'no-store',
+      });
       if (schoolRes.ok) {
         const schoolData = await schoolRes.json();
         if (schoolData.success) {
@@ -103,14 +110,19 @@ export default function TeacherDashboard() {
         }
       }
 
-      // Fetch classes for dropdown
-      const classesRes = await fetch('/api/staff/classes');
+      // Fetch classes for dropdown (no cache)
+      const classesRes = await fetch('/api/staff/classes', {
+        cache: 'no-store',
+      });
       if (classesRes.ok) {
         const classesData = await classesRes.json();
         if (classesData.success) {
           setClasses(classesData.classes || []);
         }
       }
+      
+      // Mark as fetched to prevent infinite loop
+      setHasFetched(true);
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
       toast.error('Failed to load dashboard data');
@@ -140,7 +152,6 @@ export default function TeacherDashboard() {
       fetchClassSchedule(classId);
     } else {
       setClassSchedule([]);
-      setShowClassPDF(false);
     }
   };
 
@@ -363,6 +374,11 @@ export default function TeacherDashboard() {
                       const slot = schedule.find(
                         (s) => s.day === day && s.periodNumber === period
                       );
+                      
+                      // Debug log for first few slots
+                      if (period === 1 && schedule.length > 0) {
+                        console.log(`Looking for ${day} P${period}, found:`, slot ? 'YES' : 'NO');
+                      }
                       
                       return (
                         <td

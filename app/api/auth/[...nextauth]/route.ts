@@ -1,7 +1,9 @@
-import NextAuth, { NextAuthOptions, User } from 'next-auth';
+import NextAuth, { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import dbConnect from '@/lib/dbConnect';
 import UserModel from '@/models/User';
+import Teacher from '@/models/Teacher';
+import bcrypt from 'bcryptjs';
 
 // Extend the built-in session types
 declare module 'next-auth' {
@@ -10,8 +12,9 @@ declare module 'next-auth' {
       id: string;
       email?: string | null;
       name?: string | null;
-      role: 'admin';
+      role: 'admin' | 'teacher';
       schoolId: string | null;
+      phoneNumber?: string | null;
     };
   }
 
@@ -19,21 +22,24 @@ declare module 'next-auth' {
     id: string;
     email?: string | null;
     name?: string | null;
-    role: 'admin';
+    role: 'admin' | 'teacher';
     schoolId: string | null;
+    phoneNumber?: string | null;
   }
 }
 
 declare module 'next-auth/jwt' {
   interface JWT {
     id: string;
-    role: 'admin';
+    role: 'admin' | 'teacher';
     schoolId: string | null;
+    phoneNumber?: string | null;
   }
 }
 
 const authOptions: NextAuthOptions = {
   providers: [
+    // Admin Login Provider
     CredentialsProvider({
       id: 'credentials',
       name: 'Admin Login',
@@ -74,6 +80,58 @@ const authOptions: NextAuthOptions = {
         }
       },
     }),
+    // Staff Login Provider
+    CredentialsProvider({
+      id: 'staff-credentials',
+      name: 'Staff Access',
+      credentials: {
+        identifier: { label: 'Email or Phone', type: 'text' },
+        password: { label: 'Password', type: 'password' },
+      },
+      async authorize(credentials) {
+        if (!credentials?.identifier || !credentials?.password) {
+          throw new Error('Identifier and password required');
+        }
+
+        try {
+          await dbConnect();
+
+          // Check if identifier is email or phone
+          const isEmail = credentials.identifier.includes('@');
+          
+          const query = isEmail
+            ? { email: credentials.identifier.toLowerCase() }
+            : { phoneNumber: credentials.identifier };
+
+          const teacher = await Teacher.findOne(query);
+          
+          if (!teacher) {
+            throw new Error('Invalid credentials');
+          }
+
+          // For teachers, we'll use a simple password field (you'll need to add this to the Teacher model)
+          // For now, we'll use bcrypt to compare directly
+          // Note: You should add a password field to Teacher model similar to User model
+          const isPasswordValid = await bcrypt.compare(credentials.password, teacher.password || '');
+          
+          if (!isPasswordValid) {
+            throw new Error('Invalid credentials');
+          }
+
+          return {
+            id: teacher._id.toString(),
+            email: teacher.email,
+            name: teacher.name,
+            role: 'teacher' as const,
+            schoolId: teacher.schoolId ? teacher.schoolId.toString() : null,
+            phoneNumber: teacher.phoneNumber,
+          };
+        } catch (error) {
+          console.error('Staff auth error:', error);
+          throw new Error(error instanceof Error ? error.message : 'Authentication failed');
+        }
+      },
+    }),
   ],
   callbacks: {
     async jwt({ token, user }) {
@@ -81,6 +139,7 @@ const authOptions: NextAuthOptions = {
         token.id = user.id;
         token.role = user.role;
         token.schoolId = user.schoolId;
+        token.phoneNumber = user.phoneNumber;
       }
       return token;
     },
@@ -89,6 +148,7 @@ const authOptions: NextAuthOptions = {
         session.user.id = token.id;
         session.user.role = token.role;
         session.user.schoolId = token.schoolId;
+        session.user.phoneNumber = token.phoneNumber;
       }
       return session;
     },

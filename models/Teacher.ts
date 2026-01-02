@@ -8,6 +8,7 @@ export interface ITeacher extends Document {
   schoolId: mongoose.Types.ObjectId;
   name: string;
   email?: string;
+  phoneNumber?: string;
   teacherGrade: 'SLTS 3 I' | 'SLTS 2 II' | 'SLTS 2 I' | 'SLTS 1' | 'DO';
   subjectsTaught: string[]; // Array of subject names
   createdAt: Date;
@@ -33,6 +34,11 @@ const TeacherSchema = new Schema<ITeacher>(
       trim: true,
       lowercase: true,
     },
+    phoneNumber: {
+      type: String,
+      required: false,
+      trim: true,
+    },
     teacherGrade: {
       type: String,
       enum: ['SLTS 3 I', 'SLTS 2 II', 'SLTS 2 I', 'SLTS 1', 'DO'],
@@ -53,6 +59,14 @@ const TeacherSchema = new Schema<ITeacher>(
 TeacherSchema.index({ schoolId: 1, email: 1 }, { unique: true, sparse: true });
 TeacherSchema.index({ schoolId: 1, name: 1 });
 TeacherSchema.index({ schoolId: 1, teacherGrade: 1 });
+
+// Pre-save validation: Either email or phoneNumber must be provided
+TeacherSchema.pre('save', function (next) {
+  if (!this.email && !this.phoneNumber) {
+    return next(new Error('Either email or phoneNumber must be provided for a teacher'));
+  }
+  next();
+});
 
 export default mongoose.models.Teacher || mongoose.model<ITeacher>('Teacher', TeacherSchema);
 

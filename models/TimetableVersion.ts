@@ -5,6 +5,8 @@ export interface ITimetableVersion extends Document {
   schoolId: Types.ObjectId;
   versionName: string;
   isSaved: boolean;
+  isPublished: boolean;
+  adminNote?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -26,6 +28,16 @@ const TimetableVersionSchema = new Schema<ITimetableVersion>(
       type: Boolean,
       default: false,
       index: true,
+    },
+    isPublished: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    adminNote: {
+      type: String,
+      maxlength: [500, 'Admin note cannot exceed 500 characters'],
+      trim: true,
     },
   },
   {

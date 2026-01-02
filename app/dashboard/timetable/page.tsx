@@ -4,11 +4,12 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Calendar, Users, User, Save, History, Trash2, Check, ChevronsUpDown, ChevronDown, ChevronUp, Download, RotateCcw, FileDown, Eye, X, Square, CheckSquare2 } from 'lucide-react';
+import { Calendar, Users, User, Save, History, Trash2, Check, ChevronsUpDown, ChevronDown, ChevronUp, Download, RotateCcw, FileDown, Eye, X, Square, CheckSquare2, Upload, Globe } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import dynamic from 'next/dynamic';
@@ -60,6 +61,8 @@ interface TimetableVersion {
   _id: string;
   versionName: string;
   isSaved: boolean;
+  isPublished?: boolean;
+  adminNote?: string;
   createdAt: string;
   slotCount: number;
 }
@@ -91,6 +94,12 @@ export default function TimetablePage() {
   const [newVersionName, setNewVersionName] = useState('');
   const [savingVersion, setSavingVersion] = useState(false);
   const [isVersionManagerExpanded, setIsVersionManagerExpanded] = useState(false);
+  
+  // Publish to Staff state
+  const [publishDialogOpen, setPublishDialogOpen] = useState(false);
+  const [publishingVersionId, setPublishingVersionId] = useState<string>('');
+  const [adminNote, setAdminNote] = useState('');
+  const [isPublishing, setIsPublishing] = useState(false);
 
   // PDF Export state
   const [downloadDialogOpen, setDownloadDialogOpen] = useState(false);
@@ -305,6 +314,63 @@ export default function TimetablePage() {
     } catch (error) {
       console.error('Error deleting version:', error);
       toast.error('Failed to delete version');
+    }
+  };
+
+  const handlePublishVersion = async () => {
+    if (!publishingVersionId) return;
+
+    try {
+      setIsPublishing(true);
+      const response = await fetch('/api/timetable/versions/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          versionId: publishingVersionId,
+          adminNote: adminNote.trim(),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success('Version published to staff portal!');
+        setPublishDialogOpen(false);
+        setAdminNote('');
+        setPublishingVersionId('');
+        await fetchData(currentVersionId);
+      } else {
+        toast.error(data.error || 'Failed to publish version');
+      }
+    } catch (error) {
+      console.error('Error publishing version:', error);
+      toast.error('Failed to publish version');
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
+  const handleUnpublishVersion = async (versionId: string, versionName: string) => {
+    if (!confirm(`Unpublish "${versionName}" from staff portal?`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/timetable/versions/publish?versionId=${versionId}`, {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success('Version unpublished from staff portal');
+        await fetchData(currentVersionId);
+      } else {
+        toast.error(data.error || 'Failed to unpublish version');
+      }
+    } catch (error) {
+      console.error('Error unpublishing version:', error);
+      toast.error('Failed to unpublish version');
     }
   };
 
@@ -744,19 +810,52 @@ export default function TimetablePage() {
                     {versions.filter(v => v.isSaved).map((version) => (
                       <div
                         key={version._id}
-                        className="flex items-center justify-between text-sm py-1"
+                        className="flex items-center justify-between text-sm py-1 gap-2"
                       >
-                        <span className="text-zinc-700 dark:text-zinc-300">
-                          {version.versionName}
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteVersion(version._id, version.versionName)}
-                          className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        <div className="flex flex-col flex-1">
+                          <span className="text-zinc-700 dark:text-zinc-300 font-medium">
+                            {version.versionName}
+                          </span>
+                          {version.isPublished && (
+                            <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+                              <Globe className="h-3 w-3" />
+                              Published to Staff
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {version.isPublished ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleUnpublishVersion(version._id, version.versionName)}
+                              className="h-7 px-2 text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                            >
+                              Unpublish
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setPublishingVersionId(version._id);
+                                setPublishDialogOpen(true);
+                              }}
+                              className="h-7 px-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                            >
+                              <Upload className="h-3 w-3 mr-1" />
+                              Publish
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteVersion(version._id, version.versionName)}
+                            className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -767,6 +866,55 @@ export default function TimetablePage() {
           )}
         </Card>
       )}
+
+      {/* Publish to Staff Dialog */}
+      <Dialog open={publishDialogOpen} onOpenChange={setPublishDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Globe className="h-5 w-5 text-blue-600" />
+              Publish Version to Staff Portal
+            </DialogTitle>
+            <DialogDescription>
+              Make this timetable version visible to teachers through the staff portal. 
+              You can include a custom message for the staff.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <div>
+              <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2 block">
+                Admin Note (Optional)
+              </label>
+              <Textarea
+                placeholder="e.g., This is the final timetable for Term 1. Please check your schedule and report any issues."
+                value={adminNote}
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setAdminNote(e.target.value)}
+                rows={4}
+                maxLength={500}
+                className="resize-none"
+              />
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+                {adminNote.length}/500 characters
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setPublishDialogOpen(false);
+                setAdminNote('');
+                setPublishingVersionId('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handlePublishVersion} disabled={isPublishing}>
+              {isPublishing ? 'Publishing...' : 'Publish to Staff'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {slots.length === 0 ? (
         <Card>

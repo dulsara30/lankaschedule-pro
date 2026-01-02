@@ -164,34 +164,28 @@ export default function TimetablePage() {
 
   const renderSlotContent = (slot: TimetableSlot | undefined, isDoubleStart: boolean = false, periodNumber?: number) => {
     if (!slot) {
-      return <div className="text-xs text-zinc-500 dark:text-zinc-400 italic p-3 font-medium">Free</div>;
+      return <div className="text-xs text-zinc-400 dark:text-zinc-500 italic p-3 font-medium">Free</div>;
     }
 
     const lesson = slot.lessonId;
     if (!lesson || !lesson.subjectIds || !lesson.teacherIds || !lesson.classIds) {
-      return <div className="text-xs text-zinc-500 dark:text-zinc-400 italic p-3 font-medium">Invalid data</div>;
+      return <div className="text-xs text-zinc-400 dark:text-zinc-500 italic p-3 font-medium">Invalid data</div>;
     }
 
     const subjects = lesson.subjectIds;
     
-    // Modern styling: solid slightly transparent color for double periods, subtle gradient for singles
+    // Friendly rounded card styling with diagonal gradients
     let backgroundStyle: React.CSSProperties;
     let textColorClass = 'text-white';
     
     if (subjects.length === 1) {
       const color = subjects[0]?.color || '#3B82F6';
-      
-      if (isDoubleStart) {
-        // Double period: solid semi-transparent color
-        backgroundStyle = { backgroundColor: color + 'E6' }; // 90% opacity
-      } else {
-        // Single period: subtle gradient for depth
-        backgroundStyle = {
-          background: `linear-gradient(135deg, ${color} 0%, ${color}DD 100%)`,
-        };
-      }
+      // Diagonal gradient for all periods (45deg)
+      backgroundStyle = {
+        background: `linear-gradient(135deg, ${color} 0%, ${color}EE 100%)`,
+      };
     } else {
-      // Multiple subjects: smooth gradient (top to bottom for doubles, diagonal for singles)
+      // Multiple subjects: smooth diagonal gradient
       const gradientStops = subjects.map((subject, idx) => {
         const color = subject?.color || '#3B82F6';
         const start = (idx / subjects.length) * 100;
@@ -200,52 +194,35 @@ export default function TimetablePage() {
       }).join(', ');
       
       backgroundStyle = {
-        background: isDoubleStart 
-          ? `linear-gradient(180deg, ${gradientStops})` 
-          : `linear-gradient(135deg, ${gradientStops})`,
+        background: `linear-gradient(135deg, ${gradientStops})`,
       };
     }
 
-    // Time range calculation for tooltip
-    const startTime = calculateTime(periodNumber || slot.periodNumber);
-    const endPeriodNumber = (periodNumber || slot.periodNumber) + (isDoubleStart ? 2 : 1);
-    const endTime = calculateTime(endPeriodNumber);
-    const timeRange = `${startTime} - ${endTime}`;
-
-    const tooltipContent = (
-      <div className="space-y-1">
-        <div className="font-semibold">{lesson.lessonName}</div>
-        <div className="text-xs">
-          <span className="opacity-80">Teacher:</span> {lesson.teacherIds?.map(t => t?.name).filter(Boolean).join(', ') || 'N/A'}
-        </div>
-        <div className="text-xs">
-          <span className="opacity-80">Class:</span> {lesson.classIds?.map(c => c?.name).filter(Boolean).join(', ') || 'N/A'}
-        </div>
-        <div className="text-xs">
-          <span className="opacity-80">Time:</span> {timeRange}
-        </div>
-      </div>
-    );
-
     return (
       <div 
-        className={`h-full w-full flex flex-col justify-center items-center ${textColorClass} relative p-4 transition-all hover:scale-[1.02]`}
+        className={`h-full w-full rounded-2xl flex flex-col justify-center items-center ${textColorClass} relative shadow-lg hover:shadow-xl transition-all duration-200 overflow-hidden`}
         style={backgroundStyle}
       >
-        {/* Modern double period badge - frosted glass effect in corner */}
+        {/* Subtle white overlay for text contrast */}
+        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none" />
+        
+        {/* Modern double period badge - glassmorphism */}
         {isDoubleStart && (
-          <div className="absolute top-1.5 right-1.5 bg-white/30 backdrop-blur-md text-white text-[10px] px-2 py-0.5 rounded-full font-bold shadow-sm z-10">
+          <div className="absolute top-2 right-2 bg-white/20 backdrop-blur-lg border border-white/30 text-white text-[10px] px-2.5 py-1 rounded-full font-bold shadow-lg z-10">
             DOUBLE
           </div>
         )}
-        <div className="text-sm font-bold leading-tight text-center drop-shadow-sm">
-          {lesson.lessonName}
-        </div>
-        <div className="text-xs opacity-95 mt-1.5 text-center font-medium">
-          {viewMode === 'class' 
-            ? lesson.teacherIds?.map(t => t?.name).filter(Boolean).join(', ') || 'No teacher'
-            : lesson.classIds?.map(c => c?.name).filter(Boolean).join(', ') || 'No class'
-          }
+        
+        <div className="relative z-10 flex flex-col justify-center items-center">
+          <div className="text-base font-bold leading-tight text-center px-3 drop-shadow-md">
+            {lesson.lessonName}
+          </div>
+          <div className="text-xs opacity-90 mt-2 text-center font-medium px-3">
+            {viewMode === 'class' 
+              ? lesson.teacherIds?.map(t => t?.name).filter(Boolean).join(', ') || 'No teacher'
+              : lesson.classIds?.map(c => c?.name).filter(Boolean).join(', ') || 'No class'
+            }
+          </div>
         </div>
       </div>
     );
@@ -448,15 +425,9 @@ export default function TimetablePage() {
                                     <TooltipTrigger asChild>
                                       <td
                                         rowSpan={rowSpan}
-                                        className={`relative overflow-hidden cursor-pointer transition-all ${
+                                        className={`relative cursor-pointer transition-all bg-zinc-50 dark:bg-zinc-900 ${
                                           isDoubleStart && rowSpan === 2 ? 'h-40' : 'h-24'
-                                        } ${
-                                          isDoubleStart 
-                                            ? 'border-[3px] border-blue-500 dark:border-blue-400 shadow-md' 
-                                            : 'border border-zinc-200 dark:border-zinc-800'
-                                        } ${
-                                          slot ? 'hover:shadow-lg' : ''
-                                        }`}
+                                        } border border-zinc-100 dark:border-zinc-800 p-2`}
                                         style={{
                                           minWidth: '160px',
                                         }}

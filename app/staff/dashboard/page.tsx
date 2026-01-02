@@ -95,9 +95,11 @@ export default function TeacherDashboard() {
           }
         } else {
           console.error('Failed to fetch published timetable:', data.error);
+          setHasFetched(true); // Prevent retry on error
         }
       } else {
         console.error('Failed to fetch published timetable with status:', publishedRes.status);
+        setHasFetched(true); // Prevent retry on error
       }
 
       // Fetch school info (no cache)
@@ -130,11 +132,24 @@ export default function TeacherDashboard() {
   };
 
   useEffect(() => {
+    // First condition: prevent re-fetch if already fetched
+    if (hasFetched) {
+      return;
+    }
+    
+    // Handle unauthorized access
     if (status === 'unauthenticated') {
       router.push('/');
-    } else if (status === 'authenticated' && session && session.user.role !== 'teacher') {
+      return;
+    }
+    
+    if (status === 'authenticated' && session && session.user.role !== 'teacher') {
       router.push('/');
-    } else if (status === 'authenticated' && session?.user?.role === 'teacher' && !hasFetched && !isLoading) {
+      return;
+    }
+    
+    // Only fetch if authenticated and teacher role confirmed
+    if (status === 'authenticated' && session?.user?.role === 'teacher' && !isLoading) {
       fetchDashboardData();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -195,7 +210,17 @@ export default function TeacherDashboard() {
       );
     }
 
-    const periods = Array.from({ length: schoolInfo.numberOfPeriods }, (_, i) => i + 1);
+    // Diagnostic log
+    console.log('DEBUG: School periods:', schoolInfo.numberOfPeriods, 'My slots count:', schedule.length);
+    
+    // Find max period in schedule to handle cases where slots exceed numberOfPeriods
+    const maxPeriodInSchedule = schedule.length > 0 
+      ? Math.max(...schedule.map(s => Number(s.periodNumber)))
+      : schoolInfo.numberOfPeriods;
+    const actualPeriods = Math.max(schoolInfo.numberOfPeriods, maxPeriodInSchedule);
+    
+    console.log('DEBUG: Rendering periods up to:', actualPeriods);
+    const periods = Array.from({ length: actualPeriods }, (_, i) => i + 1);
 
     return (
       <Card className="border-2 border-black dark:border-white rounded-none">

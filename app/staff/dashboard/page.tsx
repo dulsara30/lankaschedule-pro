@@ -67,26 +67,34 @@ export default function TeacherDashboard() {
   const fetchDashboardData = async () => {
     setIsLoading(true);
     try {
+      console.log('Fetching dashboard data...');
+      
       // Fetch published timetable with admin note
       const publishedRes = await fetch('/api/staff/published-timetable');
       if (publishedRes.ok) {
         const data = await publishedRes.json();
+        console.log('Published timetable response:', data);
+        
         if (data.success) {
           setAdminNote(data.version?.adminNote || '');
-          setVersionName(data.version?.versionName || 'Current Timetable');
+          setVersionName(data.version?.versionName || '');
           const scheduleData = data.mySchedule || [];
           setMySchedule(scheduleData);
-          setShowPDFDownload(scheduleData.length > 0);
+          setShowPDFDownload(scheduleData.length > 0 && data.version);
           
           // Show feedback if version exists but no lessons assigned
           if (data.version && scheduleData.length === 0) {
             console.log('Published version found but no lessons assigned to this teacher');
           }
+          
+          if (!data.version) {
+            console.log('No published version found');
+          }
         } else {
           console.error('Failed to fetch published timetable:', data.error);
         }
       } else {
-        console.error('Failed to fetch published timetable:', publishedRes.status);
+        console.error('Failed to fetch published timetable with status:', publishedRes.status);
       }
 
       // Fetch school info
@@ -169,7 +177,7 @@ export default function TeacherDashboard() {
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg font-bold text-black dark:text-white">{title}</CardTitle>
             {/* Download Button - Only show when data is ready */}
-            {isTeacherSchedule && showPDFDownload && schoolInfo && session?.user.name && mySchedule.length > 0 && versionName && (
+            {isTeacherSchedule && mySchedule.length > 0 && versionName && schoolInfo && session?.user.name && (
               <PDFDownloadLink
                 document={
                   <TimetablePDF
@@ -224,7 +232,7 @@ export default function TeacherDashboard() {
                 )}
               </PDFDownloadLink>
             )}
-            {!isTeacherSchedule && showClassPDF && schoolInfo && selectedClass && classSchedule.length > 0 && versionName && (
+            {!isTeacherSchedule && classSchedule.length > 0 && versionName && schoolInfo && selectedClass && (
               <PDFDownloadLink
                 document={
                   <TimetablePDF
@@ -357,8 +365,10 @@ export default function TeacherDashboard() {
 
   if (status === 'loading' || isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-white dark:bg-black">
+      <div className="flex flex-col items-center justify-center min-h-screen bg-white dark:bg-black gap-4">
         <Loader2 className="h-8 w-8 animate-spin text-black dark:text-white" />
+        <p className="text-black dark:text-white font-medium">Loading Teacher Portal...</p>
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">Fetching your schedule and school information</p>
       </div>
     );
   }
@@ -421,15 +431,25 @@ export default function TeacherDashboard() {
             renderScheduleGrid(mySchedule, 'Your Weekly Schedule', true)
           ) : (
             <Card className="border-2 border-black dark:border-white rounded-none">
-              <CardContent className="pt-6 text-center space-y-2">
-                <p className="text-zinc-900 dark:text-zinc-100 font-medium">
-                  {versionName ? 'No Assigned Lessons' : 'No Published Timetable'}
-                </p>
-                <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                  {versionName 
-                    ? 'You have no assigned lessons in the current published timetable.'
-                    : 'Please wait for the administration to publish a timetable.'}
-                </p>
+              <CardContent className="pt-6 text-center space-y-3">
+                {isLoading ? (
+                  <div className="flex flex-col items-center gap-3">
+                    <Loader2 className="h-6 w-6 animate-spin text-black dark:text-white" />
+                    <p className="text-zinc-900 dark:text-zinc-100 font-medium">Loading Schedule...</p>
+                    <p className="text-sm text-zinc-500 dark:text-zinc-400">Please wait while we fetch your timetable</p>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-zinc-900 dark:text-zinc-100 font-medium">
+                      {versionName ? 'Timetable is published, but no lessons are assigned to you yet.' : 'No Published Timetable'}
+                    </p>
+                    <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                      {versionName 
+                        ? 'The administration has published a timetable, but you currently have no assigned lessons. Please contact the administration if this seems incorrect.'
+                        : 'Please wait for the administration to publish a timetable. You will see your schedule here once it\'s available.'}
+                    </p>
+                  </>
+                )}
               </CardContent>
             </Card>
           )}

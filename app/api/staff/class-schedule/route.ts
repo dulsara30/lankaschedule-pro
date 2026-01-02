@@ -36,11 +36,18 @@ export async function GET(request: Request) {
 
     await dbConnect();
 
+    // Emergency Debug Logs
+    console.log('DEBUG: Class Schedule - Session School ID:', session.user.schoolId);
+    console.log('DEBUG: Class Schedule - Requested Class ID:', classId);
+
     // SECURITY: Only fetch published timetable for the teacher's school
+    // Use .toString() for proper ObjectId comparison
     const publishedVersion = await TimetableVersion.findOne({
-      schoolId: session.user.schoolId,
+      schoolId: session.user.schoolId.toString(),
       isPublished: true,
     }).sort({ createdAt: -1 });
+
+    console.log('DEBUG: Class Schedule - Published Version Found:', publishedVersion ? publishedVersion.versionName : 'None');
 
     if (!publishedVersion) {
       return NextResponse.json({
@@ -51,9 +58,9 @@ export async function GET(request: Request) {
 
     // SECURITY: Fetch slots only for the specified class in the teacher's school
     const slots = await TimetableSlot.find({
-      schoolId: session.user.schoolId,
-      versionId: publishedVersion._id,
-      classId: classId,
+      schoolId: session.user.schoolId.toString(),
+      versionId: publishedVersion._id.toString(),
+      classId: classId.toString(),
     })
       .populate({
         path: 'lessonId',
@@ -62,6 +69,8 @@ export async function GET(request: Request) {
         ]
       })
       .lean();
+
+    console.log('DEBUG: Class Schedule - Raw Slots Count:', slots.length);
 
     const schedule = [];
     for (const slot of slots) {

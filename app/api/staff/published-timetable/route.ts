@@ -26,11 +26,18 @@ export async function GET() {
 
     await dbConnect();
 
+    // Emergency Debug Logs
+    console.log('DEBUG: Session School ID:', session.user.schoolId);
+    console.log('DEBUG: Teacher ID:', session.user.id);
+
     // SECURITY: Only fetch published timetable for the teacher's school
+    // Use .toString() for proper ObjectId comparison
     const publishedVersion = await TimetableVersion.findOne({
-      schoolId: session.user.schoolId,
+      schoolId: session.user.schoolId.toString(),
       isPublished: true,
     }).sort({ createdAt: -1 });
+
+    console.log('DEBUG: Published Version Found:', publishedVersion ? publishedVersion.versionName : 'None');
 
     if (!publishedVersion) {
       return NextResponse.json({
@@ -42,8 +49,8 @@ export async function GET() {
 
     // Fetch all slots for this version with proper population
     const slots = await TimetableSlot.find({
-      schoolId: session.user.schoolId,
-      versionId: publishedVersion._id,
+      schoolId: session.user.schoolId.toString(),
+      versionId: publishedVersion._id.toString(),
     })
       .populate({
         path: 'lessonId',
@@ -55,21 +62,31 @@ export async function GET() {
       .populate('classId')
       .lean();
 
+    console.log('DEBUG: Raw Slots Count:', slots.length);
+
     // Filter slots that involve this teacher (checking teacherIds array)
     const mySchedule = [];
+    let processedSlots = 0;
+    let matchedSlots = 0;
+    
     for (const slot of slots) {
-      if (!slot.lessonId || !slot.classId) continue;
+      if (!slot.lessonId || !slot.classId) {
+        console.log('DEBUG: Skipping slot with null lessonId or classId');
+        continue;
+      }
       
+      processedSlots++;
       const lesson = slot.lessonId as any;
       const classData = slot.classId as any;
       
       if (lesson.teacherIds && Array.isArray(lesson.teacherIds)) {
-        // Check if this teacher's ID is in the teacherIds array
+        // Check if this teacher's ID is in the teacherIds array (use .toString() for proper comparison)
         const isMyLesson = lesson.teacherIds.some(
-          (teacher: any) => teacher._id.toString() === session.user.id
+          (teacher: any) => teacher._id.toString() === session.user.id.toString()
         );
         
         if (isMyLesson) {
+          matchedSlots++;
           // Get subject names from populated subjectIds
           const subjectNames = lesson.subjectIds && Array.isArray(lesson.subjectIds)
             ? lesson.subjectIds.map((s: any) => s.name).join(', ')
@@ -87,6 +104,10 @@ export async function GET() {
         }
       }
     }
+
+    console.log('DEBUG: Processed Slots:', processedSlots);
+    console.log('DEBUG: Matched Slots for Teacher:', matchedSlots);
+    console.log('DEBUG: Final Schedule Length:', mySchedule.length);
 
     return NextResponse.json({
       success: true,

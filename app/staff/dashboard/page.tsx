@@ -200,13 +200,33 @@ export default function TeacherDashboard() {
       const buttons = element.querySelectorAll('button');
       buttons.forEach(btn => btn.style.visibility = 'hidden');
 
-      // Use html-to-image with high-quality settings
+      // Store original overflow style to restore later
+      const originalOverflow = element.style.overflow;
+      
+      // Temporarily remove overflow constraints for full capture
+      element.style.overflow = 'visible';
+
+      // Calculate full dimensions including scrollable content
+      const fullWidth = element.scrollWidth;
+      const fullHeight = element.scrollHeight;
+
+      // Use html-to-image with explicit dimensions for full-width capture
       const dataUrl = await toPng(element, {
-        cacheBust: true, // Ensure fresh render
+        width: fullWidth,
+        height: fullHeight,
+        style: {
+          transform: 'none',
+          width: fullWidth + 'px',
+          height: fullHeight + 'px',
+        },
         pixelRatio: 2, // High resolution (2x)
+        cacheBust: true, // Ensure fresh render
         backgroundColor: '#ffffff', // White background
       });
 
+      // Restore original overflow style
+      element.style.overflow = originalOverflow;
+      
       // Restore buttons
       buttons.forEach(btn => btn.style.visibility = 'visible');
 
@@ -220,9 +240,13 @@ export default function TeacherDashboard() {
       toast.success('Timetable image downloaded!');
     } catch (error) {
       console.error('Error generating image:', error);
-      // Restore buttons even on error
-      const buttons = element.querySelectorAll('button');
-      buttons.forEach(btn => btn.style.visibility = 'visible');
+      // Restore buttons and overflow even on error
+      const element = document.getElementById('timetable-to-capture');
+      if (element) {
+        element.style.overflow = 'auto';
+        const buttons = element.querySelectorAll('button');
+        buttons.forEach(btn => btn.style.visibility = 'visible');
+      }
       toast.error('Failed to generate image');
     }
   };

@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/dbConnect';
 import Teacher from '@/models/Teacher';
 import Lesson from '@/models/Lesson';
+import TimetableSlot from '@/models/TimetableSlot';
 import mongoose from 'mongoose';
 
 interface DeleteResult {
@@ -11,6 +12,29 @@ interface DeleteResult {
   message?: string;
   error?: string;
   lessonsUpdated?: number;
+}
+
+interface LessonWithSlots {
+  _id: string;
+  lessonName: string;
+  subjectIds: Array<{ _id: string; name: string }>;
+  classIds: Array<{ _id: string; name: string }>;
+  slots: Array<{
+    _id: string;
+    day: string;
+    periodNumber: number;
+  }>;
+}
+
+interface ConflictCheck {
+  hasConflict: boolean;
+  conflictingSlots: Array<{
+    day: string;
+    periodNumber: number;
+  }>;
+  currentWorkload: number;
+  newWorkload: number;
+  isOverCapacity: boolean;
 }
 
 /**
@@ -136,5 +160,246 @@ export async function getTeacherLessonCount(teacherId: string): Promise<number> 
   } catch (error) {
     console.error('Error getting teacher lesson count:', error);
     return 0;
+  }
+}
+
+/**
+ * Get all lessons with their timetable slots for a teacher
+ * Used for intelligent reassignment UI
+ */
+export async function getTeacherLessonsWithSlots(
+  teacherId: string,
+  versionId?: string
+): Promise<LessonWithSlots[]> {
+  try {
+    await dbConnect();
+
+    if (!mongoose.Types.ObjectId.isValid(teacherId)) {
+      return [];
+    }
+
+    const teacherObjectId = new mongoose.Types.ObjectId(teacherId);
+
+    // Find all lessons assigned to this teacher
+    const lessons = await Lesson.find({
+      teacherIds: teacherObjectId
+    })
+      .populate('subjectIds', 'name')
+      .populate('classIds', 'name')
+      .lean();
+
+    // For each lesson, find its timetable slots
+    const lessonsWithSlots: LessonWithSlots[] = [];
+
+    for (const lesson of lessons) {
+      const query: any = {
+        lessonId: lesson._id
+      };
+
+      // If versionId is provided, filter by version
+      if (versionId && mongoose.Types.ObjectId.isValid(versionId)) {
+        query.versionId = new mongoose.Types.ObjectId(versionId);
+      }
+
+      const slots = await TimetableSlot.find(query)
+        .select('day periodNumber')
+        .lean();
+
+      lessonsWithSlots.push({
+        _id: lesson._id.toString(),
+        lessonName: lesson.lessonName,
+        subjectIds: lesson.subjectIds.map((s: any) => ({
+          _id: s._id.toString(),
+          name: s.name
+        })),
+        classIds: lesson.classIds.map((c: any) => ({
+          _id: c._id.toString(),
+          name: c.name
+        })),
+        slots: slots.map(slot => ({
+          _id: slot._id.toString(),
+          day: slot.day,
+          periodNumber: slot.periodNumber
+        }))
+      });
+    }
+
+    return lessonsWithSlots;
+  } catch (error) {
+    console.error('Error getting teacher lessons with slots:', error);
+    return [];
+  }
+}
+
+/**
+ * Check for conflicts when reassigning a lesson to a new teacher
+ * Returns conflict information and workload analysis
+ */
+export async function checkReassignmentConflicts(
+  replacementTeacherId: string,
+  lessonSlots: Array<{ day: string; periodNumber: number }>,
+  versionId?: string
+): Promise<ConflictCheck> {
+  try {
+    await dbConnect();
+
+    if (!mongoose.Types.ObjectId.isValid(replacementTeacherId)) {
+      return {
+        hasConflict: false,
+        conflictingSlots: [],
+        currentWorkload: 0,
+        newWorkload: 0,
+        isOverCapacity: false
+      };
+    }
+
+    const teacherObjectId = new mongoose.Types.ObjectId(replacementTeacherId);
+
+    // Get the teacher document to check max workload
+    const teacher = await Teacher.findById(teacherObjectId).lean();
+    const maxWorkload = 35; // Default max periods per week
+
+    // Build query for existing slots
+    const query: any = {
+      'lessonId.teacherIds': teacherObjectId
+    };
+
+    if (versionId && mongoose.Types.ObjectId.isValid(versionId)) {
+      query.versionId = new mongoose.Types.ObjectId(versionId);
+    }
+
+    // Get all existing slots for this teacher
+    const existingSlots = await TimetableSlot.find(query)
+      .populate({
+        path: 'lessonId',
+        select: 'teacherIds'
+      })
+      .select('day periodNumber')
+      .lean();
+
+    // Calculate current workload
+    const currentWorkload = existingSlots.length;
+    const newWorkload = currentWorkload + lessonSlots.length;
+    const isOverCapacity = newWorkload > maxWorkload;
+
+    // Check for conflicts (same day and period)
+    const conflictingSlots: Array<{ day: string; periodNumber: number }> = [];
+
+    for (const newSlot of lessonSlots) {
+      const hasConflict = existingSlots.some(
+        existing =>
+          existing.day === newSlot.day &&
+          existing.periodNumber === newSlot.periodNumber
+      );
+
+      if (hasConflict) {
+        conflictingSlots.push({
+          day: newSlot.day,
+          periodNumber: newSlot.periodNumber
+        });
+      }
+    }
+
+    return {
+      hasConflict: conflictingSlots.length > 0,
+      conflictingSlots,
+      currentWorkload,
+      newWorkload,
+      isOverCapacity
+    };
+  } catch (error) {
+    console.error('Error checking reassignment conflicts:', error);
+    return {
+      hasConflict: false,
+      conflictingSlots: [],
+      currentWorkload: 0,
+      newWorkload: 0,
+      isOverCapacity: false
+    };
+  }
+}
+
+/**
+ * Delete teacher with individual lesson reassignments
+ * Supports per-lesson replacement teacher selection
+ */
+export async function deleteWithMultipleReassignments(
+  teacherToDeleteId: string,
+  lessonReassignments: Array<{
+    lessonId: string;
+    replacementTeacherId: string | null;
+  }>
+): Promise<DeleteResult> {
+  try {
+    await dbConnect();
+
+    if (!mongoose.Types.ObjectId.isValid(teacherToDeleteId)) {
+      return { success: false, error: 'Invalid teacher ID' };
+    }
+
+    const teacherToDelete = await Teacher.findById(teacherToDeleteId);
+    if (!teacherToDelete) {
+      return { success: false, error: 'Teacher not found' };
+    }
+
+    let lessonsUpdated = 0;
+
+    // Process each lesson reassignment
+    for (const reassignment of lessonReassignments) {
+      if (!mongoose.Types.ObjectId.isValid(reassignment.lessonId)) {
+        continue;
+      }
+
+      const lesson = await Lesson.findById(reassignment.lessonId);
+      if (!lesson) continue;
+
+      // Remove the teacher being deleted
+      lesson.teacherIds = lesson.teacherIds.filter(
+        (id: mongoose.Types.ObjectId) => id.toString() !== teacherToDeleteId
+      );
+
+      // Add replacement teacher if provided
+      if (reassignment.replacementTeacherId) {
+        if (!mongoose.Types.ObjectId.isValid(reassignment.replacementTeacherId)) {
+          continue;
+        }
+
+        const replacementObjectId = new mongoose.Types.ObjectId(
+          reassignment.replacementTeacherId
+        );
+
+        const alreadyAssigned = lesson.teacherIds.some(
+          (id: mongoose.Types.ObjectId) =>
+            id.toString() === reassignment.replacementTeacherId
+        );
+
+        if (!alreadyAssigned) {
+          lesson.teacherIds.push(replacementObjectId);
+        }
+      }
+
+      await lesson.save();
+      lessonsUpdated++;
+    }
+
+    // Delete the teacher
+    await Teacher.findByIdAndDelete(teacherToDeleteId);
+
+    // Revalidate pages
+    revalidatePath('/dashboard/teachers');
+    revalidatePath('/dashboard/timetable');
+    revalidatePath('/dashboard/lessons');
+
+    return {
+      success: true,
+      message: `Teacher deleted successfully. ${lessonsUpdated} lesson(s) updated.`,
+      lessonsUpdated
+    };
+  } catch (error) {
+    console.error('Error in deleteWithMultipleReassignments:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to delete teacher'
+    };
   }
 }

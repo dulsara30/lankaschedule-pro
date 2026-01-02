@@ -11,7 +11,33 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Plus, Pencil, Trash2, Search, X, Check, ChevronsUpDown, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { deleteAndReassignTeacher, getTeacherLessonCount } from '@/app/actions/teacherActions';
+import { deleteAndReassignTeacher, getTeacherLessonCount, getTeacherLessonsWithSlots, checkReassignmentConflicts, deleteWithMultipleReassignments } from '@/app/actions/teacherActions';
+
+interface LessonWithSlots {
+  _id: string;
+  lessonName: string;
+  subjectIds: Array<{ _id: string; name: string }>;
+  classIds: Array<{ _id: string; name: string }>;
+  slots: Array<{
+    _id: string;
+    day: string;
+    periodNumber: number;
+  }>;
+}
+
+interface ConflictCheck {
+  hasConflict: boolean;
+  conflictingSlots: Array<{ day: string; periodNumber: number }>;
+  currentWorkload: number;
+  newWorkload: number;
+  isOverCapacity: boolean;
+}
+
+interface LessonReassignment {
+  lessonId: string;
+  replacementTeacherId: string | null;
+  conflictCheck?: ConflictCheck;
+}
 
 interface Teacher {
   _id: string;
@@ -48,10 +74,11 @@ export default function TeachersPage() {
   // Smart deletion state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [teacherToDelete, setTeacherToDelete] = useState<Teacher | null>(null);
-  const [affectedLessonsCount, setAffectedLessonsCount] = useState(0);
-  const [replacementTeacherId, setReplacementTeacherId] = useState<string>('');
-  const [replacementComboOpen, setReplacementComboOpen] = useState(false);
+  const [affectedLessons, setAffectedLessons] = useState<LessonWithSlots[]>([]);
+  const [lessonReassignments, setLessonReassignments] = useState<LessonReassignment[]>([]);
+  const [openComboboxIndex, setOpenComboboxIndex] = useState<number | null>(null);
   const [deletingTeacher, setDeletingTeacher] = useState(false);
+  const [currentVersionId, setCurrentVersionId] = useState<string>('');
 
   const [formData, setFormData] = useState({
     name: '',
@@ -63,7 +90,24 @@ export default function TeachersPage() {
   useEffect(() => {
     fetchTeachers();
     fetchSubjects();
+    fetchCurrentVersion();
   }, []);
+
+  const fetchCurrentVersion = async () => {
+    try {
+      const response = await fetch('/api/timetable-versions');
+      const data = await response.json();
+      if (data.success && data.data.length > 0) {
+        // Get the most recent version
+        const sortedVersions = data.data.sort((a: any, b: any) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        setCurrentVersionId(sortedVersions[0]._id);
+      }
+    } catch (error) {
+      console.error('Failed to fetch current version:', error);
+    }
+  };
 
   useEffect(() => {
     let filtered = teachers;
@@ -179,14 +223,48 @@ export default function TeachersPage() {
   };
 
   const handleDelete = async (teacher: Teacher) => {
-    // Open dialog and get affected lessons count
+    // Open dialog and fetch detailed lesson information
     setTeacherToDelete(teacher);
-    setReplacementTeacherId('');
     setDeleteDialogOpen(true);
     
-    // Fetch affected lessons count
-    const count = await getTeacherLessonCount(teacher._id);
-    setAffectedLessonsCount(count);
+    // Fetch all lessons with their timetable slots
+    const lessons = await getTeacherLessonsWithSlots(teacher._id, currentVersionId);
+    setAffectedLessons(lessons);
+    
+    // Initialize reassignment state for each lesson
+    const initialReassignments = lessons.map(lesson => ({
+      lessonId: lesson._id,
+      replacementTeacherId: null,
+      conflictCheck: undefined
+    }));
+    setLessonReassignments(initialReassignments);
+  };
+
+  const handleReplacementSelect = async (lessonIndex: number, teacherId: string | null) => {
+    const lesson = affectedLessons[lessonIndex];
+    if (!lesson) return;
+
+    // Update reassignment
+    const updatedReassignments = [...lessonReassignments];
+    updatedReassignments[lessonIndex] = {
+      ...updatedReassignments[lessonIndex],
+      replacementTeacherId: teacherId
+    };
+
+    // If a teacher is selected, check for conflicts
+    if (teacherId) {
+      const conflictCheck = await checkReassignmentConflicts(
+        teacherId,
+        lesson.slots,
+        currentVersionId
+      );
+      updatedReassignments[lessonIndex].conflictCheck = conflictCheck;
+    } else {
+      updatedReassignments[lessonIndex].conflictCheck = undefined;
+    }
+
+    setLessonReassignments(updatedReassignments);
+    setOpenComboboxIndex(null);
   };
 
   const confirmDelete = async () => {
@@ -194,16 +272,17 @@ export default function TeachersPage() {
 
     setDeletingTeacher(true);
     try {
-      const result = await deleteAndReassignTeacher(
+      const result = await deleteWithMultipleReassignments(
         teacherToDelete._id,
-        replacementTeacherId || undefined
+        lessonReassignments
       );
 
       if (result.success) {
         toast.success(result.message || 'Teacher deleted successfully');
         setDeleteDialogOpen(false);
         setTeacherToDelete(null);
-        setReplacementTeacherId('');
+        setAffectedLessons([]);
+        setLessonReassignments([]);
         fetchTeachers();
       } else {
         toast.error(result.error || 'Failed to delete teacher');
@@ -700,25 +779,25 @@ export default function TeachersPage() {
         </div>
       )}
 
-      {/* Smart Deletion Dialog */}
+      {/* Intelligent Multi-Lesson Reassignment Dialog */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-xl">
               <AlertTriangle className="h-5 w-5 text-amber-500" />
-              Delete Teacher
+              Delete Teacher - Reassign Lessons
             </DialogTitle>
             <DialogDescription className="text-base pt-2">
               {teacherToDelete && (
                 <>
                   You are about to delete <span className="font-semibold text-zinc-900 dark:text-zinc-100">{teacherToDelete.name}</span>.
-                  {affectedLessonsCount > 0 && (
+                  {affectedLessons.length > 0 && (
                     <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg">
                       <p className="text-sm text-amber-800 dark:text-amber-200">
-                        <span className="font-semibold">{affectedLessonsCount}</span> lesson{affectedLessonsCount !== 1 ? 's are' : ' is'} assigned to this teacher.
+                        <span className="font-semibold">{affectedLessons.length}</span> lesson{affectedLessons.length !== 1 ? 's need' : ' needs'} reassignment.
                       </p>
                       <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
-                        Who should take over these lessons?
+                        Select a replacement teacher for each lesson below. Conflicts will be detected automatically.
                       </p>
                     </div>
                   )}
@@ -727,85 +806,163 @@ export default function TeachersPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
-            {affectedLessonsCount > 0 && (
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                  Replacement Teacher (Optional)
-                </label>
-                <Popover open={replacementComboOpen} onOpenChange={setReplacementComboOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      role="combobox"
-                      aria-expanded={replacementComboOpen}
-                      className="w-full justify-between"
-                    >
-                      {replacementTeacherId
-                        ? teachers.find((t) => t._id === replacementTeacherId)?.name
-                        : "Select replacement teacher..."}
-                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[400px] p-0">
-                    <Command>
-                      <CommandInput placeholder="Search teachers..." />
-                      <CommandList>
-                        <CommandEmpty>No teacher found.</CommandEmpty>
-                        <CommandGroup>
-                          <CommandItem
-                            value=""
-                            onSelect={() => {
-                              setReplacementTeacherId('');
-                              setReplacementComboOpen(false);
-                            }}
-                          >
-                            <Check
-                              className={cn(
-                                "mr-2 h-4 w-4",
-                                replacementTeacherId === '' ? "opacity-100" : "opacity-0"
-                              )}
-                            />
-                            <span className="text-zinc-500 italic">None (Remove from lessons)</span>
-                          </CommandItem>
-                          {teachers
-                            .filter(t => t._id !== teacherToDelete?._id)
-                            .map((teacher) => (
-                              <CommandItem
-                                key={teacher._id}
-                                value={teacher.name}
-                                onSelect={() => {
-                                  setReplacementTeacherId(teacher._id);
-                                  setReplacementComboOpen(false);
-                                }}
-                              >
-                                <Check
-                                  className={cn(
-                                    "mr-2 h-4 w-4",
-                                    replacementTeacherId === teacher._id ? "opacity-100" : "opacity-0"
-                                  )}
-                                />
-                                <div className="flex flex-col">
-                                  <span>{teacher.name}</span>
-                                  <span className="text-xs text-zinc-500">
-                                    {teacher.teacherGrade} • {teacher.lessonCount || 0} lessons
-                                  </span>
-                                </div>
-                              </CommandItem>
-                            ))}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                  Leave empty to simply remove this teacher from all lessons
-                </p>
-              </div>
-            )}
+          <div className="flex-1 overflow-y-auto py-4 space-y-4">
+            {affectedLessons.length > 0 ? (
+              affectedLessons.map((lesson, index) => {
+                const reassignment = lessonReassignments[index];
+                const conflictCheck = reassignment?.conflictCheck;
 
-            {affectedLessonsCount === 0 && (
-              <div className="p-3 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg">
+                return (
+                  <div
+                    key={lesson._id}
+                    className="border border-zinc-200 dark:border-zinc-700 rounded-lg p-4 space-y-3 bg-white dark:bg-zinc-900"
+                  >
+                    {/* Lesson Header */}
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <h4 className="font-semibold text-zinc-900 dark:text-zinc-100">
+                          {lesson.lessonName}
+                        </h4>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          <span className="text-xs px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded">
+                            {lesson.subjectIds.map(s => s.name).join(', ')}
+                          </span>
+                          <span className="text-xs px-2 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded">
+                            {lesson.classIds.map(c => c.name).join(', ')}
+                          </span>
+                          <span className="text-xs px-2 py-1 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded">
+                            {lesson.slots.length} period{lesson.slots.length !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Timetable Slots Display */}
+                    {lesson.slots.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {lesson.slots.map((slot, slotIdx) => (
+                          <span
+                            key={slotIdx}
+                            className="text-xs px-2 py-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 rounded"
+                          >
+                            {slot.day} P{slot.periodNumber}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Replacement Teacher Selector */}
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 uppercase tracking-wide">
+                        Assign Replacement Teacher
+                      </label>
+                      <Popover
+                        open={openComboboxIndex === index}
+                        onOpenChange={(open) => setOpenComboboxIndex(open ? index : null)}
+                      >
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            className="w-full justify-between h-10 text-sm"
+                          >
+                            {reassignment?.replacementTeacherId
+                              ? teachers.find((t) => t._id === reassignment.replacementTeacherId)?.name
+                              : "Select teacher..."}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[400px] p-0">
+                          <Command>
+                            <CommandInput placeholder="Search teachers..." />
+                            <CommandList>
+                              <CommandEmpty>No teacher found.</CommandEmpty>
+                              <CommandGroup>
+                                <CommandItem
+                                  value=""
+                                  onSelect={() => handleReplacementSelect(index, null)}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      !reassignment?.replacementTeacherId ? "opacity-100" : "opacity-0"
+                                    )}
+                                  />
+                                  <span className="text-zinc-500 italic">Leave Unassigned</span>
+                                </CommandItem>
+                                {teachers
+                                  .filter(t => t._id !== teacherToDelete?._id)
+                                  .map((teacher) => (
+                                    <CommandItem
+                                      key={teacher._id}
+                                      value={teacher.name}
+                                      onSelect={() => handleReplacementSelect(index, teacher._id)}
+                                    >
+                                      <Check
+                                        className={cn(
+                                          "mr-2 h-4 w-4",
+                                          reassignment?.replacementTeacherId === teacher._id ? "opacity-100" : "opacity-0"
+                                        )}
+                                      />
+                                      <div className="flex flex-col flex-1">
+                                        <span>{teacher.name}</span>
+                                        <span className="text-xs text-zinc-500">
+                                          {teacher.teacherGrade} • {teacher.lessonCount || 0} lessons • {teacher.totalPeriods || 0}/35 periods
+                                        </span>
+                                      </div>
+                                    </CommandItem>
+                                  ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+
+                    {/* Conflict Warnings */}
+                    {conflictCheck && (
+                      <div className="space-y-2">
+                        {conflictCheck.hasConflict && (
+                          <div className="flex items-start gap-2 p-2 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded text-xs">
+                            <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                            <div>
+                              <p className="font-semibold text-red-800 dark:text-red-200">
+                                ⚠️ Schedule Clash Detected
+                              </p>
+                              <p className="text-red-700 dark:text-red-300 mt-1">
+                                Conflicts on: {conflictCheck.conflictingSlots.map(s => `${s.day} P${s.periodNumber}`).join(', ')}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                        {conflictCheck.isOverCapacity && (
+                          <div className="flex items-start gap-2 p-2 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded text-xs">
+                            <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                            <div>
+                              <p className="font-semibold text-amber-800 dark:text-amber-200">
+                                📊 Workload Warning
+                              </p>
+                              <p className="text-amber-700 dark:text-amber-300 mt-1">
+                                New workload: {conflictCheck.newWorkload}/35 periods (currently {conflictCheck.currentWorkload})
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                        {!conflictCheck.hasConflict && !conflictCheck.isOverCapacity && (
+                          <div className="flex items-center gap-2 p-2 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded text-xs">
+                            <Check className="h-4 w-4 text-green-600 dark:text-green-400" />
+                            <p className="text-green-800 dark:text-green-200">
+                              ✓ No conflicts. Workload: {conflictCheck.newWorkload}/35 periods
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            ) : (
+              <div className="p-6 text-center bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg">
                 <p className="text-sm text-green-800 dark:text-green-200">
                   This teacher is not assigned to any lessons. Safe to delete.
                 </p>
@@ -813,7 +970,7 @@ export default function TeachersPage() {
             )}
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="border-t pt-4">
             <Button
               variant="outline"
               onClick={() => setDeleteDialogOpen(false)}

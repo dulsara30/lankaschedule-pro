@@ -286,8 +286,8 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
   schoolName = 'EduFlow AI',
   schoolAddress = '',
   showTimeColumn = true,
-  showPrincipalSignature = true,
-  showClassTeacherSignature = true,
+  showPrincipalSignature = false,
+  showClassTeacherSignature = false,
 }) => {
   const currentDate = new Date().toLocaleDateString('en-US', { 
     year: 'numeric', 

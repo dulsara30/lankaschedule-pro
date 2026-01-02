@@ -110,8 +110,8 @@ export default function TimetablePage() {
   
   // PDF Customization toggles
   const [showTimeColumn, setShowTimeColumn] = useState(true);
-  const [showPrincipalSignature, setShowPrincipalSignature] = useState(true);
-  const [showClassTeacherSignature, setShowClassTeacherSignature] = useState(true);
+  const [showPrincipalSignature, setShowPrincipalSignature] = useState(false);
+  const [showClassTeacherSignature, setShowClassTeacherSignature] = useState(false);
   
   // Resizable sidebar state
   const [sidebarWidth, setSidebarWidth] = useState(450);

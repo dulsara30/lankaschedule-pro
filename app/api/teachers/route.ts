@@ -152,14 +152,24 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const updateData: { name: string; email?: string; teacherGrade: string; subjectsTaught: string[] } = {
-      name,
+    // Build update object with all required fields
+    const updateData: {
+      name: string;
+      email?: string;
+      teacherGrade: string;
+      subjectsTaught: string[];
+    } = {
+      name: name.trim(),
       teacherGrade: teacherGrade || 'SLTS 3 I',
       subjectsTaught: subjectsTaught || [],
     };
 
-    if (email) {
-      updateData.email = email.toLowerCase();
+    // Handle email properly - only set if provided and not empty
+    if (email !== undefined && email !== null) {
+      const trimmedEmail = email.trim();
+      if (trimmedEmail) {
+        updateData.email = trimmedEmail.toLowerCase();
+      }
     }
 
     const teacher = await Teacher.findByIdAndUpdate(

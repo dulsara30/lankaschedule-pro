@@ -185,7 +185,9 @@ export default function TeacherDashboard() {
   };
 
   const calculatePeriodTime = (periodNumber: number) => {
-    if (!schoolInfo) return '';
+    // Safety guard: prevent crash if schoolInfo or startTime is missing
+    if (!schoolInfo?.startTime) return '00:00';
+    
     const [hours, minutes] = schoolInfo.startTime.split(':').map(Number);
     const totalMinutes = hours * 60 + minutes + (periodNumber - 1) * schoolInfo.periodDuration;
     const endMinutes = totalMinutes + schoolInfo.periodDuration;
@@ -214,9 +216,9 @@ export default function TeacherDashboard() {
     // Diagnostic log
     console.log('DEBUG: School periods:', schoolInfo.numberOfPeriods, 'My slots count:', schedule.length);
     
-    // Fix NaN: Explicitly convert to Number with fallback to 5
+    // Fix NaN: Explicitly convert to Number with fallback to 8
     const periodsCount = Math.max(
-      Number(schoolInfo?.numberOfPeriods || 5),
+      Number(schoolInfo?.numberOfPeriods || 8),
       ...schedule.map(s => Number(s.periodNumber) || 0)
     );
     
@@ -230,12 +232,15 @@ export default function TeacherDashboard() {
             <CardTitle className="text-lg font-bold text-black dark:text-white">{title}</CardTitle>
             {/* Download Button - Only show when data is ready */}
             {isTeacherSchedule && (
-              // Strict PDF guard: verify ALL required data exists
+              // Strict PDF guard: verify ALL required data exists including startTime
               status === 'authenticated' && 
               mySchedule && 
               mySchedule.length > 0 && 
               versionName && 
               schoolInfo && 
+              schoolInfo.startTime && 
+              schoolInfo.periodDuration && 
+              schoolInfo.numberOfPeriods && 
               session?.user?.name ? (
                 <PDFDownloadLink
                   document={
@@ -269,13 +274,13 @@ export default function TeacherDashboard() {
                       }))}
                       versionName={versionName}
                       config={{
-                        startTime: schoolInfo.startTime,
-                        periodDuration: schoolInfo.periodDuration,
-                        numberOfPeriods: schoolInfo.numberOfPeriods,
+                        startTime: schoolInfo.startTime || '08:00',
+                        periodDuration: schoolInfo.periodDuration || 40,
+                        numberOfPeriods: schoolInfo.numberOfPeriods || 8,
                         intervalSlots: [],
                       }}
                       lessonNameMap={{}}
-                      schoolName={schoolInfo.name}
+                      schoolName={schoolInfo.name || 'School'}
                       showTimeColumn={true}
                     />
                   }
@@ -306,12 +311,15 @@ export default function TeacherDashboard() {
               ) : null
             )}
             {!isTeacherSchedule && (
-              // Strict PDF guard: verify ALL required data exists
+              // Strict PDF guard: verify ALL required data exists including startTime
               status === 'authenticated' && 
               classSchedule && 
               classSchedule.length > 0 && 
               versionName && 
               schoolInfo && 
+              schoolInfo.startTime && 
+              schoolInfo.periodDuration && 
+              schoolInfo.numberOfPeriods && 
               selectedClass ? (
                 <PDFDownloadLink
                   document={
@@ -342,13 +350,13 @@ export default function TeacherDashboard() {
                     }))}
                     versionName={versionName}
                     config={{
-                      startTime: schoolInfo.startTime,
-                      periodDuration: schoolInfo.periodDuration,
-                      numberOfPeriods: schoolInfo.numberOfPeriods,
+                      startTime: schoolInfo.startTime || '08:00',
+                      periodDuration: schoolInfo.periodDuration || 40,
+                      numberOfPeriods: schoolInfo.numberOfPeriods || 8,
                       intervalSlots: [],
                     }}
                     lessonNameMap={{}}
-                    schoolName={schoolInfo.name}
+                    schoolName={schoolInfo.name || 'School'}
                     showTimeColumn={true}
                   />
                 }
@@ -505,6 +513,23 @@ export default function TeacherDashboard() {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6 space-y-6">
+        {/* School Configuration Warning */}
+        {schoolInfo && (!schoolInfo.startTime || !schoolInfo.periodDuration || !schoolInfo.numberOfPeriods) && (
+          <Card className="border-2 border-yellow-500 dark:border-yellow-400 rounded-none bg-yellow-50 dark:bg-yellow-950">
+            <CardHeader className="border-b-2 border-yellow-500 dark:border-yellow-400">
+              <CardTitle className="text-lg font-bold text-yellow-900 dark:text-yellow-100 flex items-center gap-2">
+                <Calendar className="h-5 w-5" />
+                Missing School Configuration
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-6">
+              <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                School configuration is incomplete. Some features may not work correctly. Please contact the administration to complete the school setup.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Admin Announcement */}
         {adminNote && (
           <Card className="border-2 border-black dark:border-white rounded-none bg-zinc-50 dark:bg-zinc-900">

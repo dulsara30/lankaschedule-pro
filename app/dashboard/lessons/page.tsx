@@ -6,7 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2, X, Info, Sparkles } from 'lucide-react';
+import { Plus, Pencil, Trash2, Sparkles, MoreVertical } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { generateTimetableAction } from '@/app/actions/generateTimetable';
@@ -65,10 +67,22 @@ export default function LessonsPage() {
   const [subjectSearchTerm, setSubjectSearchTerm] = useState('');
   const [teacherSearchTerm, setTeacherSearchTerm] = useState('');
 
+  // Smart lesson naming: Auto-fill if single subject selected
+  useEffect(() => {
+    if (selectedSubjects.length === 1 && !editingLesson) {
+      const subject = subjects.find(s => s._id === selectedSubjects[0]);
+      if (subject) {
+        setFormData(prev => ({ ...prev, lessonName: subject.name }));
+      }
+    } else if (selectedSubjects.length > 1 && formData.lessonName && subjects.find(s => s.name === formData.lessonName)) {
+      // Clear auto-filled name when multiple subjects selected
+      setFormData(prev => ({ ...prev, lessonName: '' }));
+    }
+  }, [selectedSubjects, subjects, editingLesson]);
+
   useEffect(() => {
     fetchData();
 
-    // Set up real-time updates - refetch when coming back to the page
     const handleFocus = () => {
       router.refresh();
       fetchData();
@@ -76,7 +90,6 @@ export default function LessonsPage() {
 
     window.addEventListener('focus', handleFocus);
     
-    // Refetch periodically (every 10 seconds)
     const interval = setInterval(() => {
       fetchData();
     }, 10000);
@@ -132,6 +145,13 @@ export default function LessonsPage() {
       return;
     }
 
+    // Validation: Check total periods
+    const totalPeriods = formData.numberOfSingles + (formData.numberOfDoubles * 2);
+    if (totalPeriods > 35) {
+      toast.error(`Total periods (${totalPeriods}) exceeds weekly maximum of 35`);
+      return;
+    }
+
     try {
       const url = '/api/lessons';
       const method = editingLesson ? 'PUT' : 'POST';
@@ -153,6 +173,7 @@ export default function LessonsPage() {
         setDialogOpen(false);
         resetForm();
         fetchData();
+        router.refresh();
       } else {
         toast.error(data.error);
       }
@@ -189,6 +210,7 @@ export default function LessonsPage() {
       if (data.success) {
         toast.success('Lesson deleted successfully');
         fetchData();
+        router.refresh();
       } else {
         toast.error(data.error);
       }
@@ -281,6 +303,8 @@ export default function LessonsPage() {
     }
   };
 
+  const totalPeriods = formData.numberOfSingles + (formData.numberOfDoubles * 2);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -318,248 +342,222 @@ export default function LessonsPage() {
                 Create Lesson
               </Button>
             </DialogTrigger>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>
-                {editingLesson ? 'Edit Lesson' : 'Create New Lesson'}
-              </DialogTitle>
-              <DialogDescription>
-                Build a lesson unit that can include multiple subjects, teachers, and parallel classes
-              </DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Lesson Name */}
-              <div>
-                <label htmlFor="lessonName" className="mb-2 block text-sm font-medium">
-                  Lesson Name
-                </label>
-                <Input
-                  id="lessonName"
-                  value={formData.lessonName}
-                  onChange={(e) => setFormData({ ...formData, lessonName: e.target.value })}
-                  placeholder="e.g., Grade 6 Aesthetic Block, 10-Science"
-                  required
-                />
-              </div>
+            <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>
+                  {editingLesson ? 'Edit Lesson' : 'Create New Lesson'}
+                </DialogTitle>
+                <DialogDescription>
+                  Build a lesson unit with subjects, teachers, and classes in a smart grid layout
+                </DialogDescription>
+              </DialogHeader>
+              
+              <form onSubmit={handleSubmit} className="space-y-6">
+                {/* Row 1: Lesson Name */}
+                <div>
+                  <label htmlFor="lessonName" className="mb-2 block text-sm font-medium">
+                    Lesson Name {selectedSubjects.length === 1 ? '(Auto-filled from subject)' : '(Required for multiple subjects)'}
+                  </label>
+                  <Input
+                    id="lessonName"
+                    value={formData.lessonName}
+                    onChange={(e) => setFormData({ ...formData, lessonName: e.target.value })}
+                    placeholder="e.g., Grade 6 Aesthetic Block, 10-Science"
+                    required={selectedSubjects.length !== 1}
+                    className="text-lg font-semibold"
+                  />
+                </div>
 
-              {/* Class Selection */}
-              <div>
-                <label className="mb-2 block text-sm font-medium">
-                  Select Classes (Parallel Classes)
-                </label>
-                <Card className="p-4">
-                  <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-                    {classes.map((classItem) => (
-                      <button
-                        key={classItem._id}
-                        type="button"
-                        onClick={() => toggleClass(classItem._id)}
-                        className={`rounded-lg border-2 px-3 py-2 text-sm font-medium transition-colors ${
-                          selectedClasses.includes(classItem._id)
-                            ? 'border-blue-600 bg-blue-50 text-blue-900 dark:bg-blue-900 dark:text-blue-50'
-                            : 'border-zinc-200 bg-white hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-900'
-                        }`}
-                      >
-                        {classItem.name}
-                        <span className="ml-1 text-xs text-zinc-500">
-                          (Grade {classItem.grade})
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                  {selectedClasses.length > 0 && (
-                    <div className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
-                      {selectedClasses.length} class{selectedClasses.length !== 1 ? 'es' : ''} selected
+                {/* Row 2: Select Classes */}
+                <div>
+                  <label className="mb-2 block text-sm font-medium">
+                    Select Classes (Parallel Classes)
+                  </label>
+                  <Card className="p-4">
+                    <div className="grid grid-cols-3 gap-2 md:grid-cols-5 lg:grid-cols-6">
+                      {classes.map((classItem) => (
+                        <button
+                          key={classItem._id}
+                          type="button"
+                          onClick={() => toggleClass(classItem._id)}
+                          className={`rounded-lg border-2 px-3 py-2 text-sm font-medium transition-all ${
+                            selectedClasses.includes(classItem._id)
+                              ? 'border-blue-600 bg-blue-50 text-blue-900 shadow-md dark:bg-blue-900 dark:text-blue-50'
+                              : 'border-zinc-200 bg-white hover:border-zinc-300 hover:shadow-sm dark:border-zinc-700 dark:bg-zinc-900'
+                          }`}
+                        >
+                          {classItem.name}
+                        </button>
+                      ))}
                     </div>
-                  )}
-                </Card>
-              </div>
-
-              {/* Subject Selection */}
-              <div>
-                <label className="mb-2 block text-sm font-medium">
-                  Select Subjects (Multiple)
-                </label>
-                <Card className="p-4">
-                  {/* Search bar for subjects */}
-                  <div className="mb-3">
-                    <Input
-                      type="text"
-                      placeholder="🔍 Search subjects..."
-                      value={subjectSearchTerm}
-                      onChange={(e) => setSubjectSearchTerm(e.target.value)}
-                      className="w-full"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-                    {subjects
-                      .filter(subject => 
-                        subject.name.toLowerCase().includes(subjectSearchTerm.toLowerCase())
-                      )
-                      .map((subject) => (
-                      <button
-                        key={subject._id}
-                        type="button"
-                        onClick={() => toggleSubject(subject._id)}
-                        className={`rounded-lg border-2 px-3 py-2 text-sm font-medium transition-colors flex items-center gap-2 ${
-                          selectedSubjects.includes(subject._id)
-                            ? 'border-purple-600 bg-purple-50 text-purple-900 dark:bg-purple-900 dark:text-purple-50'
-                            : 'border-zinc-200 bg-white hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-900'
-                        }`}
-                      >
-                        <div
-                          className="h-3 w-3 rounded-full border border-zinc-300 flex-shrink-0"
-                          style={{ backgroundColor: subject.color || '#3B82F6' }}
-                        />
-                        {subject.name}
-                      </button>
-                    ))}
-                  </div>
-                  {subjectSearchTerm && subjects.filter(s => s.name.toLowerCase().includes(subjectSearchTerm.toLowerCase())).length === 0 && (
-                    <div className="mt-3 text-sm text-zinc-500 text-center">No subjects found</div>
-                  )}
-                  {selectedSubjects.length > 0 && (
-                    <div className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
-                      {selectedSubjects.length} subject{selectedSubjects.length !== 1 ? 's' : ''} selected
-                    </div>
-                  )}
-                </Card>
-              </div>
-
-              {/* Teacher Selection */}
-              <div>
-                <label className="mb-2 block text-sm font-medium">
-                  Select Teachers (Multiple)
-                </label>
-                <Card className="p-4">
-                  {/* Search bar for teachers */}
-                  <div className="mb-3">
-                    <Input
-                      type="text"
-                      placeholder="🔍 Search teachers..."
-                      value={teacherSearchTerm}
-                      onChange={(e) => setTeacherSearchTerm(e.target.value)}
-                      className="w-full"
-                    />
-                  </div>
-                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                    {teachers
-                      .filter(teacher => 
-                        teacher.name.toLowerCase().includes(teacherSearchTerm.toLowerCase()) ||
-                        teacher.email.toLowerCase().includes(teacherSearchTerm.toLowerCase())
-                      )
-                      .map((teacher) => (
-                      <button
-                        key={teacher._id}
-                        type="button"
-                        onClick={() => toggleTeacher(teacher._id)}
-                        className={`rounded-lg border-2 px-3 py-2 text-sm font-medium transition-colors ${
-                          selectedTeachers.includes(teacher._id)
-                            ? 'border-green-600 bg-green-50 text-green-900 dark:bg-green-900 dark:text-green-50'
-                            : 'border-zinc-200 bg-white hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-900'
-                        }`}
-                      >
-                        <div className="text-left">
-                          <div>{teacher.name}</div>
-                          <div className="text-xs text-zinc-500">{teacher.email}</div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                  {teacherSearchTerm && teachers.filter(t => t.name.toLowerCase().includes(teacherSearchTerm.toLowerCase()) || t.email.toLowerCase().includes(teacherSearchTerm.toLowerCase())).length === 0 && (
-                    <div className="mt-3 text-sm text-zinc-500 text-center">No teachers found</div>
-                  )}
-                  {selectedTeachers.length > 0 && (
-                    <div className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
-                      {selectedTeachers.length} teacher{selectedTeachers.length !== 1 ? 's' : ''} selected
-                    </div>
-                  )}
-                </Card>
-              </div>
-
-              {/* Period Configuration */}
-              <div>
-                <label className="mb-2 block text-sm font-medium">
-                  Period Configuration
-                </label>
-                <Card className="p-4">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div>
-                      <label htmlFor="numberOfSingles" className="mb-2 block text-sm font-medium">
-                        Single Periods per Week
-                      </label>
-                      <Input
-                        id="numberOfSingles"
-                        type="number"
-                        min="0"
-                        max="35"
-                        value={formData.numberOfSingles}
-                        onChange={(e) => setFormData({ ...formData, numberOfSingles: parseInt(e.target.value) || 0 })}
-                      />
-                      <p className="mt-1 text-xs text-zinc-500">
-                        Number of single periods (50 min each)
-                      </p>
-                    </div>
-                    <div>
-                      <label htmlFor="numberOfDoubles" className="mb-2 block text-sm font-medium">
-                        Double Periods per Week
-                      </label>
-                      <Input
-                        id="numberOfDoubles"
-                        type="number"
-                        min="0"
-                        max="17"
-                        value={formData.numberOfDoubles}
-                        onChange={(e) => setFormData({ ...formData, numberOfDoubles: parseInt(e.target.value) || 0 })}
-                      />
-                      <p className="mt-1 text-xs text-zinc-500">
-                        Number of double periods (100 min each)
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Real-time calculation */}
-                  {(formData.numberOfSingles > 0 || formData.numberOfDoubles > 0) && (
-                    <div className="mt-4 rounded-lg border-2 border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950">
-                      <div className="flex items-center gap-2">
-                        <Info className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                        <div className="text-sm text-blue-900 dark:text-blue-100">
-                          <strong>Total Periods Required:</strong> {formData.numberOfSingles + formData.numberOfDoubles * 2} periods per week
-                          ({formData.numberOfSingles} singles + {formData.numberOfDoubles} doubles)
-                        </div>
+                    {selectedClasses.length > 0 && (
+                      <div className="mt-3 text-sm font-medium text-blue-600">
+                        ✓ {selectedClasses.length} class{selectedClasses.length !== 1 ? 'es' : ''} selected
                       </div>
-                    </div>
-                  )}
-                </Card>
-              </div>
+                    )}
+                  </Card>
+                </div>
 
-              {/* Notes */}
-              <div>
-                <label htmlFor="notes" className="mb-2 block text-sm font-medium">
-                  Notes (Optional)
-                </label>
-                <textarea
-                  id="notes"
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  placeholder="Additional notes about this lesson..."
-                  rows={3}
-                  className="flex w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 dark:border-zinc-800 dark:bg-zinc-950"
-                />
-              </div>
+                {/* Row 3: Subject and Teacher Selection (Side-by-Side) */}
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                  {/* Subject Selection */}
+                  <div>
+                    <label className="mb-2 block text-sm font-medium">
+                      Select Subjects
+                    </label>
+                    <Card className="p-4">
+                      <div className="mb-3">
+                        <Input
+                          type="text"
+                          placeholder="🔍 Search subjects..."
+                          value={subjectSearchTerm}
+                          onChange={(e) => setSubjectSearchTerm(e.target.value)}
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto">
+                        {subjects
+                          .filter(subject => 
+                            subject.name.toLowerCase().includes(subjectSearchTerm.toLowerCase())
+                          )
+                          .map((subject) => (
+                          <button
+                            key={subject._id}
+                            type="button"
+                            onClick={() => toggleSubject(subject._id)}
+                            className={`flex items-center gap-2 rounded-lg border-2 px-3 py-2 text-sm font-medium transition-all text-left ${
+                              selectedSubjects.includes(subject._id)
+                                ? 'border-blue-600 bg-blue-50 text-blue-900 shadow-md dark:bg-blue-900 dark:text-blue-50'
+                                : 'border-zinc-200 bg-white hover:border-zinc-300 hover:shadow-sm dark:border-zinc-700 dark:bg-zinc-900'
+                            }`}
+                          >
+                            <div 
+                              className="h-4 w-4 rounded-full flex-shrink-0" 
+                              style={{ backgroundColor: subject.color }}
+                            />
+                            {subject.name}
+                          </button>
+                        ))}
+                      </div>
+                      {selectedSubjects.length > 0 && (
+                        <div className="mt-3 text-sm font-medium text-blue-600">
+                          ✓ {selectedSubjects.length} subject{selectedSubjects.length !== 1 ? 's' : ''} selected
+                        </div>
+                      )}
+                    </Card>
+                  </div>
 
-              {/* Submit Buttons */}
-              <div className="flex justify-end gap-3">
-                <Button type="button" variant="outline" onClick={() => handleDialogClose(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit">
-                  {editingLesson ? 'Update Lesson' : 'Create Lesson'}
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
+                  {/* Teacher Selection */}
+                  <div>
+                    <label className="mb-2 block text-sm font-medium">
+                      Select Teachers
+                    </label>
+                    <Card className="p-4">
+                      <div className="mb-3">
+                        <Input
+                          type="text"
+                          placeholder="🔍 Search teachers..."
+                          value={teacherSearchTerm}
+                          onChange={(e) => setTeacherSearchTerm(e.target.value)}
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto">
+                        {teachers
+                          .filter(teacher => 
+                            teacher.name.toLowerCase().includes(teacherSearchTerm.toLowerCase())
+                          )
+                          .map((teacher) => (
+                          <button
+                            key={teacher._id}
+                            type="button"
+                            onClick={() => toggleTeacher(teacher._id)}
+                            className={`rounded-lg border-2 px-3 py-2 text-sm font-medium transition-all text-left ${
+                              selectedTeachers.includes(teacher._id)
+                                ? 'border-blue-600 bg-blue-50 text-blue-900 shadow-md dark:bg-blue-900 dark:text-blue-50'
+                                : 'border-zinc-200 bg-white hover:border-zinc-300 hover:shadow-sm dark:border-zinc-700 dark:bg-zinc-900'
+                            }`}
+                          >
+                            {teacher.name}
+                          </button>
+                        ))}
+                      </div>
+                      {selectedTeachers.length > 0 && (
+                        <div className="mt-3 text-sm font-medium text-blue-600">
+                          ✓ {selectedTeachers.length} teacher{selectedTeachers.length !== 1 ? 's' : ''} selected
+                        </div>
+                      )}
+                    </Card>
+                  </div>
+                </div>
+
+                {/* Row 4: Period Inputs (Side-by-Side) */}
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                  <div>
+                    <label htmlFor="numberOfSingles" className="mb-2 block text-sm font-medium">
+                      Single Periods per Week
+                    </label>
+                    <Input
+                      id="numberOfSingles"
+                      type="number"
+                      min="0"
+                      max="35"
+                      value={formData.numberOfSingles}
+                      onChange={(e) => setFormData({ ...formData, numberOfSingles: parseInt(e.target.value) || 0 })}
+                      className="text-lg"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="numberOfDoubles" className="mb-2 block text-sm font-medium">
+                      Double Periods per Week
+                    </label>
+                    <Input
+                      id="numberOfDoubles"
+                      type="number"
+                      min="0"
+                      max="17"
+                      value={formData.numberOfDoubles}
+                      onChange={(e) => setFormData({ ...formData, numberOfDoubles: parseInt(e.target.value) || 0 })}
+                      className="text-lg"
+                    />
+                  </div>
+                </div>
+
+                {/* Period Summary */}
+                <div className="rounded-lg bg-blue-50 p-4 dark:bg-blue-900/20">
+                  <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                    Total Periods: {totalPeriods} / 35 weekly max
+                  </p>
+                  <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                    ({formData.numberOfSingles} singles + {formData.numberOfDoubles} doubles × 2)
+                  </p>
+                </div>
+
+                {/* Row 5: Notes (Full Width) */}
+                <div>
+                  <label htmlFor="notes" className="mb-2 block text-sm font-medium">
+                    Notes (Optional)
+                  </label>
+                  <textarea
+                    id="notes"
+                    value={formData.notes}
+                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                    placeholder="Additional information about this lesson..."
+                    rows={3}
+                    className="flex w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm ring-offset-white placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-950 dark:ring-offset-zinc-950 dark:placeholder:text-zinc-400 dark:focus-visible:ring-zinc-300"
+                  />
+                </div>
+
+                {/* Submit Buttons */}
+                <div className="flex justify-end gap-3 pt-4 border-t">
+                  <Button type="button" variant="outline" onClick={() => handleDialogClose(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={totalPeriods > 35}>
+                    {editingLesson ? 'Update Lesson' : 'Create Lesson'}
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
@@ -571,116 +569,114 @@ export default function LessonsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="py-8 text-center text-zinc-500">Loading...</div>
-          ) : lessons.length === 0 ? (
-            <div className="py-8 text-center text-zinc-500">
-              No lessons found. Create your first lesson to get started.
-            </div>
-          ) : (
+          <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-12"></TableHead>
                   <TableHead>Lesson Name</TableHead>
-                  <TableHead>Subjects</TableHead>
-                  <TableHead>Teachers</TableHead>
                   <TableHead>Classes</TableHead>
-                  <TableHead>Periods/Week</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>Teachers</TableHead>
+                  <TableHead className="text-center">Periods/Week</TableHead>
+                  <TableHead className="w-16"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {lessons.map((lesson) => (
-                  <TableRow key={lesson._id}>
-                    <TableCell>
-                      <div className="space-y-1">
-                        {/* Rainbow gradient strip for subject colors */}
-                        {lesson.subjectIds.length > 0 && (
-                          <div 
-                            className="h-2 rounded-full overflow-hidden flex"
-                            style={{
-                              background: lesson.subjectIds.length === 1
-                                ? (subjects.find(s => s._id === lesson.subjectIds[0]._id)?.color || '#3B82F6')
-                                : `linear-gradient(to right, ${lesson.subjectIds.map((subject, idx) => {
-                                    const subjectData = subjects.find(s => s._id === subject._id);
-                                    const color = subjectData?.color || '#3B82F6';
-                                    const percentage = (idx / lesson.subjectIds.length) * 100;
-                                    const nextPercentage = ((idx + 1) / lesson.subjectIds.length) * 100;
-                                    return `${color} ${percentage}%, ${color} ${nextPercentage}%`;
-                                  }).join(', ')})`
-                            }}
-                            title={`Subjects: ${lesson.subjectIds.map(s => s.name).join(', ')}`}
-                          />
-                        )}
-                        <span className="font-medium">{lesson.lessonName}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {lesson.subjectIds.map((subject) => (
-                          <span
-                            key={subject._id}
-                            className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-200"
-                          >
-                            {subject.name}
-                          </span>
-                        ))}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm text-zinc-600 dark:text-zinc-400">
-                        {lesson.teacherIds.map((teacher) => teacher.name).join(', ')}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {lesson.classIds.map((classItem) => (
-                          <span
-                            key={classItem._id}
-                            className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900 dark:text-green-200"
-                          >
-                            {classItem.name}
-                          </span>
-                        ))}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-2 text-sm">
-                        {lesson.numberOfSingles > 0 && (
-                          <span className="rounded bg-blue-100 px-2 py-0.5 font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                            {lesson.numberOfSingles} Single{lesson.numberOfSingles > 1 ? 's' : ''}
-                          </span>
-                        )}
-                        {lesson.numberOfDoubles > 0 && (
-                          <span className="rounded bg-purple-100 px-2 py-0.5 font-medium text-purple-800 dark:bg-purple-900 dark:text-purple-200">
-                            {lesson.numberOfDoubles} Double{lesson.numberOfDoubles > 1 ? 's' : ''}
-                          </span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleEdit(lesson)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDelete(lesson._id)}
-                        >
-                          <Trash2 className="h-4 w-4 text-red-600" />
-                        </Button>
-                      </div>
+                {lessons.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center text-zinc-500 py-8">
+                      No lessons created yet. Click "Create Lesson" to get started.
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  lessons.map((lesson) => {
+                    const totalPeriods = lesson.numberOfSingles + (lesson.numberOfDoubles * 2);
+                    return (
+                      <TableRow key={lesson._id} className="hover:bg-zinc-50 dark:hover:bg-zinc-900">
+                        <TableCell>
+                          {/* Rainbow Stripe */}
+                          <div className="flex gap-0.5">
+                            {lesson.subjectIds.slice(0, 4).map((subject, idx) => {
+                              const subjectData = subjects.find(s => s._id === subject._id);
+                              return (
+                                <div
+                                  key={idx}
+                                  className="w-1.5 h-10 rounded-full"
+                                  style={{ backgroundColor: subjectData?.color || '#3B82F6' }}
+                                  title={subject.name}
+                                />
+                              );
+                            })}
+                            {lesson.subjectIds.length > 4 && (
+                              <div className="w-1.5 h-10 rounded-full bg-zinc-300 dark:bg-zinc-700" title={`+${lesson.subjectIds.length - 4} more`} />
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="space-y-1">
+                            <div className="font-semibold text-zinc-900 dark:text-zinc-50">
+                              {lesson.lessonName}
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                              {lesson.subjectIds.map((subject) => (
+                                <Badge key={subject._id} variant="secondary" className="text-xs">
+                                  {subject.name}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap gap-1">
+                            {lesson.classIds.map((cls) => (
+                              <Badge key={cls._id} variant="outline" className="text-xs">
+                                {cls.name}
+                              </Badge>
+                            ))}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm text-zinc-600 dark:text-zinc-400">
+                            {lesson.teacherIds.map(t => t.name).join(', ')}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <div className="inline-flex flex-col items-center gap-1">
+                            <span className="text-lg font-bold text-zinc-900 dark:text-zinc-50">{totalPeriods}</span>
+                            <span className="text-xs text-zinc-500">
+                              {lesson.numberOfSingles}S + {lesson.numberOfDoubles}D
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="outline" size="sm" className="h-8 w-8 p-0">
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => handleEdit(lesson)}>
+                                <Pencil className="mr-2 h-4 w-4" />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                onClick={() => handleDelete(lesson._id)}
+                                className="text-red-600 focus:text-red-600"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
               </TableBody>
             </Table>
-          )}
+          </div>
         </CardContent>
       </Card>
     </div>

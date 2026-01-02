@@ -1,5 +1,5 @@
 import React from 'react';
-import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
+import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
 
 // Professional black and white styles for traditional timetable
 const styles = StyleSheet.create({
@@ -14,6 +14,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderBottom: '2pt solid #000000',
     paddingBottom: 15,
+  },
+  logoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  logo: {
+    width: 45,
+    height: 45,
+    marginRight: 12,
+  },
+  headerTextContainer: {
+    alignItems: 'flex-start',
   },
   schoolName: {
     fontSize: 24,
@@ -282,7 +296,7 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
   slots,
   config,
   lessonNameMap,
-  schoolName = 'LankaSchedule Pro',
+  schoolName = 'EduFlow AI',
   schoolAddress = '',
   showTimeColumn = true,
   showPrincipalSignature = true,
@@ -369,12 +383,21 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
 
     return (
       <Page key={entity.id} size="A4" orientation="landscape" style={styles.page}>
-        {/* Enhanced Header */}
+        {/* Enhanced Header with Logo */}
         <View style={styles.header}>
-          <Text style={styles.schoolName}>{schoolName}</Text>
-          {schoolAddress && (
-            <Text style={styles.schoolAddress}>{schoolAddress}</Text>
-          )}
+          <View style={styles.logoContainer}>
+            {/* eslint-disable-next-line jsx-a11y/alt-text */}
+            <Image
+              src="/logo.png"
+              style={styles.logo}
+            />
+            <View style={styles.headerTextContainer}>
+              <Text style={styles.schoolName}>{schoolName}</Text>
+              {schoolAddress && (
+                <Text style={styles.schoolAddress}>{schoolAddress}</Text>
+              )}
+            </View>
+          </View>
           <Text style={styles.versionName}>Timetable Version: {versionName}</Text>
           <Text style={styles.mainTitle}>
             {type === 'class' ? entity.name : `${entity.name} - Schedule`}
@@ -495,7 +518,7 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
         {/* Footer */}
         <View style={styles.footer} fixed>
           <Text style={styles.footerText}>
-            Generated with LankaSchedule Pro — {currentDate}
+            Powered by EduFlow AI — Intelligent School Scheduling — {currentDate}
           </Text>
         </View>
       </Page>

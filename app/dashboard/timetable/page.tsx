@@ -78,7 +78,7 @@ export default function TimetablePage() {
   const [classes, setClasses] = useState<Class[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [config, setConfig] = useState<SchoolConfig | null>(null);
-  const [schoolInfo, setSchoolInfo] = useState<{ name: string; address: string }>({ name: 'LankaSchedule Pro', address: '' });
+  const [schoolInfo, setSchoolInfo] = useState<{ name: string; address: string }>({ name: 'EduFlow AI', address: '' });
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'class' | 'teacher'>('class');
   const [selectedEntity, setSelectedEntity] = useState<string>('');

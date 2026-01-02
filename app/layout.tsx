@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "LankaSchedule Pro - Timetable Management",
-  description: "Dynamic timetable generation for Sri Lankan schools",
+  title: "EduFlow AI - Intelligent School Scheduling",
+  description: "AI-powered timetable generation and management system for modern schools",
 };
 
 export default function RootLayout({

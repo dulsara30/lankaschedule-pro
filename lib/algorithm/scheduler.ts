@@ -1,5 +1,5 @@
 /**
- * LankaSchedule Pro AI Engine - Ultimate Clash-Free Scheduling
+ * EduFlow AI Scheduling Engine - Ultimate Clash-Free Scheduling
  * 
  * Implements strict constraint satisfaction with:
  * 1. Dynamic grid configuration from school config

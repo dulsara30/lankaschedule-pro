@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { Settings, Calendar, Users, BookOpen, GraduationCap, Clock, CalendarDays, PanelLeftClose, PanelLeft } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -59,14 +60,32 @@ export function Sidebar() {
         {/* Header */}
         <div className="border-b border-zinc-200 p-6 dark:border-zinc-800 flex items-center justify-between">
           {!isCollapsed && (
-            <div>
-              <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">
-                LankaSchedule Pro
-              </h1>
-              <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-                Timetable Management
-              </p>
+            <div className="flex items-center gap-3">
+              <Image
+                src="/logo.png"
+                alt="EduFlow AI Logo"
+                width={40}
+                height={40}
+                className="rounded-md"
+              />
+              <div>
+                <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">
+                  EduFlow AI
+                </h1>
+                <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+                  Intelligent Scheduling
+                </p>
+              </div>
             </div>
+          )}
+          {isCollapsed && (
+            <Image
+              src="/logo.png"
+              alt="EduFlow AI"
+              width={32}
+              height={32}
+              className="rounded-md mx-auto"
+            />
           )}
           <Button
             variant="ghost"

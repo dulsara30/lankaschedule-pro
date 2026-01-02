@@ -1,7 +1,7 @@
 import NextAuth, { NextAuthOptions, User } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import dbConnect from '@/lib/dbConnect';
-import User from '@/models/User';
+import UserModel from '@/models/User';
 
 // Extend the built-in session types
 declare module 'next-auth' {
@@ -49,7 +49,7 @@ const authOptions: NextAuthOptions = {
         try {
           await dbConnect();
 
-          const user = await User.findOne({ email: credentials.email.toLowerCase() });
+          const user = await UserModel.findOne({ email: credentials.email.toLowerCase() });
           
           if (!user) {
             throw new Error('Invalid credentials');

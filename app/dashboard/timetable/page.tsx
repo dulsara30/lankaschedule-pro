@@ -37,6 +37,7 @@ interface TimetableSlot {
   lessonId: Lesson;
   day: string;
   periodNumber: number;
+  isDoublePeriod?: boolean;
 }
 
 interface SchoolConfig {
@@ -148,7 +149,18 @@ export default function TimetablePage() {
     }
   };
 
-  const renderSlotContent = (slot: TimetableSlot | undefined) => {
+  // Check if this period is the second part of a double period
+  const isSecondPartOfDouble = (day: string, period: number): boolean => {
+    if (period === 1) return false; // First period can't be second part
+    
+    const previousPeriodSlot = getSlotForPeriod(day, period - 1);
+    if (!previousPeriodSlot) return false;
+    
+    // Check if previous period is marked as double and covers this period
+    return previousPeriodSlot.isDoublePeriod === true;
+  };
+
+  const renderSlotContent = (slot: TimetableSlot | undefined, isDouble: boolean = false) => {
     if (!slot) {
       return <div className="text-xs text-zinc-400 italic">Free</div>;
     }
@@ -182,9 +194,14 @@ export default function TimetablePage() {
 
     return (
       <div 
-        className="p-2 rounded-md text-white h-full flex flex-col justify-between shadow-sm"
+        className={`p-2 rounded-md text-white h-full flex flex-col justify-between shadow-sm ${isDouble ? 'relative' : ''}`}
         style={backgroundStyle}
       >
+        {isDouble && (
+          <div className="absolute top-1 right-1 bg-white/20 text-white text-xs px-2 py-0.5 rounded-full font-bold">
+            2×
+          </div>
+        )}
         <div className="text-xs font-semibold leading-tight">
           {lesson.lessonName}
         </div>
@@ -365,14 +382,40 @@ export default function TimetablePage() {
                             <td className="border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900 p-3 text-sm text-zinc-600 dark:text-zinc-400">
                               {calculateTime(period)}
                             </td>
-                            {DAYS.map((day) => (
-                              <td
-                                key={`${day}-${period}`}
-                                className="border border-zinc-300 dark:border-zinc-700 p-2 min-w-37.5 h-20"
-                              >
-                                {renderSlotContent(getSlotForPeriod(day, period))}
-                              </td>
-                            ))}
+                            {DAYS.map((day) => {
+                              const slot = getSlotForPeriod(day, period);
+                              const isSecondPart = isSecondPartOfDouble(day, period);
+                              const isDouble = slot?.isDoublePeriod || false;
+                              
+                              // Skip rendering if this is the second part of a double period
+                              if (isSecondPart) {
+                                return null;
+                              }
+                              
+                              // Calculate rowSpan - double period occupies 2 period rows
+                              // But we need to check if there's an interval in between
+                              let rowSpan = 1;
+                              if (isDouble) {
+                                // Check if next period exists and no interval blocks it
+                                const hasIntervalAfter = config.intervalSlots.some(
+                                  slot => slot.afterPeriod === period
+                                );
+                                // Double period should span 2 rows only if no interval interrupts
+                                rowSpan = hasIntervalAfter ? 1 : 2;
+                              }
+                              
+                              return (
+                                <td
+                                  key={`${day}-${period}`}
+                                  rowSpan={rowSpan}
+                                  className={`border border-zinc-300 dark:border-zinc-700 p-2 min-w-37.5 ${
+                                    isDouble && rowSpan === 2 ? 'h-40' : 'h-20'
+                                  } ${isDouble ? 'bg-blue-50/10 dark:bg-blue-900/10 border-2 border-blue-400 dark:border-blue-600' : ''}`}
+                                >
+                                  {renderSlotContent(slot, isDouble)}
+                                </td>
+                              );
+                            })}
                           </tr>
                           
                           {/* Interval Row - appears immediately after the period */}

@@ -127,13 +127,29 @@ export function generateTimetable(
 
 /**
  * Sort lessons by difficulty (most constrained first)
- * Heuristic: Lessons with more classes/teachers are harder to schedule
+ * PRIORITY: Lessons with more double periods are scheduled first
+ * Secondary: More classes/teachers = more constrained
  */
 function sortByConstraints(lessons: ScheduleLesson[]): ScheduleLesson[] {
   return [...lessons].sort((a, b) => {
+    // Primary: Number of doubles (harder to schedule)
+    const doublesA = a.numberOfDoubles;
+    const doublesB = b.numberOfDoubles;
+    if (doublesB !== doublesA) {
+      return doublesB - doublesA; // More doubles = higher priority
+    }
+    
+    // Secondary: Total periods required
+    const totalA = a.numberOfSingles + (a.numberOfDoubles * 2);
+    const totalB = b.numberOfSingles + (b.numberOfDoubles * 2);
+    if (totalB !== totalA) {
+      return totalB - totalA;
+    }
+    
+    // Tertiary: Number of classes and teachers
     const scoreA = (a.classIds.length * 2) + a.teacherIds.length;
     const scoreB = (b.classIds.length * 2) + b.teacherIds.length;
-    return scoreB - scoreA; // Descending order
+    return scoreB - scoreA;
   });
 }
 
@@ -150,17 +166,9 @@ interface ScheduleTask {
 function expandLessonsToTasks(lessons: ScheduleLesson[]): ScheduleTask[] {
   const tasks: ScheduleTask[] = [];
   
+  // CRITICAL FIX: Add DOUBLE period tasks FIRST (most constrained)
+  // Double periods need consecutive slots, so they must be placed before grid fills up
   for (const lesson of lessons) {
-    // Add single period tasks
-    for (let i = 0; i < lesson.numberOfSingles; i++) {
-      tasks.push({
-        lesson,
-        isDouble: false,
-        taskId: `${lesson._id}-single-${i}`,
-      });
-    }
-    
-    // Add double period tasks
     for (let i = 0; i < lesson.numberOfDoubles; i++) {
       tasks.push({
         lesson,
@@ -169,6 +177,19 @@ function expandLessonsToTasks(lessons: ScheduleLesson[]): ScheduleTask[] {
       });
     }
   }
+  
+  // Then add single period tasks (more flexible)
+  for (const lesson of lessons) {
+    for (let i = 0; i < lesson.numberOfSingles; i++) {
+      tasks.push({
+        lesson,
+        isDouble: false,
+        taskId: `${lesson._id}-single-${i}`,
+      });
+    }
+  }
+  
+  console.log(`📋 Task Expansion: ${tasks.filter(t => t.isDouble).length} doubles, ${tasks.filter(t => !t.isDouble).length} singles`);
   
   return tasks;
 }
@@ -229,7 +250,10 @@ function backtrack(
 
 /**
  * Check if a lesson can be scheduled on a specific day for all its classes
- * HARD CONSTRAINT: A lesson can only appear once per day per class
+ * STRICT RULE: One lesson block per day per class
+ * - A single period counts as one block
+ * - A double period counts as ONE block (not two)
+ * - If Math was placed on Monday (single OR double), NO more Math on Monday
  */
 function canScheduleOnDay(
   lesson: ScheduleLesson,
@@ -283,8 +307,12 @@ function findValidSlotsWithLCV(
           continue; // Can't start double at last period
         }
 
-        // CRITICAL FIX: Check if there's an interval AFTER this period
-        // If period 3 is followed by an interval, we CANNOT do a double at period 3
+        // CRITICAL SAFEGUARD: Check if there's an interval AFTER this period
+        // Example: If intervalSlots = [3] (interval after period 3)
+        //   - Period 1-2: ✅ Valid double
+        //   - Period 2-3: ✅ Valid double  
+        //   - Period 3-4: ❌ INVALID - spans the interval
+        //   - Period 4-5: ✅ Valid double (after interval)
         if (intervalSlots.includes(period)) {
           continue; // Cannot start double right before an interval
         }

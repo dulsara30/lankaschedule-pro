@@ -14,6 +14,9 @@ export async function GET(request: Request) {
   try {
     await dbConnect();
 
+    // Force model registration to prevent MissingSchemaError during population
+    [Subject, Teacher, Class, Lesson, TimetableSlot, TimetableVersion, School].forEach(m => m?.modelName);
+
     const school = await School.findOne();
     if (!school) {
       return NextResponse.json({

@@ -13,6 +13,9 @@ export async function GET(request: Request) {
   try {
     await dbConnect();
 
+    // Force model registration to prevent MissingSchemaError during population
+    [Subject, Teacher, Class, Lesson, TimetableSlot, TimetableVersion].forEach(m => m?.modelName);
+
     const { searchParams } = new URL(request.url);
     const versionIdParam = searchParams.get('versionId');
 

@@ -4,6 +4,8 @@ import mongoose from 'mongoose';
 import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/dbConnect';
 import School from '@/models/School';
+import Subject from '@/models/Subject';
+import Teacher from '@/models/Teacher';
 import Lesson from '@/models/Lesson';
 import Class from '@/models/Class';
 import TimetableSlot from '@/models/TimetableSlot';
@@ -30,6 +32,9 @@ export interface GenerateTimetableResult {
 export async function generateTimetableAction(): Promise<GenerateTimetableResult> {
   try {
     await dbConnect();
+
+    // Force model registration to prevent MissingSchemaError
+    [Subject, Teacher, Class, Lesson, School, TimetableSlot, TimetableVersion].forEach(m => m?.modelName);
 
     // Step 1: Fetch school configuration
     const school = await School.findOne();

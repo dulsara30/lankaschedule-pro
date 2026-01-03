@@ -376,18 +376,50 @@ export default function LessonsPage() {
         throw new Error('Failed to fetch configuration');
       }
 
-      // Validate config structure
-      const config = configData.data;
-      if (!config || !config.daysOfWeek || !config.numberOfPeriods) {
-        console.error('Invalid config received:', config);
-        throw new Error('Config is missing required fields (daysOfWeek, numberOfPeriods)');
+      // ROBUST CONFIG GUARD: Handle empty or partial config
+      let finalConfig = configData.data;
+      
+      // Check if config is empty or missing critical fields
+      if (!finalConfig || !finalConfig.daysOfWeek || !finalConfig.numberOfPeriods) {
+        console.warn('⚠️ Config is empty or incomplete, checking school data...');
+        
+        // Try to get config from school object if available
+        const school = configData.school || configData.data?.school;
+        if (school?.config?.daysOfWeek && school?.config?.numberOfPeriods) {
+          console.log('✅ Using config from school object');
+          finalConfig = school.config;
+        } else {
+          // HARDCODED DEFAULTS (Safety Net)
+          console.warn('⚠️ Using hardcoded defaults: 5 days (Mon-Fri), 7 periods');
+          finalConfig = {
+            daysOfWeek: [
+              { name: 'Monday', abbreviation: 'Mon' },
+              { name: 'Tuesday', abbreviation: 'Tue' },
+              { name: 'Wednesday', abbreviation: 'Wed' },
+              { name: 'Thursday', abbreviation: 'Thu' },
+              { name: 'Friday', abbreviation: 'Fri' }
+            ],
+            numberOfPeriods: 7,
+            intervalSlots: [],
+            startTime: '07:30',
+            periodDuration: 40
+          };
+        }
       }
-
-      console.log('✅ Config validated:', {
-        daysOfWeek: config.daysOfWeek.length,
-        numberOfPeriods: config.numberOfPeriods,
-        intervalSlots: config.intervalSlots?.length || 0
+      
+      // Ensure intervalSlots is always an array
+      if (!finalConfig.intervalSlots) {
+        finalConfig.intervalSlots = [];
+      }
+      
+      console.log('✅ Final config validated:', {
+        hasDaysOfWeek: !!finalConfig.daysOfWeek,
+        daysOfWeekCount: finalConfig.daysOfWeek?.length,
+        numberOfPeriods: finalConfig.numberOfPeriods,
+        intervalSlotsCount: finalConfig.intervalSlots?.length || 0
       });
+      
+      console.log('🔍 DEBUG: Final Config being sent to worker:', finalConfig);
 
       setGenerationStep(2);
 
@@ -438,12 +470,18 @@ export default function LessonsPage() {
           // Start worker with different random seed
           console.log(`🚀 Starting Worker ${threadId + 1}`);
           
-          // Serialize config as plain object for structured cloning
-          const safeConfig = {
-            daysOfWeek: config.daysOfWeek.map((d: any) => ({ ...d })),
-            numberOfPeriods: config.numberOfPeriods,
-            intervalSlots: config.intervalSlots ? config.intervalSlots.map((s: any) => ({ ...s })) : []
-          };
+          // CLEAN OBJECT SERIALIZATION: Use finalConfig with JSON sterilization
+          const safeConfig = JSON.parse(JSON.stringify({
+            daysOfWeek: finalConfig.daysOfWeek.map((d: any) => ({ 
+              name: d.name || d,
+              abbreviation: d.abbreviation || (typeof d === 'string' ? d.slice(0, 3) : '')
+            })),
+            numberOfPeriods: finalConfig.numberOfPeriods,
+            intervalSlots: finalConfig.intervalSlots ? finalConfig.intervalSlots.map((s: any) => ({ 
+              afterPeriod: s.afterPeriod || s,
+              duration: s.duration || 15
+            })) : []
+          }));
           
           console.log(`📦 Worker ${threadId + 1} payload:`, {
             lessons: lessons.length,

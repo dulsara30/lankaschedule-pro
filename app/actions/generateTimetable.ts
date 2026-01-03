@@ -327,44 +327,55 @@ export async function generateTimetableAction(versionName: string = 'Draft'): Pr
 
     const deduplicatedSlots = Array.from(slotMap.values());
     console.log(`🔍 Deduplication: ${result?.slots?.length || 0} → ${deduplicatedSlots.length} slots`);
-    console.log(`[DEBUG] Sample slot:`, deduplicatedSlots[0]);
+    console.log(`[DEBUG] Sample scheduled slot:`, deduplicatedSlots[0]);
 
-    // Batch insert with proper error handling
-    const insertResult = await TimetableSlot.insertMany(deduplicatedSlots, {
-      ordered: false, // Continue on duplicate key errors
-    });
-
-    console.log(`✅ Inserted ${insertResult.length} slots successfully`);
-    console.log(`[DEBUG] Insert result count: ${insertResult.length}`);
-    
-    // Step 7b: Save unplaced tasks as unscheduled lessons
-    let unscheduledCount = 0;
+    // Step 7b: Prepare unplaced tasks as unscheduled lessons
+    let unscheduledSlots: any[] = [];
     if (result.unplacedTasks && result.unplacedTasks.length > 0) {
-      console.log(`\n📌 Step 7b: Saving ${result.unplacedTasks.length} unscheduled lessons...`);
+      console.log(`\n📌 Step 7b: Preparing ${result.unplacedTasks.length} unscheduled lessons...`);
       
-      // Use unique negative periodNumber for each unscheduled lesson to satisfy unique index
-      const unscheduledSlots = result.unplacedTasks.map((task, index) => ({
-        schoolId: school._id,
-        versionId: draftVersion._id,
-        classId: task.classId,
-        lessonId: task.lessonId,
-        day: 'Unscheduled', // Special day value for sidebar filtering
-        periodNumber: -(index + 1), // Unique negative index: -1, -2, -3...
-        isUnscheduled: true,
-        isDoubleStart: false,
-        isDoubleEnd: false,
-      }));
+      // Group unplaced tasks by classId to assign unique negative periods per class
+      const unplacedByClass = new Map<string, number>();
       
-      const unscheduledResult = await TimetableSlot.insertMany(unscheduledSlots, {
-        ordered: false,
+      unscheduledSlots = result.unplacedTasks.map((task) => {
+        const classIdStr = task.classId.toString();
+        const currentCount = unplacedByClass.get(classIdStr) || 0;
+        unplacedByClass.set(classIdStr, currentCount + 1);
+        
+        return {
+          schoolId: school._id,
+          versionId: draftVersion._id,
+          classId: task.classId,
+          lessonId: task.lessonId,
+          day: 'Unscheduled', // Special day value for sidebar filtering
+          periodNumber: -(currentCount + 1), // Unique negative per class: -1, -2, -3...
+          isUnscheduled: true,
+          isDoubleStart: false,
+          isDoubleEnd: false,
+        };
       });
       
-      unscheduledCount = unscheduledResult.length;
-      console.log(`✅ Saved ${unscheduledCount} unscheduled lessons`);
-      console.log(`[DEBUG] Sample unscheduled:`, unscheduledSlots[0]);
+      console.log(`✅ Prepared ${unscheduledSlots.length} unscheduled lessons with unique identifiers`);
+      console.log(`[DEBUG] Sample unscheduled slot:`, unscheduledSlots[0]);
     } else {
       console.log(`\n✅ Step 7b: No unscheduled lessons - all tasks placed!`);
     }
+
+    // Step 7c: Combine and batch insert all slots (placed + unplaced)
+    console.log(`\n💾 Step 7c: Batch inserting all slots...`);
+    const allSlots = [...deduplicatedSlots, ...unscheduledSlots];
+    console.log(`[DEBUG] Total slots to insert: ${allSlots.length} (${deduplicatedSlots.length} scheduled + ${unscheduledSlots.length} unscheduled)`);
+    
+    const insertResult = await TimetableSlot.insertMany(allSlots, {
+      ordered: false, // Continue on duplicate key errors
+    });
+
+    const scheduledCount = deduplicatedSlots.length;
+    const unscheduledCount = unscheduledSlots.length;
+    console.log(`✅ Inserted ${insertResult.length} total slots successfully`);
+    console.log(`   - Scheduled: ${scheduledCount}`);
+    console.log(`   - Unscheduled: ${unscheduledCount}`);
+    console.log(`[DEBUG] Insert result count: ${insertResult.length}`);
     
     // Step 8: Update version status to saved
     console.log("\n📝 Step 8: Updating Draft version status...");
@@ -383,9 +394,9 @@ export async function generateTimetableAction(versionName: string = 'Draft'): Pr
     console.log("✅ TIMETABLE GENERATION COMPLETE");
     console.log("=".repeat(60));
     console.log(`⏱️  Total time: ${apiTime}s`);
-    console.log(`📊 Scheduled slots: ${insertResult.length}/${expectedSlots}`);
+    console.log(`📊 Scheduled slots: ${scheduledCount}/${expectedSlots}`);
     console.log(`📌 Unscheduled lessons: ${unscheduledCount}`);
-    console.log(`📦 Total saved: ${insertResult.length + unscheduledCount}`);
+    console.log(`📦 Total saved: ${insertResult.length} (${scheduledCount} + ${unscheduledCount})`);
     console.log(`⚠️  Conflicts: ${result.conflicts} (CP-SAT guarantees 0)`);
     console.log(`🎯 Coverage: ${slotCoverage}%`);
     console.log(`📁 Version: ${draftVersion.versionName} (${draftVersion._id})`);
@@ -394,15 +405,15 @@ export async function generateTimetableAction(versionName: string = 'Draft'): Pr
     return {
       success: true,
       message: unscheduledCount > 0 
-        ? `Timetable generated! ${insertResult.length} scheduled + ${unscheduledCount} unscheduled (${slotCoverage}% grid coverage).`
-        : `Timetable generated successfully! ${insertResult.length}/${expectedSlots} slots placed in ${versionName} version (${slotCoverage}% coverage).`,
-      slotsPlaced: insertResult.length,
+        ? `Timetable generated! ${scheduledCount} scheduled + ${unscheduledCount} unscheduled (${slotCoverage}% grid coverage).`
+        : `Timetable generated successfully! ${scheduledCount}/${expectedSlots} slots placed in ${versionName} version (${slotCoverage}% coverage).`,
+      slotsPlaced: scheduledCount,
       totalSlots: expectedSlots,
       conflicts: result.conflicts,
       solvingTime: result.solvingTime,
       stats: {
-        totalSlots: insertResult.length + unscheduledCount,
-        scheduledLessons: insertResult.length,
+        totalSlots: insertResult.length,
+        scheduledLessons: scheduledCount,
         failedLessons: unscheduledCount,
         swapAttempts: 0,
         successfulSwaps: 0,

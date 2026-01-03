@@ -12,8 +12,9 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
-import { generateTimetableAction } from '@/app/actions/generateTimetable';
+import { generateTimetableAction, GenerateTimetableResult } from '@/app/actions/generateTimetable';
 import { cn } from '@/lib/utils';
+import ConflictReport from '@/components/dashboard/ConflictReport';
 
 interface Subject {
   _id: string;
@@ -56,6 +57,8 @@ export default function LessonsPage() {
   const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStep, setGenerationStep] = useState(0);
+  const [showConflictReport, setShowConflictReport] = useState(false);
+  const [generationResult, setGenerationResult] = useState<GenerateTimetableResult | null>(null);
 
   const [formData, setFormData] = useState({
     lessonName: '',
@@ -360,6 +363,7 @@ export default function LessonsPage() {
       }
 
       const result = await generateTimetableAction();
+      setGenerationResult(result);
 
       if (result.success) {
         setGenerationStep(6); // Completion step
@@ -370,20 +374,22 @@ export default function LessonsPage() {
         toast.success(result.message);
         
         if (result.stats) {
-          toast.info(
-            `Stats: ${result.stats.totalSlots} slots, ${result.stats.scheduledLessons} lessons, ${result.stats.recursions} iterations`,
-            { duration: 5000 }
-          );
+          const statsMessage = result.stats.swapAttempts !== undefined
+            ? `Stats: ${result.stats.totalSlots} slots, ${result.stats.scheduledLessons} lessons, ${result.stats.successfulSwaps}/${result.stats.swapAttempts} swaps, ${result.stats.iterations} iterations`
+            : `Stats: ${result.stats.totalSlots} slots, ${result.stats.scheduledLessons} lessons`;
+          
+          toast.info(statsMessage, { duration: 5000 });
         }
 
         if (result.failedLessons && result.failedLessons.length > 0) {
           toast.warning(
-            `Failed to schedule: ${result.failedLessons.map(f => f.lessonName).join(', ')}`,
+            `${result.failedLessons.length} lesson(s) could not be scheduled. View Conflict Report for details.`,
             { duration: 8000 }
           );
+          setShowConflictReport(true);
+        } else {
+          router.push('/dashboard/timetable');
         }
-
-        router.push('/dashboard/timetable');
       } else {
         toast.error(result.message);
         setIsGenerating(false);
@@ -492,8 +498,34 @@ export default function LessonsPage() {
 
   return (
     <div className="space-y-6">
+      {/* Conflict Report Modal */}
+      {showConflictReport && generationResult?.failedLessons && generationResult.failedLessons.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="w-full max-w-6xl max-h-[90vh] overflow-y-auto bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl p-6">
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">
+                Timetable Generation Conflict Report
+              </h2>
+              <p className="text-zinc-600 dark:text-zinc-400 mt-2">
+                Review detailed conflict analysis and smart swap suggestions below
+              </p>
+            </div>
+            
+            <ConflictReport 
+              failedLessons={generationResult.failedLessons} 
+              onClose={() => {
+                setShowConflictReport(false);
+                setIsGenerating(false);
+                setGenerationStep(0);
+                router.push('/dashboard/timetable');
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Full-Screen AI Generation Overlay */}
-      {isGenerating && (
+      {isGenerating && !showConflictReport && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm">
           <div className="relative flex flex-col items-center max-w-2xl px-8">
             {/* Animated Brain/AI Icon */}

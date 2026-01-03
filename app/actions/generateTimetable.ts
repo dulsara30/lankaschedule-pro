@@ -10,7 +10,7 @@ import Lesson from '@/models/Lesson';
 import Class from '@/models/Class';
 import TimetableSlot from '@/models/TimetableSlot';
 import TimetableVersion from '@/models/TimetableVersion';
-import { generateTimetable, ScheduleLesson, ScheduleClass } from '@/lib/algorithm/scheduler';
+import { generateTimetable, ScheduleLesson, ScheduleClass, ConflictDiagnostic } from '@/lib/algorithm/minConflictsScheduler';
 
 export interface GenerateTimetableResult {
   success: boolean;
@@ -19,12 +19,12 @@ export interface GenerateTimetableResult {
     totalSlots: number;
     scheduledLessons: number;
     failedLessons: number;
-    recursions: number;
+    swapAttempts?: number;
+    successfulSwaps?: number;
+    iterations?: number;
+    recursions?: number;
   };
-  failedLessons?: {
-    lessonName: string;
-    reason: string;
-  }[];
+  failedLessons?: ConflictDiagnostic[];
   currentStep?: number;
   totalSteps?: number;
 }
@@ -122,6 +122,9 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
     console.log(`   Total slots: ${result.slots.length}`);
     console.log(`   Scheduled lessons: ${result.stats.scheduledLessons}`);
     console.log(`   Failed lessons: ${result.failedLessons.length}`);
+    console.log(`   Swap attempts: ${result.stats.swapAttempts}`);
+    console.log(`   Successful swaps: ${result.stats.successfulSwaps}`);
+    console.log(`   Iterations: ${result.stats.iterations}`);
     
     // Debug: Show sample slots with double period flags
     const sampleSlots = result.slots.slice(0, 5);
@@ -215,16 +218,13 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
     revalidatePath('/dashboard/timetable');
     revalidatePath('/dashboard/lessons');
 
-    // 10. Return result
+    // 10. Return result with full diagnostics
     if (result.failedLessons.length > 0) {
       return {
         success: true,
         message: `Timetable generated with ${result.failedLessons.length} lesson(s) that could not be scheduled.`,
         stats: result.stats,
-        failedLessons: result.failedLessons.map((f) => ({
-          lessonName: f.lesson.lessonName,
-          reason: f.reason,
-        })),
+        failedLessons: result.failedLessons,
       };
     }
 

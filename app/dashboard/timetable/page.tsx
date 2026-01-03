@@ -526,7 +526,16 @@ export default function TimetablePage() {
       const data = await response.json();
 
       if (data.success) {
-        toast.success('Version deleted successfully');
+        toast.success(`Version deleted: ${data.deletedSlotCount} slots removed`);
+        
+        // If the deleted version was currently being viewed, clear the grid
+        if (currentVersionId === versionId) {
+          console.log('🗑️ Deleted current version - clearing grid');
+          setSlots([]);
+          setCurrentVersionId('');
+        }
+        
+        // Refresh versions list and data
         await fetchData();
       } else {
         toast.error(data.error || 'Failed to delete version');

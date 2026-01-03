@@ -133,7 +133,7 @@ export async function POST(request: Request) {
   }
 }
 
-// DELETE: Delete a version and all its slots
+// DELETE: Delete a version and all its slots (Cascading Deletion)
 export async function DELETE(request: Request) {
   try {
     const session = await getServerSession(authOptions);
@@ -147,6 +147,10 @@ export async function DELETE(request: Request) {
 
     await dbConnect();
 
+    // Ensure models are registered (prevent MissingSchemaError)
+    const TimetableVersionModel = TimetableVersion;
+    const TimetableSlotModel = TimetableSlot;
+
     const { searchParams } = new URL(request.url);
     const versionId = searchParams.get('versionId');
 
@@ -157,34 +161,58 @@ export async function DELETE(request: Request) {
       );
     }
 
-    console.log(`🗑️  Deleting version: ${versionId}`);
+    console.log(`🗑️  DELETE REQUEST: Version ID ${versionId}`);
 
-    // Delete all slots associated with this specific version
-    const deletedSlots = await TimetableSlot.deleteMany({ versionId });
-    console.log(`   Deleted ${deletedSlots.deletedCount} slots from this version`);
+    // Verify version exists and belongs to user's school
+    const version = await TimetableVersionModel.findById(versionId);
     
-    // Delete the version itself
-    const deletedVersion = await TimetableVersion.findByIdAndDelete(versionId);
-
-    if (!deletedVersion) {
+    if (!version) {
       return NextResponse.json(
         { success: false, error: 'Version not found' },
         { status: 404 }
       );
     }
 
-    console.log(`✅ Version "${deletedVersion.versionName}" deleted successfully`);
+    // Verify ownership
+    if (version.schoolId.toString() !== session.user.schoolId) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized to delete this version' },
+        { status: 403 }
+      );
+    }
+
+    console.log(`   📋 Deleting version: "${version.versionName}"`);
+
+    // CASCADING DELETION: Delete all slots associated with this version FIRST
+    const deletedSlots = await TimetableSlotModel.deleteMany({ versionId: versionId });
+    console.log(`   ✅ Deleted ${deletedSlots.deletedCount} associated slots`);
+    
+    // Delete the version metadata
+    const deletedVersion = await TimetableVersionModel.findByIdAndDelete(versionId);
+
+    if (!deletedVersion) {
+      console.error('   ❌ Version document not found after slot deletion');
+      return NextResponse.json(
+        { success: false, error: 'Version not found after slot cleanup' },
+        { status: 404 }
+      );
+    }
+
+    console.log(`   ✅ Version "${deletedVersion.versionName}" deleted successfully`);
 
     return NextResponse.json({
       success: true,
-      message: `Version deleted successfully. Removed ${deletedSlots.deletedCount} slots.`,
+      message: `Version and ${deletedSlots.deletedCount} associated slots deleted successfully`,
+      deletedSlotCount: deletedSlots.deletedCount,
+      versionName: deletedVersion.versionName,
     });
   } catch (error) {
-    console.error('Error deleting version:', error);
+    console.error('❌ Error deleting version:', error);
     return NextResponse.json(
       {
         success: false,
         error: 'Failed to delete version',
+        details: error instanceof Error ? error.message : 'Unknown error',
       },
       { status: 500 }
     );

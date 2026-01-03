@@ -72,8 +72,21 @@ type BusyMap = Map<string, boolean>;
 // Ensures a lesson only appears once per day for a class
 type DailyLessonMap = Map<string, boolean>;
 
-const MAX_RECURSIONS = 100000; // Increased for complex schedules
+// Conflict tracking for auditing
+interface ConflictLog {
+  lessonId: string;
+  lessonName: string;
+  teacherConflicts: Map<string, number>; // teacherId -> conflict count
+  classConflicts: Map<string, number>;   // classId -> conflict count
+  dayConflicts: Map<string, number>;     // day -> conflict count
+  totalAttempts: number;
+}
+
+const MAX_RECURSIONS = 100000; // Maximum iterations before giving up
+const RELAXATION_THRESHOLD = 10000; // After this many iterations, relax constraints
 let recursionCount = 0;
+let conflictLogs: Map<string, ConflictLog> = new Map(); // Track conflicts per lesson
+let constraintsRelaxed = false; // Flag to track if we've relaxed constraints
 
 /**
  * Main scheduling function with strict constraint enforcement
@@ -84,11 +97,26 @@ export function generateTimetable(
   config: ScheduleConfig
 ): ScheduleResult {
   recursionCount = 0;
+  constraintsRelaxed = false;
+  conflictLogs = new Map();
+  
   const grid: TimetableGrid = new Map();
   const busyMap: BusyMap = new Map();
   const dailyLessonMap: DailyLessonMap = new Map();
   const scheduledLessons = new Set<string>();
   const failedLessons: { lesson: ScheduleLesson; reason: string }[] = [];
+
+  // Initialize conflict logs for all lessons
+  for (const lesson of lessons) {
+    conflictLogs.set(lesson._id, {
+      lessonId: lesson._id,
+      lessonName: lesson.lessonName,
+      teacherConflicts: new Map(),
+      classConflicts: new Map(),
+      dayConflicts: new Map(),
+      totalAttempts: 0,
+    });
+  }
 
   // Sort lessons by constraint difficulty (most constrained first)
   const sortedLessons = sortByConstraints(lessons);
@@ -98,7 +126,7 @@ export function generateTimetable(
 
   console.log(`🚀 Scheduler: Starting with ${tasks.length} tasks for ${lessons.length} lessons`);
   console.log(`📊 Config: ${config.numberOfPeriods} periods, intervals after: ${config.intervalSlots.join(', ')}`);
-
+  console.log(`⚙️ Constraint Relaxation: Will activate after ${RELAXATION_THRESHOLD} iterations`);
   // Run backtracking algorithm
   const success = backtrack(tasks, 0, grid, busyMap, dailyLessonMap, scheduledLessons, config);
 
@@ -109,11 +137,54 @@ export function generateTimetable(
   for (const lesson of lessons) {
     if (!scheduledLessons.has(lesson._id)) {
       const requiredPeriods = lesson.numberOfSingles + (lesson.numberOfDoubles * 2);
+      const conflictLog = conflictLogs.get(lesson._id);
+      
+      let reason = `Could not schedule ${requiredPeriods} periods`;
+      
+      // Analyze conflict data to provide specific feedback
+      if (conflictLog && conflictLog.totalAttempts > 0) {
+        const topTeacher = getTopConflict(conflictLog.teacherConflicts);
+        const topClass = getTopConflict(conflictLog.classConflicts);
+        const topDay = getTopConflict(conflictLog.dayConflicts);
+        
+        const details: string[] = [];
+        if (topTeacher) details.push(`Teacher conflict: ${topTeacher.id} (${topTeacher.count} clashes)`);
+        if (topClass) details.push(`Class conflict: ${topClass.id} (${topClass.count} clashes)`);
+        if (topDay) details.push(`Day saturation: ${topDay.id} (${topDay.count} attempts)`);
+        
+        if (details.length > 0) {
+          reason += ` - ${details.join(', ')}`;
+        }
+      }
+      
       failedLessons.push({
         lesson,
-        reason: `Could not schedule ${requiredPeriods} periods without conflicts`,
+        reason,
       });
     }
+  }
+
+  // Log conflict analysis
+  if (constraintsRelaxed) {
+    console.warn(`⚠️ Constraints were RELAXED at ${RELAXATION_THRESHOLD} iterations`);
+  }
+  
+  // Log most problematic lessons
+  const problematicLessons = Array.from(conflictLogs.values())
+    .filter(log => log.totalAttempts > 1000)
+    .sort((a, b) => b.totalAttempts - a.totalAttempts)
+    .slice(0, 5);
+  
+  if (problematicLessons.length > 0) {
+    console.warn('\n🔴 TOP PROBLEMATIC LESSONS:');
+    problematicLessons.forEach((log, i) => {
+      const topTeacher = getTopConflict(log.teacherConflicts);
+      const topClass = getTopConflict(log.classConflicts);
+      console.warn(`${i + 1}. ${log.lessonName} (${log.totalAttempts} attempts)`);
+      if (topTeacher) console.warn(`   └─ Teacher: ${topTeacher.id} (${topTeacher.count} clashes)`);
+      if (topClass) console.warn(`   └─ Class: ${topClass.id} (${topClass.count} clashes)`);
+    });
+    console.warn('');
   }
 
   console.log(`✅ Scheduler: ${success ? 'Success' : 'Partial'} - ${slots.length} slots, ${recursionCount} recursions`);
@@ -129,6 +200,25 @@ export function generateTimetable(
       recursions: recursionCount,
     },
   };
+}
+
+/**
+ * Helper to find top conflict source
+ */
+function getTopConflict(map: Map<string, number>): { id: string; count: number } | null {
+  if (map.size === 0) return null;
+  
+  let topId = '';
+  let topCount = 0;
+  
+  for (const [id, count] of map.entries()) {
+    if (count > topCount) {
+      topId = id;
+      topCount = count;
+    }
+  }
+  
+  return topId ? { id: topId, count: topCount } : null;
 }
 
 /**
@@ -156,27 +246,66 @@ function sortByConstraints(lessons: ScheduleLesson[]): ScheduleLesson[] {
     const scoreA = (a.classIds.length * 2) + a.teacherIds.length;
     const scoreB = (b.classIds.length * 2) + b.teacherIds.length;
     return scoreB - scoreA;
-  });
-}
-
-/**
- * Expand lessons into individual tasks
- * E.g., a lesson with 2 singles + 1 double becomes 3 tasks
- */
-interface ScheduleTask {
-  lesson: ScheduleLesson;
-  isDouble: boolean;
-  taskId: string;
-}
-
-function expandLessonsToTasks(lessons: ScheduleLesson[]): ScheduleTask[] {
-  const doubleTasks: ScheduleTask[] = [];
-  const singleTasks: ScheduleTask[] = [];
   
-  // CRITICAL: Separate doubles and singles
-  for (const lesson of lessons) {
-    // Collect all double period tasks
-    for (let i = 0; i < lesson.numberOfDoubles; i++) {
+  // Enable constraint relaxation after threshold
+  if (recursionCount === RELAXATION_THRESHOLD && !constraintsRelaxed) {
+    constraintsRelaxed = true;
+    console.warn(`\n⚠️ CONSTRAINT RELAXATION ACTIVATED at ${RELAXATION_THRESHOLD} iterations`);
+    console.warn('   Relaxing: Daily subject limit (allowing multiple instances per day)\n');
+  }
+  
+  if (recursionCount >= MAX_RECURSIONS) {
+    console.warn('⚠️ Recursion limit reached - returning partial solution');
+    return false;
+  }
+
+  // Base case: all tasks scheduled
+  if (taskIndex >= tasks.length) {
+    return true;
+  }
+
+  const task = tasks[taskIndex];
+  const { lesson, isDouble } = task;
+
+  // Update conflict log
+  const conflictLog = conflictLogs.get(lesson._id);
+  if (conflictLog) {
+    conflictLog.totalAttempts++;
+  }
+
+  // Get all valid slots for this task with LCV heuristic
+  const validSlots = findValidSlotsWithLCV(lesson, isDouble, grid, busyMap, dailyLessonMap, config);
+
+  // Try each valid slot (already sorted by LCV)
+  for (const slot of validSlots) {
+    // CONSTRAINT: Daily subject limit
+    // RELAXED after threshold - allow multiple instances per day
+    const canSchedule = constraintsRelaxed || canScheduleOnDay(lesson, slot.day, dailyLessonMap);
+    
+    if (!canSchedule) {
+      // Log day conflict
+      if (conflictLog) {
+        const currentCount = conflictLog.dayConflicts.get(slot.day) || 0;
+        conflictLog.dayConflicts.set(slot.day, currentCount + 1);
+      }
+      continue; // Skip this day - lesson already scheduled
+    }
+
+    // Check for teacher/class conflicts and log them
+    const conflicts = checkSlotConflicts(lesson, slot, isDouble, grid, busyMap);
+    if (conflicts.hasConflict) {
+      // Log conflicts
+      if (conflictLog) {
+        for (const teacherId of conflicts.busyTeachers) {
+          const currentCount = conflictLog.teacherConflicts.get(teacherId) || 0;
+          conflictLog.teacherConflicts.set(teacherId, currentCount + 1);
+        }
+        for (const classId of conflicts.busyClasses) {
+          const currentCount = conflictLog.classConflicts.get(classId) || 0;
+          conflictLog.classConflicts.set(classId, currentCount + 1);
+        }
+      }
+      continue; // Skip this slot - has conflicts
       doubleTasks.push({
         lesson,
         isDouble: true,
@@ -256,6 +385,51 @@ function backtrack(
 
   // No valid slot found for this task
   return false;
+}
+
+/**
+ * Check for slot conflicts and return detailed conflict information
+ */
+interface SlotConflictResult {
+  hasConflict: boolean;
+  busyTeachers: string[];
+  busyClasses: string[];
+}
+
+function checkSlotConflicts(
+  lesson: ScheduleLesson,
+  slot: SlotPosition,
+  isDouble: boolean,
+  grid: TimetableGrid,
+  busyMap: BusyMap
+): SlotConflictResult {
+  const busyTeachers: string[] = [];
+  const busyClasses: string[] = [];
+  const periods = isDouble ? [slot.period, slot.period + 1] : [slot.period];
+
+  for (const period of periods) {
+    // Check teacher conflicts
+    for (const teacherId of lesson.teacherIds) {
+      const busyKey = `${teacherId}-${slot.day}-${period}`;
+      if (busyMap.has(busyKey) && !busyTeachers.includes(teacherId)) {
+        busyTeachers.push(teacherId);
+      }
+    }
+
+    // Check class conflicts
+    for (const classId of lesson.classIds) {
+      const gridKey = `${classId}-${slot.day}-${period}`;
+      if ((grid.has(gridKey) || busyMap.has(gridKey)) && !busyClasses.includes(classId)) {
+        busyClasses.push(classId);
+      }
+    }
+  }
+
+  return {
+    hasConflict: busyTeachers.length > 0 || busyClasses.length > 0,
+    busyTeachers,
+    busyClasses,
+  };
 }
 
 /**

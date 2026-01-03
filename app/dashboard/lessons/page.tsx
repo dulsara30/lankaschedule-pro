@@ -7,12 +7,11 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Plus, Pencil, Trash2, Sparkles, MoreVertical, X, Search, Lightbulb, Check, ChevronsUpDown, ChevronLeft, ChevronRight, FilterX } from 'lucide-react';
+import { Plus, Pencil, Trash2, MoreVertical, X, Search, Lightbulb, Check, ChevronsUpDown, ChevronLeft, ChevronRight, FilterX } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
-import { generateTimetableAction } from '@/app/actions/generateTimetable';
 import { cn } from '@/lib/utils';
 
 interface Subject {
@@ -54,9 +53,6 @@ export default function LessonsPage() {
   const [classes, setClasses] = useState<Class[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generationStep, setGenerationStep] = useState(0);
-  const [versionName, setVersionName] = useState('Draft');
 
   const [formData, setFormData] = useState({
     lessonName: '',
@@ -335,56 +331,6 @@ export default function LessonsPage() {
     if (!open) resetForm();
   };
 
-  const handleGenerateTimetable = async () => {
-    if (lessons.length === 0) {
-      toast.error('No lessons found. Please create lessons first.');
-      return;
-    }
-
-    setIsGenerating(true);
-    setGenerationStep(1);
-
-    try {
-      toast.info('Starting Python CP-SAT solver...', { duration: 2000 });
-      
-      setGenerationStep(2);
-      
-      // Call the Python CP-SAT solver via server action
-      const result = await generateTimetableAction(versionName);
-
-      if (result?.success) {
-        setGenerationStep(3);
-        
-        // Use optional chaining to safely access nested properties
-        const slotsPlaced = result.slotsPlaced || result.stats?.totalSlots || 0;
-        const conflicts = result.conflicts || 0;
-        
-        toast.success(`Generated ${slotsPlaced} slots with ${conflicts} conflicts`);
-        
-        if (conflicts === 0) {
-          toast.success('🎉 Perfect timetable - Zero conflicts!', { duration: 5000 });
-        }
-
-        // Refresh to ensure sidebar picks up unscheduled lessons
-        router.refresh();
-        
-        // Navigate to timetable page
-        setTimeout(() => {
-          router.push('/dashboard/timetable');
-        }, 1500);
-      } else {
-        throw new Error(result?.message || 'Failed to generate timetable');
-      }
-    } catch (error: unknown) {
-      console.error('Timetable generation error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      toast.error(`Generation failed: ${errorMessage}`);
-    } finally {
-      setIsGenerating(false);
-      setGenerationStep(0);
-    }
-  };
-
   const totalPeriods = formData.numberOfSingles + (formData.numberOfDoubles * 2);
 
   // Advanced filtering and pagination logic
@@ -587,39 +533,7 @@ export default function LessonsPage() {
             Create lesson units with multiple subjects, teachers, and parallel classes
           </p>
         </div>
-        <div className="flex gap-3 items-center">
-          <div className="flex flex-col gap-1">
-            <label htmlFor="versionName" className="text-xs text-zinc-600 dark:text-zinc-400">
-              Version Name
-            </label>
-            <input
-              id="versionName"
-              type="text"
-              value={versionName}
-              onChange={(e) => setVersionName(e.target.value)}
-              placeholder="e.g., 2026 First Term"
-              disabled={isGenerating}
-              className="px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-md text-sm bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed w-48"
-            />
-          </div>
-          <Button
-            onClick={handleGenerateTimetable}
-            disabled={isGenerating || lessons.length === 0}
-            variant="outline"
-            className="bg-linear-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 border-0 mt-6"
-          >
-            {isGenerating ? (
-              <>
-                <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
-                Generating...
-              </>
-            ) : (
-              <>
-                <Sparkles className="mr-2 h-4 w-4" />
-                Generate Timetable
-              </>
-            )}
-          </Button>
+        <div className="flex gap-3">
           <Button onClick={() => setDialogOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Create Lesson

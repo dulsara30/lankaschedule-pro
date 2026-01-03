@@ -246,6 +246,68 @@ function sortByConstraints(lessons: ScheduleLesson[]): ScheduleLesson[] {
     const scoreA = (a.classIds.length * 2) + a.teacherIds.length;
     const scoreB = (b.classIds.length * 2) + b.teacherIds.length;
     return scoreB - scoreA;
+  });
+}
+
+/**
+ * Expand lessons into individual tasks
+ * E.g., a lesson with 2 singles + 1 double becomes 3 tasks
+ */
+interface ScheduleTask {
+  lesson: ScheduleLesson;
+  isDouble: boolean;
+  taskId: string;
+}
+
+function expandLessonsToTasks(lessons: ScheduleLesson[]): ScheduleTask[] {
+  const doubleTasks: ScheduleTask[] = [];
+  const singleTasks: ScheduleTask[] = [];
+  
+  // CRITICAL: Separate doubles and singles
+  for (const lesson of lessons) {
+    // Collect all double period tasks
+    for (let i = 0; i < lesson.numberOfDoubles; i++) {
+      doubleTasks.push({
+        lesson,
+        isDouble: true,
+        taskId: `${lesson._id}-double-${i}`,
+      });
+    }
+    
+    // Collect all single period tasks
+    for (let i = 0; i < lesson.numberOfSingles; i++) {
+      singleTasks.push({
+        lesson,
+        isDouble: false,
+        taskId: `${lesson._id}-single-${i}`,
+      });
+    }
+  }
+  
+  // PRIORITY ORDERING: ALL doubles FIRST, then ALL singles
+  // This ensures consecutive slots are claimed before grid fills up
+  const tasks = [...doubleTasks, ...singleTasks];
+  
+  console.log(`📋 Task Expansion: ${doubleTasks.length} doubles FIRST, then ${singleTasks.length} singles`);
+  console.log(`   Example: ITT (1S + 4D) = 4 double tasks + 1 single task`);
+  
+  return tasks;
+}
+
+/**
+ * Backtracking algorithm with constraint relaxation and conflict auditing
+ */
+function backtrack(
+  tasks: ScheduleTask[],
+  taskIndex: number,
+  grid: TimetableGrid,
+  busyMap: BusyMap,
+  dailyLessonMap: DailyLessonMap,
+  scheduledLessons: Set<string>,
+  config: ScheduleConfig
+): boolean {
+  // Check recursion limit
+  recursionCount++;
   
   // Enable constraint relaxation after threshold
   if (recursionCount === RELAXATION_THRESHOLD && !constraintsRelaxed) {
@@ -306,68 +368,6 @@ function sortByConstraints(lessons: ScheduleLesson[]): ScheduleLesson[] {
         }
       }
       continue; // Skip this slot - has conflicts
-      doubleTasks.push({
-        lesson,
-        isDouble: true,
-        taskId: `${lesson._id}-double-${i}`,
-      });
-    }
-    
-    // Collect all single period tasks
-    for (let i = 0; i < lesson.numberOfSingles; i++) {
-      singleTasks.push({
-        lesson,
-        isDouble: false,
-        taskId: `${lesson._id}-single-${i}`,
-      });
-    }
-  }
-  
-  // PRIORITY ORDERING: ALL doubles FIRST, then ALL singles
-  // This ensures consecutive slots are claimed before grid fills up
-  const tasks = [...doubleTasks, ...singleTasks];
-  
-  console.log(`📋 Task Expansion: ${doubleTasks.length} doubles FIRST, then ${singleTasks.length} singles`);
-  console.log(`   Example: ITT (1S + 4D) = 4 double tasks + 1 single task`);
-  
-  return tasks;
-}
-
-/**
- * Backtracking algorithm with strict daily subject limit and LCV heuristic
- */
-function backtrack(
-  tasks: ScheduleTask[],
-  taskIndex: number,
-  grid: TimetableGrid,
-  busyMap: BusyMap,
-  dailyLessonMap: DailyLessonMap,
-  scheduledLessons: Set<string>,
-  config: ScheduleConfig
-): boolean {
-  // Check recursion limit
-  recursionCount++;
-  if (recursionCount >= MAX_RECURSIONS) {
-    console.warn('⚠️ Recursion limit reached - returning partial solution');
-    return false;
-  }
-
-  // Base case: all tasks scheduled
-  if (taskIndex >= tasks.length) {
-    return true;
-  }
-
-  const task = tasks[taskIndex];
-  const { lesson, isDouble } = task;
-
-  // Get all valid slots for this task with LCV heuristic
-  const validSlots = findValidSlotsWithLCV(lesson, isDouble, grid, busyMap, dailyLessonMap, config);
-
-  // Try each valid slot (already sorted by LCV)
-  for (const slot of validSlots) {
-    // HARD CONSTRAINT CHECK: Daily subject limit
-    if (!canScheduleOnDay(lesson, slot.day, dailyLessonMap)) {
-      continue; // Skip this day - lesson already scheduled
     }
 
     // Place lesson in slot(s)

@@ -68,25 +68,61 @@ self.onmessage = function(e) {
       threadId = data.threadId;
       console.log(`🚀 Web Worker ${threadId}: Starting scheduler`);
       
+      // Log full payload for debugging
+      console.log(`📦 Web Worker ${threadId}: Received payload:`, {
+        hasLessons: !!data.lessons,
+        lessonsCount: data.lessons?.length,
+        hasClasses: !!data.classes,
+        classesCount: data.classes?.length,
+        hasConfig: !!data.config,
+        configStructure: data.config ? {
+          hasDaysOfWeek: !!data.config.daysOfWeek,
+          daysOfWeekCount: data.config.daysOfWeek?.length,
+          hasNumberOfPeriods: !!data.config.numberOfPeriods,
+          numberOfPeriods: data.config.numberOfPeriods,
+          hasIntervalSlots: !!data.config.intervalSlots,
+          intervalSlotsCount: data.config.intervalSlots?.length
+        } : null,
+        hasRandomSeed: !!data.randomSeed
+      });
+      
       const { lessons, classes, config: cfg, randomSeed } = data;
       
-      // Validate data
+      // Validate data with detailed error messages
       if (!lessons || !Array.isArray(lessons)) {
-        throw new Error('Invalid lessons data');
+        console.error('❌ Invalid lessons data:', lessons);
+        throw new Error(`Invalid lessons data: ${lessons ? typeof lessons : 'null/undefined'}`);
       }
       if (!classes || !Array.isArray(classes)) {
-        throw new Error('Invalid classes data');
+        console.error('❌ Invalid classes data:', classes);
+        throw new Error(`Invalid classes data: ${classes ? typeof classes : 'null/undefined'}`);
       }
-      if (!cfg || !cfg.daysOfWeek || !cfg.numberOfPeriods) {
-        throw new Error('Invalid config data');
+      if (!cfg) {
+        console.error('❌ Config is null/undefined:', cfg);
+        throw new Error('Config is null or undefined');
+      }
+      if (!cfg.daysOfWeek || !Array.isArray(cfg.daysOfWeek)) {
+        console.error('❌ Invalid daysOfWeek:', cfg.daysOfWeek);
+        throw new Error(`Invalid daysOfWeek: ${cfg.daysOfWeek ? typeof cfg.daysOfWeek : 'null/undefined'}`);
+      }
+      if (!cfg.numberOfPeriods || typeof cfg.numberOfPeriods !== 'number') {
+        console.error('❌ Invalid numberOfPeriods:', cfg.numberOfPeriods);
+        throw new Error(`Invalid numberOfPeriods: ${cfg.numberOfPeriods ? typeof cfg.numberOfPeriods : 'null/undefined'}`);
       }
       
-      console.log(`🔧 Web Worker ${threadId}: Data validated - ${lessons.length} lessons, ${classes.length} classes`);
+      // Apply defaults for optional fields
+      const configWithDefaults = {
+        daysOfWeek: cfg.daysOfWeek,
+        numberOfPeriods: cfg.numberOfPeriods,
+        intervalSlots: cfg.intervalSlots || []
+      };
+      
+      console.log(`✅ Web Worker ${threadId}: Data validated - ${lessons.length} lessons, ${classes.length} classes, ${configWithDefaults.daysOfWeek.length} days, ${configWithDefaults.numberOfPeriods} periods`);
       
       // Set random seed for reproducibility
       Math.random = seededRandom(randomSeed);
       
-      config = cfg;
+      config = configWithDefaults;
       
       // Run scheduler
       console.log(`🔧 Web Worker ${threadId}: Starting scheduler execution`);

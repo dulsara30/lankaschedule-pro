@@ -376,6 +376,19 @@ export default function LessonsPage() {
         throw new Error('Failed to fetch configuration');
       }
 
+      // Validate config structure
+      const config = configData.data;
+      if (!config || !config.daysOfWeek || !config.numberOfPeriods) {
+        console.error('Invalid config received:', config);
+        throw new Error('Config is missing required fields (daysOfWeek, numberOfPeriods)');
+      }
+
+      console.log('✅ Config validated:', {
+        daysOfWeek: config.daysOfWeek.length,
+        numberOfPeriods: config.numberOfPeriods,
+        intervalSlots: config.intervalSlots?.length || 0
+      });
+
       setGenerationStep(2);
 
       // Spawn 4 Web Workers for parallel search
@@ -424,13 +437,27 @@ export default function LessonsPage() {
 
           // Start worker with different random seed
           console.log(`🚀 Starting Worker ${threadId + 1}`);
+          
+          // Serialize config as plain object for structured cloning
+          const safeConfig = {
+            daysOfWeek: config.daysOfWeek.map((d: any) => ({ ...d })),
+            numberOfPeriods: config.numberOfPeriods,
+            intervalSlots: config.intervalSlots ? config.intervalSlots.map((s: any) => ({ ...s })) : []
+          };
+          
+          console.log(`📦 Worker ${threadId + 1} payload:`, {
+            lessons: lessons.length,
+            classes: classesData.data.length,
+            config: safeConfig
+          });
+          
           worker.postMessage({
             type: 'START',
             data: {
               threadId: threadId + 1,
-              lessons: lessons,
-              classes: classesData.data,
-              config: configData.data,
+              lessons: JSON.parse(JSON.stringify(lessons)),
+              classes: JSON.parse(JSON.stringify(classesData.data)),
+              config: safeConfig,
               randomSeed: Date.now() + threadId * 1000,
             },
           });

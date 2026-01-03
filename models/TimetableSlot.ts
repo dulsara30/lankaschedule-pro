@@ -20,8 +20,8 @@ export interface ITimetableSlot extends Document {
   versionId: mongoose.Types.ObjectId; // Links to TimetableVersion
   classId: mongoose.Types.ObjectId; // The class this slot belongs to
   lessonId: mongoose.Types.ObjectId; // The lesson assigned to this slot
-  day: 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | null; // null for unscheduled
-  periodNumber: number | null; // null for unscheduled
+  day: 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Unscheduled'; // 'Unscheduled' for sidebar
+  periodNumber: number; // 1-7 for scheduled, negative for unscheduled (-1, -2, -3...)
   isDoubleStart?: boolean; // TRUE if this is the first period of a double block
   isDoubleEnd?: boolean; // TRUE if this is the second period of a double block
   isLocked?: boolean; // Prevent auto-generation from modifying this slot
@@ -58,15 +58,12 @@ const TimetableSlotSchema = new Schema<ITimetableSlot>(
     },
     day: {
       type: String,
-      required: false, // Allow null for unscheduled lessons
-      enum: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', null],
-      default: null,
+      required: true, // Always required now
+      enum: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Unscheduled'],
     },
     periodNumber: {
       type: Number,
-      required: false, // Allow null for unscheduled lessons
-      min: [1, 'Period number must be at least 1'],
-      default: null,
+      required: true, // Always required now (negative for unscheduled)
     },
     isDoubleStart: {
       type: Boolean,

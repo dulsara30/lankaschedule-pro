@@ -342,13 +342,14 @@ export async function generateTimetableAction(versionName: string = 'Draft'): Pr
     if (result.unplacedTasks && result.unplacedTasks.length > 0) {
       console.log(`\n📌 Step 7b: Saving ${result.unplacedTasks.length} unscheduled lessons...`);
       
-      const unscheduledSlots = result.unplacedTasks.map(task => ({
+      // Use unique negative periodNumber for each unscheduled lesson to satisfy unique index
+      const unscheduledSlots = result.unplacedTasks.map((task, index) => ({
         schoolId: school._id,
         versionId: draftVersion._id,
         classId: task.classId,
         lessonId: task.lessonId,
-        day: null, // Unscheduled
-        periodNumber: null, // Unscheduled
+        day: 'Unscheduled', // Special day value for sidebar filtering
+        periodNumber: -(index + 1), // Unique negative index: -1, -2, -3...
         isUnscheduled: true,
         isDoubleStart: false,
         isDoubleEnd: false,

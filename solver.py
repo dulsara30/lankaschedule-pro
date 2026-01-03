@@ -57,7 +57,7 @@ class Lesson(BaseModel):
 class Class(BaseModel):
     _id: str
     name: str
-    grade: int
+    grade: str  # Changed to str to support Sri Lankan grades like '13-years', 'Grade 11', etc.
 
 class SolverRequest(BaseModel):
     lessons: List[Lesson]

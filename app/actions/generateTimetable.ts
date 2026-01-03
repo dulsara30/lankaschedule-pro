@@ -150,7 +150,7 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
       classes: classesData.map((cls: any) => ({
         _id: cls._id.toString(),
         name: cls.name,
-        grade: cls.grade,
+        grade: cls.grade?.toString() || "",  // Convert to string, fallback to empty string
       })),
       config: {
         numberOfPeriods: config.numberOfPeriods || 7, // Ensure default
@@ -167,7 +167,8 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
 
     console.log(`[DEBUG] Payload prepared successfully`);
     console.log(`[DEBUG] Lessons in payload: ${payload.lessons.length}`);
-    console.log(`[DEBUG] Classes in payload: ${payload.classes.length}`);
+    console.log(`[DEBUG] Classes in payload: ${payload.classes.length}`);;
+    console.log(`[DEBUG] Sample class grades:`, payload.classes.slice(0, 3).map(c => `${c.name}='${c.grade}'`))
     console.log(`[DEBUG] Days in config payload: ${payload.config.daysOfWeek.length}`);
     console.log(`[DEBUG] Periods in config payload: ${payload.config.numberOfPeriods}`);
 

@@ -1,12 +1,13 @@
 /**
- * EduFlow AI - Advanced Min-Conflicts Scheduler with Swap Logic
+ * EduFlow AI - Strict Interval-Aware Deep Repair Scheduler
  * 
  * Features:
- * 1. Min-Conflicts Algorithm: Swaps existing lessons to make room
- * 2. Forward Checking: Validates future lesson placement feasibility
- * 3. Priority-Based Ordering: Hardest lessons first
- * 4. Detailed Conflict Diagnostics: Per-lesson failure reasons
- * 5. Smart Swap Suggestions: Identifies viable swaps for failed lessons
+ * 1. STRICT INTERVAL ENFORCEMENT: Double periods cannot span interval breaks
+ * 2. DEEP SWAP CHAINS: Up to 3-level iterative repair with 500K iterations
+ * 3. BOTTLENECK-FIRST SCHEDULING: Resource-heavy lessons scheduled first
+ * 4. LOAD NORMALIZATION: Max 35 periods per teacher/class
+ * 5. GLOBAL PRESSURE HEURISTIC: Schedule into days with most teacher availability
+ * 6. DETAILED DIAGNOSTICS: Explicit interval and teacher bottleneck reporting
  */
 
 // Types
@@ -77,6 +78,7 @@ export interface ScheduleResult {
     swapAttempts: number;
     successfulSwaps: number;
     iterations: number;
+    deepSwapChains: number;
   };
 }
 
@@ -89,18 +91,29 @@ type TimetableGrid = Map<string, GridSlot>;
 type BusyMap = Map<string, boolean>;
 type DailyLessonMap = Map<string, boolean>;
 
+// Load tracking
+interface LoadTracker {
+  teacherLoads: Map<string, number>; // teacherId -> period count
+  classLoads: Map<string, number>;   // classId -> period count
+}
+
 // Tracking
 let iterationCount = 0;
 let swapAttempts = 0;
 let successfulSwaps = 0;
-const MAX_ITERATIONS = 150000;
-const MAX_SWAP_ATTEMPTS_PER_LESSON = 100;
+let deepSwapChains = 0;
+const MAX_ITERATIONS = 500000; // Increased for stochastic local search
+const MAX_SWAP_DEPTH = 3; // Deep swap chain depth
+const MAX_LOAD_PER_ENTITY = 35; // Max periods per teacher/class
 
-// Lesson metadata cache for swap suggestions
+// Lesson metadata cache
 const lessonMetadataCache = new Map<string, ScheduleLesson>();
 
+// Valid double period start positions (cached per config)
+let validDoubleStarts: number[] = [];
+
 /**
- * Main scheduling function with min-conflicts approach
+ * Main scheduling function with strict interval awareness
  */
 export function generateTimetable(
   lessons: ScheduleLesson[],
@@ -111,12 +124,20 @@ export function generateTimetable(
   iterationCount = 0;
   swapAttempts = 0;
   successfulSwaps = 0;
+  deepSwapChains = 0;
   lessonMetadataCache.clear();
 
-  // Cache lesson metadata for quick lookup
+  // Cache lesson metadata
   for (const lesson of lessons) {
     lessonMetadataCache.set(lesson._id, lesson);
   }
+
+  // CRITICAL: Calculate valid double period start positions
+  validDoubleStarts = calculateValidDoubleStarts(config);
+  console.log(`🔒 STRICT INTERVAL ENFORCEMENT:`);
+  console.log(`   Intervals after periods: ${config.intervalSlots.join(', ')}`);
+  console.log(`   Valid double-period start positions: ${validDoubleStarts.join(', ')}`);
+  console.log(`   FORBIDDEN double starts: ${config.intervalSlots.join(', ')} (would span interval)`);
 
   const grid: TimetableGrid = new Map();
   const busyMap: BusyMap = new Map();
@@ -124,32 +145,41 @@ export function generateTimetable(
   const scheduledLessons = new Set<string>();
   const failedDiagnostics: ConflictDiagnostic[] = [];
 
-  // PRIORITY 1: Sort lessons by difficulty (hardest first)
-  const sortedLessons = prioritizeLessons(lessons);
+  // Initialize load tracker
+  const loadTracker: LoadTracker = {
+    teacherLoads: new Map(),
+    classLoads: new Map(),
+  };
 
-  console.log(`🚀 Min-Conflicts Scheduler: ${lessons.length} lessons, ${sortedLessons.length} total`);
-  console.log(`📊 Config: ${config.numberOfPeriods} periods/day, intervals after: ${config.intervalSlots.join(', ')}`);
+  // BOTTLENECK-FIRST SCHEDULING: Sort by resource intensity
+  const sortedLessons = bottleneckFirstSort(lessons);
+
+  console.log(`🚀 Deep Repair Scheduler: ${lessons.length} lessons`);
+  console.log(`📊 Config: ${config.numberOfPeriods} periods/day × ${config.daysOfWeek.length} days = ${config.numberOfPeriods * config.daysOfWeek.length} total slots`);
   
-  // Log top 5 hardest lessons
-  console.log('🎯 Priority Order (Top 5 Hardest):');
+  // Log top 5 resource bottlenecks
+  console.log('🎯 BOTTLENECK-FIRST PRIORITY (Top 5 Resource-Heavy):');
   sortedLessons.slice(0, 5).forEach((lesson, i) => {
     const totalPeriods = lesson.numberOfSingles + (lesson.numberOfDoubles * 2);
-    console.log(`   ${i + 1}. ${lesson.lessonName}: ${lesson.numberOfDoubles}D + ${lesson.numberOfSingles}S = ${totalPeriods} periods`);
+    const resourceScore = lesson.teacherIds.length + lesson.classIds.length;
+    console.log(`   ${i + 1}. ${lesson.lessonName}: ${lesson.teacherIds.length}T × ${lesson.classIds.length}C = ${resourceScore} resource units, ${totalPeriods}P`);
   });
 
   // Expand lessons into tasks
   const tasks = expandLessonsToTasks(sortedLessons);
   
-  console.log(`📋 Task Breakdown: ${tasks.filter(t => t.isDouble).length} double tasks, ${tasks.filter(t => !t.isDouble).length} single tasks`);
+  const totalPeriods = tasks.reduce((sum, t) => sum + (t.isDouble ? 2 : 1), 0);
+  console.log(`📋 Task Breakdown: ${tasks.filter(t => t.isDouble).length} double tasks + ${tasks.filter(t => !t.isDouble).length} single tasks = ${totalPeriods} total periods`);
 
-  // Run min-conflicts backtracking with swap capability
-  const success = minConflictsBacktrack(
+  // Run deep repair backtracking
+  const success = deepRepairBacktrack(
     tasks,
     0,
     grid,
     busyMap,
     dailyLessonMap,
     scheduledLessons,
+    loadTracker,
     config
   );
 
@@ -159,15 +189,15 @@ export function generateTimetable(
   // Generate diagnostics for failed lessons
   for (const lesson of lessons) {
     if (!scheduledLessons.has(lesson._id)) {
-      const diagnostic = generateConflictDiagnostic(lesson, grid, busyMap, dailyLessonMap, config);
+      const diagnostic = generateDetailedDiagnostic(lesson, grid, busyMap, dailyLessonMap, loadTracker, config);
       failedDiagnostics.push(diagnostic);
     }
   }
 
   console.log(`✅ Scheduler Complete: ${slots.length} slots created`);
   console.log(`📊 Stats: ${scheduledLessons.size}/${lessons.length} lessons scheduled`);
-  console.log(`🔄 Swaps: ${successfulSwaps}/${swapAttempts} successful`);
-  console.log(`⚡ Iterations: ${iterationCount}/${MAX_ITERATIONS}`);
+  console.log(`🔄 Swaps: ${successfulSwaps}/${swapAttempts} successful (${deepSwapChains} deep chains)`);
+  console.log(`⚡ Iterations: ${iterationCount.toLocaleString()}/${MAX_ITERATIONS.toLocaleString()}`);
 
   return {
     success,
@@ -180,39 +210,65 @@ export function generateTimetable(
       swapAttempts,
       successfulSwaps,
       iterations: iterationCount,
+      deepSwapChains,
     },
   };
 }
 
 /**
- * PRIORITY SCHEDULING: Hardest lessons first
- * Criteria:
- * 1. Most double periods (hardest to place)
- * 2. Teachers near 35-period limit
- * 3. Total periods required
- * 4. Number of classes
+ * STRICT INTERVAL ENFORCEMENT: Calculate valid double period start positions
+ * A double period starting at position P spans P and P+1
+ * If intervalSlots = [3], then P=3 is FORBIDDEN (would span 3-4, but interval is after 3)
  */
-function prioritizeLessons(lessons: ScheduleLesson[]): ScheduleLesson[] {
+function calculateValidDoubleStarts(config: ScheduleConfig): number[] {
+  const { numberOfPeriods, intervalSlots } = config;
+  const validStarts: number[] = [];
+
+  for (let period = 1; period < numberOfPeriods; period++) {
+    // Can't start double at last period (no P+1)
+    if (period === numberOfPeriods) continue;
+
+    // CRITICAL: If this period is an interval boundary, FORBID double start
+    if (intervalSlots.includes(period)) {
+      continue; // Starting here would span the interval
+    }
+
+    // Valid double start position
+    validStarts.push(period);
+  }
+
+  return validStarts;
+}
+
+/**
+ * BOTTLENECK-FIRST SCHEDULING: Prioritize resource-intensive lessons
+ * Lessons with many teachers AND many classes are hardest to schedule
+ */
+function bottleneckFirstSort(lessons: ScheduleLesson[]): ScheduleLesson[] {
   return [...lessons].sort((a, b) => {
-    // Primary: Number of doubles (harder to fit)
+    // Primary: Resource bottleneck score (teachers × classes)
+    const bottleneckA = a.teacherIds.length * a.classIds.length;
+    const bottleneckB = b.teacherIds.length * b.classIds.length;
+    if (bottleneckB !== bottleneckA) {
+      return bottleneckB - bottleneckA;
+    }
+
+    // Secondary: Total teachers + classes (more entities = more constraints)
+    const entityCountA = a.teacherIds.length + a.classIds.length;
+    const entityCountB = b.teacherIds.length + b.classIds.length;
+    if (entityCountB !== entityCountA) {
+      return entityCountB - entityCountA;
+    }
+
+    // Tertiary: Number of doubles (harder to fit)
     if (b.numberOfDoubles !== a.numberOfDoubles) {
       return b.numberOfDoubles - a.numberOfDoubles;
     }
 
-    // Secondary: Total periods (more demanding)
+    // Quaternary: Total periods required
     const totalA = a.numberOfSingles + (a.numberOfDoubles * 2);
     const totalB = b.numberOfSingles + (b.numberOfDoubles * 2);
-    if (totalB !== totalA) {
-      return totalB - totalA;
-    }
-
-    // Tertiary: Number of classes (more constrained)
-    if (b.classIds.length !== a.classIds.length) {
-      return b.classIds.length - a.classIds.length;
-    }
-
-    // Quaternary: Number of teachers (more conflicts)
-    return b.teacherIds.length - a.teacherIds.length;
+    return totalB - totalA;
   });
 }
 
@@ -252,27 +308,33 @@ function expandLessonsToTasks(lessons: ScheduleLesson[]): ScheduleTask[] {
 }
 
 /**
- * MIN-CONFLICTS BACKTRACKING with Swap Logic
+ * DEEP REPAIR BACKTRACKING with 3-level swap chains
  */
 interface SlotPosition {
   day: string;
   period: number;
 }
 
-function minConflictsBacktrack(
+function deepRepairBacktrack(
   tasks: ScheduleTask[],
   taskIndex: number,
   grid: TimetableGrid,
   busyMap: BusyMap,
   dailyLessonMap: DailyLessonMap,
   scheduledLessons: Set<string>,
+  loadTracker: LoadTracker,
   config: ScheduleConfig
 ): boolean {
   iterationCount++;
 
   if (iterationCount >= MAX_ITERATIONS) {
-    console.warn(`⚠️ Iteration limit reached (${MAX_ITERATIONS})`);
+    console.warn(`⚠️ Iteration limit reached (${MAX_ITERATIONS.toLocaleString()})`);
     return false;
+  }
+
+  // Progress logging every 50K iterations
+  if (iterationCount % 50000 === 0) {
+    console.log(`   ⚡ ${iterationCount.toLocaleString()} iterations, ${scheduledLessons.size} lessons placed, ${swapAttempts} swaps tried`);
   }
 
   // Base case: all tasks scheduled
@@ -283,15 +345,13 @@ function minConflictsBacktrack(
   const task = tasks[taskIndex];
   const { lesson, isDouble } = task;
 
-  // FORWARD CHECKING: Verify remaining tasks are still feasible
-  if (taskIndex % 50 === 0) { // Check every 50 tasks
-    if (!forwardCheck(tasks, taskIndex, grid, busyMap, dailyLessonMap, config)) {
-      return false; // Dead end detected
-    }
+  // LOAD NORMALIZATION: Check if lesson would exceed load limits
+  if (!canScheduleWithinLoadLimits(lesson, loadTracker)) {
+    return false; // Exceeds load capacity
   }
 
-  // Find valid slots with LCV heuristic
-  const validSlots = findValidSlotsWithLCV(lesson, isDouble, grid, busyMap, dailyLessonMap, config);
+  // Find valid slots with GLOBAL PRESSURE heuristic
+  const validSlots = findValidSlotsWithPressure(lesson, isDouble, grid, busyMap, dailyLessonMap, loadTracker, config);
 
   // Try each valid slot
   for (const slot of validSlots) {
@@ -305,33 +365,33 @@ function minConflictsBacktrack(
     
     if (!conflicts.hasConflict) {
       // No conflict: place normally
-      const changes = placeLesson(lesson, slot, isDouble, grid, busyMap, dailyLessonMap);
+      const changes = placeLesson(lesson, slot, isDouble, grid, busyMap, dailyLessonMap, loadTracker);
 
-      if (minConflictsBacktrack(tasks, taskIndex + 1, grid, busyMap, dailyLessonMap, scheduledLessons, config)) {
+      if (deepRepairBacktrack(tasks, taskIndex + 1, grid, busyMap, dailyLessonMap, scheduledLessons, loadTracker, config)) {
         scheduledLessons.add(lesson._id);
         return true;
       }
 
-      undoChanges(changes, grid, busyMap, dailyLessonMap);
+      undoChanges(changes, grid, busyMap, dailyLessonMap, loadTracker);
     } else {
-      // CONFLICT: Try swapping existing lesson
-      if (swapAttempts < MAX_SWAP_ATTEMPTS_PER_LESSON) {
-        const swapSucceeded = attemptSwap(
-          lesson,
-          slot,
-          isDouble,
-          tasks,
-          taskIndex,
-          grid,
-          busyMap,
-          dailyLessonMap,
-          scheduledLessons,
-          config
-        );
+      // CONFLICT: Try deep swap chain (up to 3 levels)
+      const swapSucceeded = attemptDeepSwapChain(
+        lesson,
+        slot,
+        isDouble,
+        tasks,
+        taskIndex,
+        grid,
+        busyMap,
+        dailyLessonMap,
+        scheduledLessons,
+        loadTracker,
+        config,
+        0 // Start at depth 0
+      );
 
-        if (swapSucceeded) {
-          return true;
-        }
+      if (swapSucceeded) {
+        return true;
       }
     }
   }
@@ -341,31 +401,24 @@ function minConflictsBacktrack(
 }
 
 /**
- * FORWARD CHECKING: Ensure remaining tasks can still be placed
+ * LOAD NORMALIZATION: Check if scheduling lesson would exceed 35-period limit
  */
-function forwardCheck(
-  tasks: ScheduleTask[],
-  currentIndex: number,
-  grid: TimetableGrid,
-  busyMap: BusyMap,
-  dailyLessonMap: DailyLessonMap,
-  config: ScheduleConfig
-): boolean {
-  // Check next 10 unscheduled tasks
-  for (let i = currentIndex + 1; i < Math.min(currentIndex + 11, tasks.length); i++) {
-    const task = tasks[i];
-    const validSlots = findValidSlotsWithLCV(
-      task.lesson,
-      task.isDouble,
-      grid,
-      busyMap,
-      dailyLessonMap,
-      config
-    );
+function canScheduleWithinLoadLimits(lesson: ScheduleLesson, loadTracker: LoadTracker): boolean {
+  const periodsToAdd = lesson.numberOfSingles + (lesson.numberOfDoubles * 2);
 
-    if (validSlots.length === 0) {
-      console.warn(`⚠️ Forward check failed: Task ${task.taskId} has no valid slots`);
-      return false;
+  // Check teachers
+  for (const teacherId of lesson.teacherIds) {
+    const currentLoad = loadTracker.teacherLoads.get(teacherId) || 0;
+    if (currentLoad + periodsToAdd > MAX_LOAD_PER_ENTITY) {
+      return false; // Would exceed teacher load
+    }
+  }
+
+  // Check classes
+  for (const classId of lesson.classIds) {
+    const currentLoad = loadTracker.classLoads.get(classId) || 0;
+    if (currentLoad + periodsToAdd > MAX_LOAD_PER_ENTITY) {
+      return false; // Would exceed class load
     }
   }
 
@@ -373,9 +426,91 @@ function forwardCheck(
 }
 
 /**
- * SWAP LOGIC: Try moving an existing lesson to make room
+ * GLOBAL PRESSURE HEURISTIC: Find valid slots prioritizing days with most teacher availability
  */
-function attemptSwap(
+interface PressureSlot extends SlotPosition {
+  pressureScore: number; // Higher = better (more free slots for this teacher on this day)
+}
+
+function findValidSlotsWithPressure(
+  lesson: ScheduleLesson,
+  isDouble: boolean,
+  grid: TimetableGrid,
+  busyMap: BusyMap,
+  dailyLessonMap: DailyLessonMap,
+  loadTracker: LoadTracker,
+  config: ScheduleConfig
+): PressureSlot[] {
+  const validSlots: PressureSlot[] = [];
+  const { daysOfWeek, numberOfPeriods } = config;
+
+  for (const day of daysOfWeek) {
+    // Calculate pressure score for this day (teacher availability)
+    const pressureScore = calculateDayPressure(lesson, day, grid, busyMap, config);
+
+    if (isDouble) {
+      // STRICT INTERVAL ENFORCEMENT: Use pre-calculated valid double starts
+      for (const period of validDoubleStarts) {
+        const nextPeriod = period + 1;
+
+        // Check if both periods are free
+        if (
+          isSlotFree(lesson, day, period, grid, busyMap) &&
+          isSlotFree(lesson, day, nextPeriod, grid, busyMap)
+        ) {
+          validSlots.push({ day, period, pressureScore });
+        }
+      }
+    } else {
+      // Single period: any period is fine
+      for (let period = 1; period <= numberOfPeriods; period++) {
+        if (isSlotFree(lesson, day, period, grid, busyMap)) {
+          validSlots.push({ day, period, pressureScore });
+        }
+      }
+    }
+  }
+
+  // Sort by pressure score descending (prefer days with more teacher availability)
+  validSlots.sort((a, b) => b.pressureScore - a.pressureScore);
+
+  return validSlots;
+}
+
+/**
+ * Calculate day pressure: How many free slots this teacher has on this day
+ */
+function calculateDayPressure(
+  lesson: ScheduleLesson,
+  day: string,
+  grid: TimetableGrid,
+  busyMap: BusyMap,
+  config: ScheduleConfig
+): number {
+  let freeSlots = 0;
+  const { numberOfPeriods } = config;
+
+  // Count free slots for each teacher on this day
+  for (const teacherId of lesson.teacherIds) {
+    for (let period = 1; period <= numberOfPeriods; period++) {
+      const busyKey = `${teacherId}-${day}-${period}`;
+      if (!busyMap.has(busyKey)) {
+        freeSlots++;
+      }
+    }
+  }
+
+  return freeSlots;
+}
+
+/**
+ * DEEP SWAP CHAIN: Attempt up to 3-level swap to make room
+ * Level 0: Try placing lesson A
+ * Level 1: If blocked by B, move B to alternative
+ * Level 2: If B blocked by C, move C to alternative
+ * Level 3: If C blocked by D, move D to alternative
+ */
+function attemptDeepSwapChain(
   newLesson: ScheduleLesson,
   targetSlot: SlotPosition,
   isDouble: boolean,
@@ -385,9 +520,21 @@ function attemptSwap(
   busyMap: BusyMap,
   dailyLessonMap: DailyLessonMap,
   scheduledLessons: Set<string>,
-  config: ScheduleConfig
+  loadTracker: LoadTracker,
+  config: ScheduleConfig,
+  depth: number
 ): boolean {
   swapAttempts++;
+
+  // Limit swap depth
+  if (depth >= MAX_SWAP_DEPTH) {
+    return false;
+  }
+
+  // Track if this is a deep chain (depth > 0)
+  if (depth > 0) {
+    deepSwapChains++;
+  }
 
   // Find conflicting lesson at target slot
   const periods = isDouble ? [targetSlot.period, targetSlot.period + 1] : [targetSlot.period];
@@ -403,74 +550,112 @@ function attemptSwap(
 
         if (!conflictingLesson) continue;
 
-        // Check if conflicting lesson is same as new lesson (ET/Bst vs ET / BST fix)
-        // Normalize lesson names for comparison
-        const normalizedNew = normalizeLessonName(newLesson.lessonName);
-        const normalizedConflict = normalizeLessonName(conflictingLesson.lessonName);
-        
-        if (normalizedNew === normalizedConflict) {
-          // Same subject - don't swap with itself
+        // Check if same lesson (normalization)
+        if (normalizeLessonName(newLesson.lessonName) === normalizeLessonName(conflictingLesson.lessonName)) {
           continue;
         }
 
-        // Find alternative slots for conflicting lesson
+        // Determine if conflicting lesson is double
         const isConflictDouble = existingSlot.slotType !== 'single';
-        const alternativeSlots = findValidSlotsWithLCV(
+
+        // Find alternative slots for conflicting lesson
+        const alternativeSlots = findValidSlotsWithPressure(
           conflictingLesson,
           isConflictDouble,
           grid,
           busyMap,
           dailyLessonMap,
+          loadTracker,
           config
         );
 
+        // Try each alternative
         for (const altSlot of alternativeSlots) {
           // Don't swap to same slot
           if (altSlot.day === targetSlot.day && altSlot.period === targetSlot.period) {
             continue;
           }
 
-          // Try removing conflicting lesson and placing in alternative slot
+          // Remove conflicting lesson
           const removalChanges = removeLesson(
             conflictingLessonId,
             targetSlot.day,
             period,
             grid,
             busyMap,
-            dailyLessonMap
+            dailyLessonMap,
+            loadTracker
           );
 
-          // Try placing conflicting lesson in alternative slot
-          const conflicts = checkSlotConflicts(conflictingLesson, altSlot, isConflictDouble, grid, busyMap);
+          // Check if alternative slot is free or requires deeper swap
+          const altConflicts = checkSlotConflicts(conflictingLesson, altSlot, isConflictDouble, grid, busyMap);
           
-          if (!conflicts.hasConflict && canScheduleOnDay(conflictingLesson, altSlot.day, dailyLessonMap)) {
+          if (!altConflicts.hasConflict && canScheduleOnDay(conflictingLesson, altSlot.day, dailyLessonMap)) {
+            // Alternative is free: simple swap
             const altPlacementChanges = placeLesson(
               conflictingLesson,
               altSlot,
               isConflictDouble,
               grid,
               busyMap,
-              dailyLessonMap
+              dailyLessonMap,
+              loadTracker
             );
 
-            // Now try placing new lesson in target slot
-            const newPlacementChanges = placeLesson(newLesson, targetSlot, isDouble, grid, busyMap, dailyLessonMap);
+            // Place new lesson in target slot
+            const newPlacementChanges = placeLesson(newLesson, targetSlot, isDouble, grid, busyMap, dailyLessonMap, loadTracker);
 
-            // Continue with backtracking
-            if (minConflictsBacktrack(tasks, taskIndex + 1, grid, busyMap, dailyLessonMap, scheduledLessons, config)) {
+            // Continue backtracking
+            if (deepRepairBacktrack(tasks, taskIndex + 1, grid, busyMap, dailyLessonMap, scheduledLessons, loadTracker, config)) {
               scheduledLessons.add(newLesson._id);
               successfulSwaps++;
-              console.log(`🔄 Successful swap: Moved ${conflictingLesson.lessonName} from ${targetSlot.day}P${targetSlot.period} to ${altSlot.day}P${altSlot.period}`);
+              if (depth === 0) {
+                console.log(`🔄 Successful swap: ${conflictingLesson.lessonName} (${targetSlot.day}P${targetSlot.period} → ${altSlot.day}P${altSlot.period})`);
+              } else {
+                console.log(`🔄 Deep chain (L${depth + 1}): ${conflictingLesson.lessonName} (${targetSlot.day}P${targetSlot.period} → ${altSlot.day}P${altSlot.period})`);
+              }
               return true;
             }
 
-            // Swap failed - undo everything
-            undoChanges(newPlacementChanges, grid, busyMap, dailyLessonMap);
-            undoChanges(altPlacementChanges, grid, busyMap, dailyLessonMap);
-            reapplyChanges(removalChanges, grid, busyMap, dailyLessonMap);
+            // Undo if backtracking failed
+            undoChanges(newPlacementChanges, grid, busyMap, dailyLessonMap, loadTracker);
+            undoChanges(altPlacementChanges, grid, busyMap, dailyLessonMap, loadTracker);
+            reapplyChanges(removalChanges, grid, busyMap, dailyLessonMap, loadTracker);
+          } else if (depth < MAX_SWAP_DEPTH - 1) {
+            // Alternative has conflict: try deeper swap chain
+            const deeperSwap = attemptDeepSwapChain(
+              conflictingLesson,
+              altSlot,
+              isConflictDouble,
+              tasks,
+              taskIndex,
+              grid,
+              busyMap,
+              dailyLessonMap,
+              scheduledLessons,
+              loadTracker,
+              config,
+              depth + 1
+            );
+
+            if (deeperSwap) {
+              // Deeper swap succeeded, now place new lesson
+              const newPlacementChanges = placeLesson(newLesson, targetSlot, isDouble, grid, busyMap, dailyLessonMap, loadTracker);
+
+              if (deepRepairBacktrack(tasks, taskIndex + 1, grid, busyMap, dailyLessonMap, scheduledLessons, loadTracker, config)) {
+                scheduledLessons.add(newLesson._id);
+                successfulSwaps++;
+                return true;
+              }
+
+              undoChanges(newPlacementChanges, grid, busyMap, dailyLessonMap, loadTracker);
+            } else {
+              // Deeper swap failed, restore original
+              reapplyChanges(removalChanges, grid, busyMap, dailyLessonMap, loadTracker);
+            }
           } else {
-            // Alternative slot not valid - restore original
-            reapplyChanges(removalChanges, grid, busyMap, dailyLessonMap);
+            // Max depth reached, restore original
+            reapplyChanges(removalChanges, grid, busyMap, dailyLessonMap, loadTracker);
           }
         }
       }
@@ -481,10 +666,9 @@ function attemptSwap(
 }
 
 /**
- * Normalize lesson names to handle "ET/Bst" vs "ET / BST" distinctions
+ * Normalize lesson names for comparison
  */
 function normalizeLessonName(name: string): string {
-  // Remove spaces around slashes and convert to uppercase
   return name.replace(/\s*\/\s*/g, '/').toUpperCase().trim();
 }
 
@@ -492,9 +676,9 @@ function normalizeLessonName(name: string): string {
  * Remove lesson from grid (for swapping)
  */
 interface Change {
-  type: 'grid' | 'busy' | 'daily';
+  type: 'grid' | 'busy' | 'daily' | 'load';
   key: string;
-  value?: GridSlot;
+  value?: GridSlot | number;
 }
 
 function removeLesson(
@@ -503,11 +687,15 @@ function removeLesson(
   period: number,
   grid: TimetableGrid,
   busyMap: BusyMap,
-  dailyLessonMap: DailyLessonMap
+  dailyLessonMap: DailyLessonMap,
+  loadTracker: LoadTracker
 ): Change[] {
   const changes: Change[] = [];
+  const lesson = lessonMetadataCache.get(lessonId);
 
-  // Find all slots for this lesson on this day
+  if (!lesson) return changes;
+
+  // Find all grid slots for this lesson on this day
   const keysToRemove: string[] = [];
   for (const [key, slot] of grid.entries()) {
     if (slot.lessonId === lessonId && key.includes(`-${day}-`)) {
@@ -524,29 +712,32 @@ function removeLesson(
   }
 
   // Remove busy markers
-  const busyKeysToRemove: string[] = [];
   for (const [key] of busyMap.entries()) {
     if (key.includes(`-${day}-${period}`)) {
-      busyKeysToRemove.push(key);
+      changes.push({ type: 'busy', key });
+      busyMap.delete(key);
     }
-  }
-
-  for (const key of busyKeysToRemove) {
-    changes.push({ type: 'busy', key });
-    busyMap.delete(key);
   }
 
   // Remove daily markers
-  const dailyKeysToRemove: string[] = [];
   for (const [key] of dailyLessonMap.entries()) {
     if (key.includes(`-${day}-${lessonId}`)) {
-      dailyKeysToRemove.push(key);
+      changes.push({ type: 'daily', key });
+      dailyLessonMap.delete(key);
     }
   }
 
-  for (const key of dailyKeysToRemove) {
-    changes.push({ type: 'daily', key });
-    dailyLessonMap.delete(key);
+  // Update load tracker
+  const periodsToRemove = lesson.numberOfSingles + (lesson.numberOfDoubles * 2);
+  for (const teacherId of lesson.teacherIds) {
+    const currentLoad = loadTracker.teacherLoads.get(teacherId) || 0;
+    changes.push({ type: 'load', key: `teacher-${teacherId}`, value: currentLoad });
+    loadTracker.teacherLoads.set(teacherId, currentLoad - periodsToRemove);
+  }
+  for (const classId of lesson.classIds) {
+    const currentLoad = loadTracker.classLoads.get(classId) || 0;
+    changes.push({ type: 'load', key: `class-${classId}`, value: currentLoad });
+    loadTracker.classLoads.set(classId, currentLoad - periodsToRemove);
   }
 
   return changes;
@@ -559,121 +750,28 @@ function reapplyChanges(
   changes: Change[],
   grid: TimetableGrid,
   busyMap: BusyMap,
-  dailyLessonMap: DailyLessonMap
+  dailyLessonMap: DailyLessonMap,
+  loadTracker: LoadTracker
 ): void {
   for (const change of changes) {
-    if (change.type === 'grid' && change.value) {
+    if (change.type === 'grid' && change.value && typeof change.value === 'object' && 'lessonId' in change.value) {
       grid.set(change.key, change.value);
     } else if (change.type === 'busy') {
       busyMap.set(change.key, true);
     } else if (change.type === 'daily') {
       dailyLessonMap.set(change.key, true);
-    }
-  }
-}
-
-/**
- * Find valid slots with LCV heuristic
- */
-interface LCVSlot extends SlotPosition {
-  lcvScore: number;
-}
-
-function findValidSlotsWithLCV(
-  lesson: ScheduleLesson,
-  isDouble: boolean,
-  grid: TimetableGrid,
-  busyMap: BusyMap,
-  dailyLessonMap: DailyLessonMap,
-  config: ScheduleConfig
-): LCVSlot[] {
-  const validSlots: LCVSlot[] = [];
-  const { daysOfWeek, numberOfPeriods, intervalSlots } = config;
-
-  for (const day of daysOfWeek) {
-    for (let period = 1; period <= numberOfPeriods; period++) {
-      if (isDouble) {
-        // Double period constraints
-        if (period === numberOfPeriods) continue; // Can't start at last period
-        if (intervalSlots.includes(period)) continue; // Can't span interval
-
-        const nextPeriod = period + 1;
-        if (
-          isSlotFree(lesson, day, period, grid, busyMap) &&
-          isSlotFree(lesson, day, nextPeriod, grid, busyMap)
-        ) {
-          const lcvScore = calculateLCVScore(lesson, day, period, isDouble, grid, busyMap, config);
-          validSlots.push({ day, period, lcvScore });
-        }
-      } else {
-        // Single period
-        if (isSlotFree(lesson, day, period, grid, busyMap)) {
-          const lcvScore = calculateLCVScore(lesson, day, period, isDouble, grid, busyMap, config);
-          validSlots.push({ day, period, lcvScore });
-        }
+    } else if (change.type === 'load' && typeof change.value === 'number') {
+      const parts = change.key.split('-');
+      const entityType = parts[0];
+      const entityId = parts.slice(1).join('-');
+      
+      if (entityType === 'teacher') {
+        loadTracker.teacherLoads.set(entityId, change.value);
+      } else if (entityType === 'class') {
+        loadTracker.classLoads.set(entityId, change.value);
       }
     }
   }
-
-  // Sort by LCV score (higher = better)
-  validSlots.sort((a, b) => b.lcvScore - a.lcvScore);
-
-  return validSlots;
-}
-
-/**
- * Calculate LCV score
- */
-function calculateLCVScore(
-  lesson: ScheduleLesson,
-  day: string,
-  period: number,
-  isDouble: boolean,
-  grid: TimetableGrid,
-  busyMap: BusyMap,
-  config: ScheduleConfig
-): number {
-  let score = 0;
-  const { daysOfWeek, numberOfPeriods } = config;
-
-  for (const otherDay of daysOfWeek) {
-    if (otherDay === day) continue;
-    
-    for (let p = 1; p <= numberOfPeriods; p++) {
-      if (isSlotFree(lesson, otherDay, p, grid, busyMap)) {
-        score++;
-      }
-    }
-  }
-
-  return score;
-}
-
-/**
- * Check if slot is free
- */
-function isSlotFree(
-  lesson: ScheduleLesson,
-  day: string,
-  period: number,
-  grid: TimetableGrid,
-  busyMap: BusyMap
-): boolean {
-  for (const classId of lesson.classIds) {
-    const key = `${classId}-${day}-${period}`;
-    if (grid.has(key) || busyMap.has(key)) {
-      return false;
-    }
-  }
-
-  for (const teacherId of lesson.teacherIds) {
-    const key = `${teacherId}-${day}-${period}`;
-    if (busyMap.has(key)) {
-      return false;
-    }
-  }
-
-  return true;
 }
 
 /**
@@ -737,6 +835,33 @@ function canScheduleOnDay(
 }
 
 /**
+ * Check if slot is free
+ */
+function isSlotFree(
+  lesson: ScheduleLesson,
+  day: string,
+  period: number,
+  grid: TimetableGrid,
+  busyMap: BusyMap
+): boolean {
+  for (const classId of lesson.classIds) {
+    const key = `${classId}-${day}-${period}`;
+    if (grid.has(key) || busyMap.has(key)) {
+      return false;
+    }
+  }
+
+  for (const teacherId of lesson.teacherIds) {
+    const key = `${teacherId}-${day}-${period}`;
+    if (busyMap.has(key)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
  * Place lesson in grid
  */
 function placeLesson(
@@ -745,7 +870,8 @@ function placeLesson(
   isDouble: boolean,
   grid: TimetableGrid,
   busyMap: BusyMap,
-  dailyLessonMap: DailyLessonMap
+  dailyLessonMap: DailyLessonMap,
+  loadTracker: LoadTracker
 ): Change[] {
   const changes: Change[] = [];
   const { day, period } = slot;
@@ -788,6 +914,19 @@ function placeLesson(
     changes.push({ type: 'daily', key: dailyKey });
   }
 
+  // Update load tracker
+  const periodsToAdd = isDouble ? 2 : 1;
+  for (const teacherId of lesson.teacherIds) {
+    const currentLoad = loadTracker.teacherLoads.get(teacherId) || 0;
+    changes.push({ type: 'load', key: `teacher-${teacherId}`, value: currentLoad });
+    loadTracker.teacherLoads.set(teacherId, currentLoad + periodsToAdd);
+  }
+  for (const classId of lesson.classIds) {
+    const currentLoad = loadTracker.classLoads.get(classId) || 0;
+    changes.push({ type: 'load', key: `class-${classId}`, value: currentLoad });
+    loadTracker.classLoads.set(classId, currentLoad + periodsToAdd);
+  }
+
   return changes;
 }
 
@@ -798,7 +937,8 @@ function undoChanges(
   changes: Change[],
   grid: TimetableGrid,
   busyMap: BusyMap,
-  dailyLessonMap: DailyLessonMap
+  dailyLessonMap: DailyLessonMap,
+  loadTracker: LoadTracker
 ): void {
   for (const change of changes) {
     if (change.type === 'grid') {
@@ -807,6 +947,16 @@ function undoChanges(
       busyMap.delete(change.key);
     } else if (change.type === 'daily') {
       dailyLessonMap.delete(change.key);
+    } else if (change.type === 'load' && typeof change.value === 'number') {
+      const parts = change.key.split('-');
+      const entityType = parts[0];
+      const entityId = parts.slice(1).join('-');
+      
+      if (entityType === 'teacher') {
+        loadTracker.teacherLoads.set(entityId, change.value);
+      } else if (entityType === 'class') {
+        loadTracker.classLoads.set(entityId, change.value);
+      }
     }
   }
 }
@@ -838,13 +988,14 @@ function gridToSlots(grid: TimetableGrid): TimetableSlot[] {
 }
 
 /**
- * Generate detailed conflict diagnostic for failed lesson
+ * Generate detailed diagnostic with explicit bottleneck reporting
  */
-function generateConflictDiagnostic(
+function generateDetailedDiagnostic(
   lesson: ScheduleLesson,
   grid: TimetableGrid,
   busyMap: BusyMap,
   dailyLessonMap: DailyLessonMap,
+  loadTracker: LoadTracker,
   config: ScheduleConfig
 ): ConflictDiagnostic {
   const requiredPeriods = lesson.numberOfSingles + (lesson.numberOfDoubles * 2);
@@ -856,9 +1007,8 @@ function generateConflictDiagnostic(
 
   const { daysOfWeek, numberOfPeriods, intervalSlots } = config;
 
-  // Analyze why lesson failed
+  // Analyze conflicts
   for (const day of daysOfWeek) {
-    // Check daily limit
     let dayBlocked = false;
     for (const classId of lesson.classIds) {
       const key = `${classId}-${day}-${lesson._id}`;
@@ -872,7 +1022,6 @@ function generateConflictDiagnostic(
     if (dayBlocked) continue;
 
     for (let period = 1; period <= numberOfPeriods; period++) {
-      // Check for teacher conflicts
       for (const teacherId of lesson.teacherIds) {
         const busyKey = `${teacherId}-${day}-${period}`;
         if (busyMap.has(busyKey)) {
@@ -880,7 +1029,6 @@ function generateConflictDiagnostic(
         }
       }
 
-      // Check for class conflicts
       for (const classId of lesson.classIds) {
         const gridKey = `${classId}-${day}-${period}`;
         if (grid.has(gridKey)) {
@@ -888,33 +1036,20 @@ function generateConflictDiagnostic(
         }
       }
 
-      // Check for double slot availability
-      if (lesson.numberOfDoubles > 0) {
-        if (period === numberOfPeriods || intervalSlots.includes(period)) {
-          noDoubleSlotCount++;
-        } else {
-          const nextPeriod = period + 1;
-          let doubleBlocked = false;
-          
-          for (const classId of lesson.classIds) {
-            if (
-              grid.has(`${classId}-${day}-${period}`) ||
-              grid.has(`${classId}-${day}-${nextPeriod}`)
-            ) {
-              noDoubleSlotCount++;
-              doubleBlocked = true;
-              break;
-            }
-          }
-        }
+      // Check double slot availability
+      if (lesson.numberOfDoubles > 0 && !validDoubleStarts.includes(period)) {
+        noDoubleSlotCount++;
       }
     }
   }
 
-  // Generate failure reason
+  // Generate explicit failure reason with interval awareness
   let failureReason = '';
   
-  if (teacherBusyCount > classBusyCount && teacherBusyCount > noDoubleSlotCount) {
+  // Check for interval barriers
+  if (noDoubleSlotCount > 0 && lesson.numberOfDoubles > 0) {
+    failureReason = `Interval barrier prevents double periods: Intervals after period(s) ${intervalSlots.join(', ')} block ${lesson.numberOfDoubles} required double period(s). Valid double starts: ${validDoubleStarts.join(', ')}.`;
+  } else if (teacherBusyCount > classBusyCount) {
     // Find busiest teacher
     const teacherConflicts = new Map<string, number>();
     for (const day of daysOfWeek) {
@@ -927,18 +1062,21 @@ function generateConflictDiagnostic(
         }
       }
     }
+    
     const busiestTeacher = Array.from(teacherConflicts.entries()).sort((a, b) => b[1] - a[1])[0];
-    failureReason = busiestTeacher 
-      ? `Teacher ${busiestTeacher[0]} is already busy in most available time slots (${busiestTeacher[1]} conflicts).`
-      : 'Teachers are over-allocated across the timetable.';
-  } else if (noDoubleSlotCount > 0 && lesson.numberOfDoubles > 0) {
-    failureReason = `No available consecutive period slots for ${lesson.numberOfDoubles} double period(s). Intervals after periods ${intervalSlots.join(', ')} prevent double period placement.`;
-  } else if (dailyLimitCount > 0) {
-    failureReason = `Daily subject limit reached. Lesson already scheduled for some classes on multiple days.`;
+    if (busiestTeacher) {
+      const teacherLoad = loadTracker.teacherLoads.get(busiestTeacher[0]) || 0;
+      failureReason = `Teacher ${busiestTeacher[0]} is fully booked across all possible ${validDoubleStarts.length} double-period blocks (${busiestTeacher[1]} conflicts, ${teacherLoad} periods assigned). Consider reducing teacher workload or hiring additional staff.`;
+    } else {
+      failureReason = `Teachers are over-allocated. No available time slots for ${requiredPeriods} periods.`;
+    }
   } else if (classBusyCount > 0) {
-    failureReason = `Classes are over-allocated. Not enough free periods across the week for ${requiredPeriods} total periods.`;
+    const classLoad = Math.max(...lesson.classIds.map(id => loadTracker.classLoads.get(id) || 0));
+    failureReason = `Classes are over-scheduled (${classLoad} periods assigned, approaching 35-period limit). Not enough free periods across the week for ${requiredPeriods} total periods.`;
+  } else if (dailyLimitCount > 0) {
+    failureReason = `Daily subject limit reached. Lesson already scheduled for some classes on multiple days. Try redistributing ${lesson.numberOfDoubles} doubles + ${lesson.numberOfSingles} singles across more days.`;
   } else {
-    failureReason = `Unable to find valid time slots for ${requiredPeriods} periods (${lesson.numberOfDoubles} doubles + ${lesson.numberOfSingles} singles).`;
+    failureReason = `Unable to find valid time slots for ${requiredPeriods} periods (${lesson.numberOfDoubles} doubles + ${lesson.numberOfSingles} singles). All ${validDoubleStarts.length} valid double-period blocks are occupied or conflict with existing schedule.`;
   }
 
   // Generate swap suggestions
@@ -960,7 +1098,7 @@ function generateConflictDiagnostic(
 }
 
 /**
- * Generate smart swap suggestions for failed lesson
+ * Generate swap suggestions
  */
 function generateSwapSuggestions(
   lesson: ScheduleLesson,
@@ -970,21 +1108,16 @@ function generateSwapSuggestions(
   config: ScheduleConfig
 ): SwapSuggestion[] {
   const suggestions: SwapSuggestion[] = [];
-  const { daysOfWeek, numberOfPeriods, intervalSlots } = config;
+  const { daysOfWeek } = config;
   const isDouble = lesson.numberOfDoubles > 0;
 
   for (const day of daysOfWeek) {
-    for (let period = 1; period <= numberOfPeriods; period++) {
-      // Skip if can't place double here
-      if (isDouble) {
-        if (period === numberOfPeriods || intervalSlots.includes(period)) continue;
-      }
+    const periodsToCheck = isDouble ? validDoubleStarts : Array.from({ length: config.numberOfPeriods }, (_, i) => i + 1);
 
-      // Find if there's exactly ONE conflict
+    for (const period of periodsToCheck) {
       const conflicts = checkSlotConflicts(lesson, { day, period }, isDouble, grid, busyMap);
       
       if (conflicts.busyClasses.length === 1 && conflicts.busyTeachers.length === 0) {
-        // Single class conflict - find what lesson is blocking
         const classId = conflicts.busyClasses[0];
         const gridKey = `${classId}-${day}-${period}`;
         const blockingSlot = grid.get(gridKey);
@@ -992,16 +1125,19 @@ function generateSwapSuggestions(
         if (blockingSlot) {
           const blockingLesson = lessonMetadataCache.get(blockingSlot.lessonId);
           if (blockingLesson) {
-            // Find alternative slots for blocking lesson
             const isBlockingDouble = blockingSlot.slotType !== 'single';
-            const alternatives = findValidSlotsWithLCV(
-              blockingLesson,
-              isBlockingDouble,
-              grid,
-              busyMap,
-              dailyLessonMap,
-              config
-            ).slice(0, 3); // Top 3 alternatives
+            const alternatives: SlotPosition[] = [];
+            
+            // Find alternatives for blocking lesson
+            for (const altDay of daysOfWeek) {
+              const altPeriods = isBlockingDouble ? validDoubleStarts : Array.from({ length: config.numberOfPeriods }, (_, i) => i + 1);
+              for (const altPeriod of altPeriods) {
+                if (altDay === day && altPeriod === period) continue;
+                if (isSlotFree(blockingLesson, altDay, altPeriod, grid, busyMap)) {
+                  alternatives.push({ day: altDay, period: altPeriod });
+                }
+              }
+            }
 
             if (alternatives.length > 0) {
               suggestions.push({
@@ -1010,49 +1146,7 @@ function generateSwapSuggestions(
                   lessonId: blockingLesson._id,
                   lessonName: blockingLesson.lessonName,
                 },
-                alternativeSlots: alternatives.map(a => ({ day: a.day, period: a.period })),
-                swapFeasibility: alternatives.length >= 3 ? 'easy' : alternatives.length >= 2 ? 'moderate' : 'hard',
-              });
-            }
-          }
-        }
-      } else if (conflicts.busyTeachers.length === 1 && conflicts.busyClasses.length === 0) {
-        // Single teacher conflict
-        const teacherId = conflicts.busyTeachers[0];
-        
-        // Find teacher's lesson at this time
-        let blockingLessonId: string | null = null;
-        for (const [key, slot] of grid.entries()) {
-          if (key.includes(`-${day}-${period}`)) {
-            const blockingLesson = lessonMetadataCache.get(slot.lessonId);
-            if (blockingLesson && blockingLesson.teacherIds.includes(teacherId)) {
-              blockingLessonId = slot.lessonId;
-              break;
-            }
-          }
-        }
-
-        if (blockingLessonId) {
-          const blockingLesson = lessonMetadataCache.get(blockingLessonId);
-          if (blockingLesson) {
-            const isBlockingDouble = grid.get(`${blockingLesson.classIds[0]}-${day}-${period}`)?.slotType !== 'single';
-            const alternatives = findValidSlotsWithLCV(
-              blockingLesson,
-              isBlockingDouble,
-              grid,
-              busyMap,
-              dailyLessonMap,
-              config
-            ).slice(0, 3);
-
-            if (alternatives.length > 0) {
-              suggestions.push({
-                targetSlot: { day, period },
-                conflictingLesson: {
-                  lessonId: blockingLesson._id,
-                  lessonName: blockingLesson.lessonName,
-                },
-                alternativeSlots: alternatives.map(a => ({ day: a.day, period: a.period })),
+                alternativeSlots: alternatives.slice(0, 3),
                 swapFeasibility: alternatives.length >= 3 ? 'easy' : alternatives.length >= 2 ? 'moderate' : 'hard',
               });
             }
@@ -1060,7 +1154,7 @@ function generateSwapSuggestions(
         }
       }
 
-      if (suggestions.length >= 5) break; // Limit to 5 suggestions
+      if (suggestions.length >= 5) break;
     }
     if (suggestions.length >= 5) break;
   }

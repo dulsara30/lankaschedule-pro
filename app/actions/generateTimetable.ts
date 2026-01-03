@@ -204,22 +204,22 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
     const apiTime = ((Date.now() - startTime) / 1000).toFixed(2);
 
     console.log(`✅ Solver completed in ${apiTime}s`);
-    console.log(`📊 Result: ${result.slots.length} slots generated`);
-    console.log(`⚠️  Conflicts: ${result.conflicts}`);
-    console.log(`📈 Stats:`, result.stats);
-    console.log(`💬 Message: ${result.message}`);
+    console.log(`📊 Result: ${result?.slots?.length || 0} slots generated`);
+    console.log(`⚠️  Conflicts: ${result?.conflicts || 0}`);
+    console.log(`📈 Stats:`, result?.stats);
+    console.log(`💬 Message: ${result?.message}`);
 
     // Step 5: Validate result
     console.log("\n🔍 Step 5: Validating solution...");
     
-    if (!result.success) {
+    if (!result?.success) {
       return {
         success: false,
-        message: `Solver failed: ${result.message}`,
+        message: `Solver failed: ${result?.message || 'Unknown error'}`,
       };
     }
 
-    if (!result.slots || result.slots.length === 0) {
+    if (!result?.slots || result.slots.length === 0) {
       return {
         success: false,
         message: "Solver returned no slots. The problem may be over-constrained.",
@@ -227,10 +227,11 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
     }
 
     // Check if we got the expected number of slots
-    const slotCoverage = ((result.slots.length / expectedSlots) * 100).toFixed(1);
-    console.log(`✅ Solution coverage: ${result.slots.length}/${expectedSlots} slots (${slotCoverage}%)`);
+    const slotsCount = result.slots?.length || 0;
+    const slotCoverage = ((slotsCount / expectedSlots) * 100).toFixed(1);
+    console.log(`✅ Solution coverage: ${slotsCount}/${expectedSlots} slots (${slotCoverage}%)`);
 
-    if (result.slots.length < expectedSlots * 0.9) {
+    if (slotsCount < expectedSlots * 0.9) {
       console.warn(`⚠️  WARNING: Only ${slotCoverage}% of slots were placed. Some lessons may be missing.`);
     }
 
@@ -263,7 +264,7 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
     });
 
     const deduplicatedSlots = Array.from(slotMap.values());
-    console.log(`🔍 Deduplication: ${result.slots.length} → ${deduplicatedSlots.length} slots`);
+    console.log(`🔍 Deduplication: ${result?.slots?.length || 0} → ${deduplicatedSlots.length} slots`);
 
     // Batch insert
     const insertResult = await TimetableSlot.insertMany(deduplicatedSlots, {

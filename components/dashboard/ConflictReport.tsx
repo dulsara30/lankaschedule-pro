@@ -4,7 +4,9 @@ import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { AlertCircle, AlertTriangle, CheckCircle2, ArrowRightLeft, ChevronDown, ChevronUp } from 'lucide-react';
+import { AlertCircle, AlertTriangle, CheckCircle2, ArrowRightLeft, ChevronDown, ChevronUp, Download } from 'lucide-react';
+import { PDFDownloadLink } from '@react-pdf/renderer';
+import ConflictReportPDF from '@/components/timetable/ConflictReportPDF';
 
 interface ConflictDiagnostic {
   lessonId: string;
@@ -32,11 +34,13 @@ interface SwapSuggestion {
 
 interface ConflictReportProps {
   failedLessons: ConflictDiagnostic[];
+  schoolName?: string;
   onClose?: () => void;
 }
 
-export default function ConflictReport({ failedLessons, onClose }: ConflictReportProps) {
+export default function ConflictReport({ failedLessons, schoolName = 'School', onClose }: ConflictReportProps) {
   const [expandedLesson, setExpandedLesson] = useState<string | null>(null);
+  const [isPDFReady, setIsPDFReady] = useState(false);
 
   const toggleExpanded = (lessonId: string) => {
     setExpandedLesson(expandedLesson === lessonId ? null : lessonId);
@@ -308,9 +312,37 @@ export default function ConflictReport({ failedLessons, onClose }: ConflictRepor
         <Button variant="outline" onClick={onClose}>
           Close Report
         </Button>
-        <Button className="bg-blue-600 hover:bg-blue-700">
-          Export Conflict Report
-        </Button>
+        {isPDFReady ? (
+          <PDFDownloadLink
+            document={
+              <ConflictReportPDF
+                failedLessons={failedLessons}
+                schoolName={schoolName}
+                generatedDate={new Date().toLocaleDateString('en-US', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric',
+                })}
+              />
+            }
+            fileName={`Conflict_Report_${new Date().toISOString().split('T')[0]}.pdf`}
+          >
+            {({ loading }) => (
+              <Button className="bg-blue-600 hover:bg-blue-700" disabled={loading}>
+                <Download className="mr-2 h-4 w-4" />
+                {loading ? 'Preparing PDF...' : 'Export Conflict Report'}
+              </Button>
+            )}
+          </PDFDownloadLink>
+        ) : (
+          <Button
+            className="bg-blue-600 hover:bg-blue-700"
+            onClick={() => setIsPDFReady(true)}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            Export Conflict Report
+          </Button>
+        )}
       </div>
     </div>
   );

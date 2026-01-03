@@ -59,6 +59,7 @@ export default function LessonsPage() {
   const [generationStep, setGenerationStep] = useState(0);
   const [showConflictReport, setShowConflictReport] = useState(false);
   const [generationResult, setGenerationResult] = useState<GenerateTimetableResult | null>(null);
+  const [schoolName, setSchoolName] = useState('School');
 
   const [formData, setFormData] = useState({
     lessonName: '',
@@ -177,24 +178,27 @@ export default function LessonsPage() {
 
   const fetchData = async () => {
     try {
-      const [lessonsRes, subjectsRes, teachersRes, classesRes] = await Promise.all([
+      const [lessonsRes, subjectsRes, teachersRes, classesRes, schoolRes] = await Promise.all([
         fetch('/api/lessons', { cache: 'no-store' }),
         fetch('/api/subjects', { cache: 'no-store' }),
         fetch('/api/teachers', { cache: 'no-store' }),
         fetch('/api/classes', { cache: 'no-store' }),
+        fetch('/api/school/info', { cache: 'no-store' }),
       ]);
 
-      const [lessonsData, subjectsData, teachersData, classesData] = await Promise.all([
+      const [lessonsData, subjectsData, teachersData, classesData, schoolData] = await Promise.all([
         lessonsRes.json(),
         subjectsRes.json(),
         teachersRes.json(),
         classesRes.json(),
+        schoolRes.json(),
       ]);
 
       if (lessonsData.success) setLessons(lessonsData.data);
       if (subjectsData.success) setSubjects(subjectsData.data);
       if (teachersData.success) setTeachers(teachersData.data);
       if (classesData.success) setClasses(classesData.data);
+      if (schoolData.success && schoolData.data?.name) setSchoolName(schoolData.data.name);
     } catch {
       toast.error('Failed to load data');
     }
@@ -512,7 +516,8 @@ export default function LessonsPage() {
             </div>
             
             <ConflictReport 
-              failedLessons={generationResult.failedLessons} 
+              failedLessons={generationResult.failedLessons}
+              schoolName={schoolName}
               onClose={() => {
                 setShowConflictReport(false);
                 setIsGenerating(false);

@@ -15,6 +15,7 @@ interface Class {
   grade: number | string;
   stream?: string;
   lessonCount: number;
+  totalWeeklyPeriods: number;
 }
 
 const STREAMS = ['Science', 'Arts', 'Commerce', 'Technology'] as const;
@@ -517,6 +518,7 @@ export default function ClassesPage() {
                     <TableHead>Grade Level</TableHead>
                     <TableHead>Stream</TableHead>
                     <TableHead>Assigned Lessons</TableHead>
+                    <TableHead>Weekly Load</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -546,6 +548,28 @@ export default function ClassesPage() {
                         }`}>
                           {classItem.lessonCount} {classItem.lessonCount === 1 ? 'Lesson' : 'Lessons'}
                         </span>
+                      </TableCell>
+                      <TableCell>
+                        {classItem.totalWeeklyPeriods > 0 ? (
+                          <div className="flex items-center gap-2">
+                            <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
+                              classItem.totalWeeklyPeriods > 40
+                                ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                                : classItem.totalWeeklyPeriods > 35
+                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
+                                : 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                            }`}>
+                              {classItem.totalWeeklyPeriods} Periods
+                            </span>
+                            {classItem.totalWeeklyPeriods > 40 && (
+                              <span className="text-xs text-red-600 dark:text-red-400" title="Exceeds typical weekly capacity">
+                                ⚠
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-sm text-zinc-400">-</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">

@@ -25,18 +25,29 @@ export async function GET() {
     // Fetch all lessons to calculate counts for each class
     const lessons = await Lesson.find({ schoolId: school._id }).lean();
 
-    // Enrich classes with lesson count
+    // Enrich classes with lesson count and total weekly periods
     const enrichedClasses = classes.map(classItem => {
-      // Count lessons that include this class in their classIds array
-      const lessonCount = lessons.filter(lesson => 
+      // Find all lessons assigned to this class
+      const classLessons = lessons.filter(lesson => 
         lesson.classIds.some((id: { toString: () => string }) => 
           id.toString() === classItem._id.toString()
         )
-      ).length;
+      );
+
+      // Count total lessons
+      const lessonCount = classLessons.length;
+
+      // Calculate total weekly periods: numberOfSingles + (numberOfDoubles * 2)
+      const totalWeeklyPeriods = classLessons.reduce((total, lesson) => {
+        const singles = lesson.numberOfSingles || 0;
+        const doubles = lesson.numberOfDoubles || 0;
+        return total + singles + (doubles * 2);
+      }, 0);
 
       return {
         ...classItem,
         lessonCount,
+        totalWeeklyPeriods,
       };
     });
 

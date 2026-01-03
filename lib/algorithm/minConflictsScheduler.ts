@@ -115,16 +115,24 @@ const RESTART_INTERVAL = 200000; // Restart every 200k iterations to escape stag
 const DAILY_PERIOD_LIMIT = 7; // Target: max 7 periods per teacher per day
 const WEEKLY_LOAD_LIMIT = 35; // Max 35 periods per teacher/class per week
 
-// Penalty-Based Scoring Weights (aSc TimeTable style)
-const PENALTY_TEACHER_OVERLAP = 100; // Teacher teaching multiple classes simultaneously
-const PENALTY_CLASS_OVERLAP = 100; // Class in multiple lessons simultaneously
-const PENALTY_INTERVAL_VIOLATION = 50; // Double period spanning interval
+// Multi-Dimensional Penalty Scoring (aSc TimeTable Professional)
+const PENALTY_CRITICAL_OVERLAP = 1000; // CRITICAL: Teacher/Class hard conflict (impossible)
+const PENALTY_INTERVAL_VIOLATION = 500; // HIGH: Double period spanning interval boundary
+const PENALTY_TEACHER_GAP = 100; // MEDIUM: Teacher has gaps (e.g., P1 and P7, nothing between)
+const PENALTY_DAY_IMBALANCE = 50; // LOW: Too many periods of same subject on one day
 const PENALTY_DAILY_OVERLOAD = 20; // Teacher exceeding daily limit
 const PENALTY_WEEKLY_OVERLOAD = 10; // Teacher exceeding weekly limit
 
-// Simulated annealing parameters
+// Adaptive Simulated Annealing Parameters
 let temperature = 1.0; // Initial temperature (accept bad swaps)
 const COOLING_RATE = 0.000001; // Gradual cooling over 1M iterations
+const REHEAT_TEMPERATURE = 0.8; // Reheat to 80% when stagnating
+const STAGNATION_THRESHOLD = 50000; // Reheat if no improvement for 50k iterations
+const STRATEGIC_SHUFFLE_THRESHOLD = 200000; // Strategic shuffle if stuck for 200k
+
+// Swap Chain Parameters
+const MAX_CHAIN_DEPTH = 3; // Level 3 Deep Search (A -> B -> C -> free)
+const CHAIN_SEARCH_LIMIT = 20; // Max candidates to explore per chain level
 
 // Lesson metadata cache
 const lessonMetadataCache = new Map<string, ScheduleLesson>();
@@ -161,9 +169,21 @@ export function generateTimetable(
     lessonMetadataCache.set(lesson._id, lesson);
   }
 
+  // PHASE 0: BOTTLENECK PRE-PROCESSING (Catch impossible constraints)
+  console.log(`🔍 PHASE 0: Bottleneck Pre-Processing`);
+  const bottlenecks = detectBottlenecks(lessons, config);
+  if (bottlenecks.length > 0) {
+    console.log(`❌ DATA ERRORS DETECTED - Impossible Constraints:`);
+    for (const bn of bottlenecks) {
+      console.log(`   • ${bn.lessonName}: ${bn.reason}`);
+    }
+  } else {
+    console.log(`   ✅ All lessons feasible`);
+  }
+
   // Calculate valid double period start positions (STRICT INTERVAL ENFORCEMENT)
   validDoubleStarts = calculateValidDoubleStarts(config);
-  console.log(`🔒 STRICT INTERVAL ENFORCEMENT:`);
+  console.log(`\n🔒 STRICT INTERVAL ENFORCEMENT:`);
   console.log(`   Intervals after periods: ${config.intervalSlots.join(', ')}`);
   console.log(`   Valid double-period starts: ${validDoubleStarts.join(', ')}`);
 
@@ -171,7 +191,7 @@ export function generateTimetable(
   const busyMap: BusyMap = new Map();
   const dailyLessonMap: DailyLessonMap = new Map();
 
-  console.log(`🚀 High-Performance Stochastic Repair Scheduler`);
+  console.log(`\n🚀 High-Performance Stochastic Repair Scheduler`);
   console.log(`📊 Dataset: ${lessons.length} lessons`);
   console.log(`📊 Config: ${config.numberOfPeriods}P/day × ${config.daysOfWeek.length}D = ${config.numberOfPeriods * config.daysOfWeek.length} total slots`);
 
@@ -249,6 +269,54 @@ function calculateValidDoubleStarts(config: ScheduleConfig): number[] {
   }
 
   return validStarts;
+}
+
+/**
+ * PHASE 0: Bottleneck Pre-Processing
+ * Detect impossible constraints before scheduling
+ */
+interface Bottleneck {
+  lessonName: string;
+  reason: string;
+}
+
+function detectBottlenecks(lessons: ScheduleLesson[], config: ScheduleConfig): Bottleneck[] {
+  const bottlenecks: Bottleneck[] = [];
+  const maxPeriodsPerWeek = config.numberOfPeriods * config.daysOfWeek.length;
+
+  for (const lesson of lessons) {
+    const totalPeriods = lesson.numberOfSingles + (lesson.numberOfDoubles * 2);
+
+    // Check teacher overload
+    for (const teacherId of lesson.teacherIds) {
+      const teacherLessons = lessons.filter(l => l.teacherIds.includes(teacherId));
+      const teacherLoad = teacherLessons.reduce((sum, l) => 
+        sum + l.numberOfSingles + (l.numberOfDoubles * 2), 0);
+      
+      if (teacherLoad > WEEKLY_LOAD_LIMIT) {
+        bottlenecks.push({
+          lessonName: lesson.lessonName,
+          reason: `Teacher load ${teacherLoad} exceeds limit ${WEEKLY_LOAD_LIMIT}`
+        });
+      }
+    }
+
+    // Check class overload
+    for (const classId of lesson.classIds) {
+      const classLessons = lessons.filter(l => l.classIds.includes(classId));
+      const classLoad = classLessons.reduce((sum, l) => 
+        sum + l.numberOfSingles + (l.numberOfDoubles * 2), 0);
+      
+      if (classLoad > maxPeriodsPerWeek) {
+        bottlenecks.push({
+          lessonName: lesson.lessonName,
+          reason: `Class load ${classLoad} exceeds week capacity ${maxPeriodsPerWeek}`
+        });
+      }
+    }
+  }
+
+  return bottlenecks;
 }
 
 /**
@@ -473,7 +541,7 @@ function calculateWorkloadBalanceScore(
  * For multi-teacher lessons, treat all resources as a single atomic block
  */
 /**
- * Calculate penalty score for a slot placement (Penalty-Based Global Solver)
+ * Calculate penalty score for a slot placement (Multi-Dimensional Penalty Scoring)
  * Lower score = better placement
  */
 function calculateSlotPenalty(
@@ -490,36 +558,53 @@ function calculateSlotPenalty(
   let penalty = 0;
   const periods = isDouble ? [period, period + 1] : [period];
 
-  // Check for teacher and class overlaps
+  // CRITICAL: Hard conflicts (impossible to resolve)
   for (const p of periods) {
-    // Teacher overlap penalty
+    // Teacher overlap - CRITICAL
     for (const teacherId of lesson.teacherIds) {
       const busyKey = `${teacherId}-${day}-${p}`;
       if (busyMap.has(busyKey)) {
-        penalty += PENALTY_TEACHER_OVERLAP;
+        penalty += PENALTY_CRITICAL_OVERLAP;
       }
     }
 
-    // Class overlap penalty
+    // Class overlap - CRITICAL
     for (const classId of lesson.classIds) {
       const gridKey = `${classId}-${day}-${p}`;
       const existingSlots = grid.get(gridKey) || [];
       if (existingSlots.length > 0) {
-        // Each existing slot at this position adds penalty
-        penalty += PENALTY_CLASS_OVERLAP * existingSlots.length;
+        penalty += PENALTY_CRITICAL_OVERLAP * existingSlots.length;
       }
     }
   }
 
-  // Interval violation penalty (for double periods)
-  if (isDouble) {
-    const intervalsAfterPeriod = config.intervalSlots || [];
-    if (intervalsAfterPeriod.includes(period)) {
-      penalty += PENALTY_INTERVAL_VIOLATION;
+  // HIGH: Interval violation (double period spanning break)
+  if (isDouble && config.intervalSlots.includes(period)) {
+    penalty += PENALTY_INTERVAL_VIOLATION;
+  }
+
+  // MEDIUM: Teacher gaps penalty (avoid P1 + P7 with nothing between)
+  for (const teacherId of lesson.teacherIds) {
+    const teacherDaySchedule = getTeacherDaySchedule(teacherId, day, grid);
+    if (teacherDaySchedule.length > 0) {
+      const minPeriod = Math.min(...teacherDaySchedule);
+      const maxPeriod = Math.max(...teacherDaySchedule);
+      const gapSize = maxPeriod - minPeriod - teacherDaySchedule.length;
+      if (gapSize > 0) {
+        penalty += PENALTY_TEACHER_GAP * gapSize;
+      }
     }
   }
 
-  // Daily overload penalty
+  // LOW: Day balancing (avoid 5 periods of same subject on one day)
+  for (const classId of lesson.classIds) {
+    const subjectCountOnDay = countSubjectOnDay(lesson, classId, day, grid);
+    if (subjectCountOnDay >= 3) {
+      penalty += PENALTY_DAY_IMBALANCE * (subjectCountOnDay - 2);
+    }
+  }
+
+  // Daily overload
   for (const teacherId of lesson.teacherIds) {
     const dailyKey = `${teacherId}-${day}`;
     const currentLoad = teacherDailyLoads.get(dailyKey) || 0;
@@ -528,7 +613,7 @@ function calculateSlotPenalty(
     }
   }
 
-  // Weekly overload penalty
+  // Weekly overload
   for (const teacherId of lesson.teacherIds) {
     const weeklyLoad = teacherWeeklyLoads.get(teacherId) || 0;
     if (weeklyLoad >= WEEKLY_LOAD_LIMIT) {
@@ -537,6 +622,44 @@ function calculateSlotPenalty(
   }
 
   return penalty;
+}
+
+/**
+ * Get all periods where teacher is scheduled on a specific day
+ */
+function getTeacherDaySchedule(teacherId: string, day: string, grid: TimetableGrid): number[] {
+  const periods: number[] = [];
+  for (const [key, slots] of grid.entries()) {
+    const [classId, slotDay, periodStr] = key.split('-');
+    if (slotDay === day) {
+      for (const slot of slots) {
+        const lesson = lessonMetadataCache.get(slot.lessonId);
+        if (lesson && lesson.teacherIds.includes(teacherId)) {
+          periods.push(parseInt(periodStr));
+        }
+      }
+    }
+  }
+  return [...new Set(periods)].sort((a, b) => a - b);
+}
+
+/**
+ * Count how many periods of the same subject the class has on this day
+ */
+function countSubjectOnDay(lesson: ScheduleLesson, classId: string, day: string, grid: TimetableGrid): number {
+  let count = 0;
+  for (const [key, slots] of grid.entries()) {
+    const [gridClassId, slotDay] = key.split('-');
+    if (gridClassId === classId && slotDay === day) {
+      for (const slot of slots) {
+        const slotLesson = lessonMetadataCache.get(slot.lessonId);
+        if (slotLesson && slotLesson.subjectIds.some(sid => lesson.subjectIds.includes(sid))) {
+          count++;
+        }
+      }
+    }
+  }
+  return count;
 }
 
 /**
@@ -618,7 +741,7 @@ function placeTaskGreedy(
 }
 
 /**
- * PHASE 2: Stochastic Repair with Simulated Annealing
+ * PHASE 2: Stochastic Repair with Adaptive Simulated Annealing
  */
 function stochasticRepair(
   placedTasks: PlacedTask[],
@@ -629,34 +752,30 @@ function stochasticRepair(
 ): void {
   let bestConflicts = countTotalConflicts(placedTasks, grid, busyMap, config, teacherDailyLoads, teacherWeeklyLoads);
   let currentConflicts = bestConflicts;
-  let stagnationCounter = 0;
-  const STAGNATION_LIMIT = 100000; // Early exit if no improvement for 100K iterations
-  let lastRestart = 0;
+  let lastImprovementIteration = 0;
+  let iterationsSinceImprovement = 0;
 
   console.log(`   🔥 Starting repair: ${currentConflicts} conflicts`);
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     iterationCount++;
+    iterationsSinceImprovement++;
 
-    // Restart mechanism every 200k iterations to escape local minima
-    if (i > 0 && i % RESTART_INTERVAL === 0 && i !== lastRestart) {
-      console.log(`   🔄 RESTART at ${i.toLocaleString()} iterations - Re-shuffling to escape stagnation`);
-      temperature = 1.0; // Reset temperature
-      stagnationCounter = 0;
-      lastRestart = i;
-      
-      // Random shuffle some high-conflict tasks
-      const highConflictTasks = placedTasks
-        .filter(t => t.conflictCount > 5)
-        .sort(() => Math.random() - 0.5)
-        .slice(0, Math.min(10, Math.floor(placedTasks.length * 0.1)));
-      
-      for (const task of highConflictTasks) {
-        attemptStochasticSwap(task, placedTasks, grid, busyMap, dailyLessonMap, config);
-      }
-      
+    // ADAPTIVE ANNEALING: Reheat if stagnating for 50k iterations
+    if (iterationsSinceImprovement >= STAGNATION_THRESHOLD) {
+      console.log(`   🌡️ REHEAT at ${i.toLocaleString()} - No improvement for ${STAGNATION_THRESHOLD.toLocaleString()} iterations`);
+      temperature = REHEAT_TEMPERATURE;
+      iterationsSinceImprovement = 0;
+    }
+
+    // STRATEGIC SHUFFLE: If stuck for 200k iterations, keep best 50% and randomize rest
+    if (iterationsSinceImprovement >= STRATEGIC_SHUFFLE_THRESHOLD) {
+      console.log(`   🎲 STRATEGIC SHUFFLE at ${i.toLocaleString()} - Keeping best 50%, randomizing rest`);
+      performStrategicShuffle(placedTasks, grid, busyMap, dailyLessonMap, config);
       currentConflicts = countTotalConflicts(placedTasks, grid, busyMap, config, teacherDailyLoads, teacherWeeklyLoads);
-      console.log(`   ↻ After restart: ${currentConflicts} conflicts`);
+      temperature = 1.0;
+      iterationsSinceImprovement = 0;
+      console.log(`   ↻ After strategic shuffle: ${currentConflicts} conflicts`);
     }
 
     // Progress logging every 100K iterations
@@ -669,25 +788,20 @@ function stochasticRepair(
       }
     }
 
-    // Early exit if stagnated
-    if (stagnationCounter > STAGNATION_LIMIT) {
-      console.log(`   ⚠️ Stagnation detected (no improvement for ${STAGNATION_LIMIT.toLocaleString()} iterations)`);
-      break;
-    }
-
     // Pick a random task with conflicts
     const conflictingTasks = placedTasks.filter(t => t.conflictCount > 0);
     
     if (conflictingTasks.length === 0) {
-      // No conflicts remaining
       console.log(`   ✅ All conflicts resolved at iteration ${i.toLocaleString()}!`);
       break;
     }
 
     const randomTask = conflictingTasks[Math.floor(Math.random() * conflictingTasks.length)];
 
-    // Try swapping with another task or moving to random slot
-    const swapSucceeded = attemptStochasticSwap(randomTask, placedTasks, grid, busyMap, dailyLessonMap, config);
+    // Try swap chain (Level 3 Deep Search) or regular swap
+    const swapSucceeded = Math.random() < 0.3 
+      ? attemptSwapChain(randomTask, placedTasks, grid, busyMap, dailyLessonMap, config)
+      : attemptStochasticSwap(randomTask, placedTasks, grid, busyMap, dailyLessonMap, config);
 
     if (swapSucceeded) {
       successfulSwaps++;
@@ -696,10 +810,11 @@ function stochasticRepair(
       const newConflicts = countTotalConflicts(placedTasks, grid, busyMap, config, teacherDailyLoads, teacherWeeklyLoads);
       
       if (newConflicts < currentConflicts) {
-        // Improvement
+        // Improvement!
         conflictResolutions += (currentConflicts - newConflicts);
         currentConflicts = newConflicts;
-        stagnationCounter = 0;
+        iterationsSinceImprovement = 0;
+        lastImprovementIteration = i;
         
         if (newConflicts < bestConflicts) {
           bestConflicts = newConflicts;
@@ -710,26 +825,242 @@ function stochasticRepair(
         const acceptanceProbability = Math.exp(-delta / temperature);
         
         if (Math.random() < acceptanceProbability) {
-          // Accept bad swap to escape local minimum
-          currentConflicts = newConflicts;
-          stagnationCounter++;
-        } else {
-          // Reject: this is handled by the swap function reverting
-          stagnationCounter++;
+          currentConflicts = newConflicts; // Accept worse solution
         }
-      } else {
-        // Same conflicts
-        stagnationCounter++;
       }
-    } else {
-      stagnationCounter++;
     }
 
-    // Cool down temperature (simulated annealing)
+    // Cool down temperature
     temperature = Math.max(0.0001, temperature - COOLING_RATE);
   }
 
-  console.log(`   ✅ Repair complete: ${currentConflicts} conflicts remaining`);
+  console.log(`   ✓ Repair complete: ${currentConflicts} remaining conflicts`);
+}
+
+/**
+ * Strategic Shuffle: Keep best 50% (zero-conflict) lessons, randomize rest
+ */
+function performStrategicShuffle(
+  placedTasks: PlacedTask[],
+  grid: TimetableGrid,
+  busyMap: BusyMap,
+  dailyLessonMap: DailyLessonMap,
+  config: ScheduleConfig
+): void {
+  // Separate into zero-conflict and conflicting tasks
+  const zeroConflictTasks = placedTasks.filter(t => t.conflictCount === 0);
+  const conflictingTasks = placedTasks.filter(t => t.conflictCount > 0);
+
+  // Keep best 50% of zero-conflict tasks
+  const keepCount = Math.floor(zeroConflictTasks.length * 0.5);
+  const tasksToKeep = zeroConflictTasks.slice(0, keepCount);
+  const tasksToRandomize = [...zeroConflictTasks.slice(keepCount), ...conflictingTasks];
+
+  console.log(`   📌 Keeping ${tasksToKeep.length} zero-conflict tasks, randomizing ${tasksToRandomize.length}`);
+
+  // Remove randomized tasks from grid
+  for (const task of tasksToRandomize) {
+    removeTaskFromGrid(task, grid, busyMap, dailyLessonMap);
+  }
+
+  // Re-place randomized tasks in random order
+  const shuffled = tasksToRandomize.sort(() => Math.random() - 0.5);
+  for (const task of shuffled) {
+    const newPlacement = findMinimumConflictSlot(
+      { lesson: task.lesson, isDouble: task.isDouble, taskId: task.taskId },
+      grid,
+      busyMap,
+      dailyLessonMap,
+      config
+    );
+    
+    placeTaskGreedy(
+      { lesson: task.lesson, isDouble: task.isDouble, taskId: task.taskId },
+      newPlacement.slot,
+      grid,
+      busyMap,
+      dailyLessonMap
+    );
+    
+    task.slot = newPlacement.slot;
+    task.conflictCount = newPlacement.conflictCount;
+  }
+}
+
+/**
+ * Attempt Swap Chain (Level 3 Deep Search)
+ * If A conflicts with B, check if B can move to slot C, and C can move to free slot
+ */
+function attemptSwapChain(
+  taskA: PlacedTask,
+  allTasks: PlacedTask[],
+  grid: TimetableGrid,
+  busyMap: BusyMap,
+  dailyLessonMap: DailyLessonMap,
+  config: ScheduleConfig
+): boolean {
+  swapAttempts++;
+
+  // Find task B that conflicts with A
+  const conflictingTasks = findConflictingTasks(taskA, allTasks, grid);
+  if (conflictingTasks.length === 0) return false;
+
+  const taskB = conflictingTasks[Math.floor(Math.random() * Math.min(conflictingTasks.length, CHAIN_SEARCH_LIMIT))];
+
+  // Can B move somewhere with fewer conflicts?
+  const slotForB = findBetterSlot(taskB, grid, busyMap, dailyLessonMap, config);
+  if (!slotForB) return false;
+
+  // Check if B's new slot conflicts with task C
+  const taskC = findTaskAtSlot(slotForB, allTasks);
+  
+  if (taskC) {
+    // Chain: A -> B's slot, B -> C's slot, C -> free slot
+    const slotForC = findBetterSlot(taskC, grid, busyMap, dailyLessonMap, config);
+    if (!slotForC) return false;
+
+    // Execute 3-way chain swap
+    const originalA = { ...taskA.slot };
+    const originalB = { ...taskB.slot };
+    const originalC = { ...taskC.slot };
+
+    removeTaskFromGrid(taskA, grid, busyMap, dailyLessonMap);
+    removeTaskFromGrid(taskB, grid, busyMap, dailyLessonMap);
+    removeTaskFromGrid(taskC, grid, busyMap, dailyLessonMap);
+
+    placeTaskGreedy({ lesson: taskA.lesson, isDouble: taskA.isDouble, taskId: taskA.taskId }, originalB, grid, busyMap, dailyLessonMap);
+    placeTaskGreedy({ lesson: taskB.lesson, isDouble: taskB.isDouble, taskId: taskB.taskId }, originalC, grid, busyMap, dailyLessonMap);
+    placeTaskGreedy({ lesson: taskC.lesson, isDouble: taskC.isDouble, taskId: taskC.taskId }, slotForC, grid, busyMap, dailyLessonMap);
+
+    taskA.slot = originalB;
+    taskB.slot = originalC;
+    taskC.slot = slotForC;
+
+    // Recalculate conflicts
+    taskA.conflictCount = countSlotConflicts(taskA.lesson, taskA.slot.day, taskA.slot.period, taskA.isDouble, grid, busyMap, config, teacherDailyLoads, teacherWeeklyLoads);
+    taskB.conflictCount = countSlotConflicts(taskB.lesson, taskB.slot.day, taskB.slot.period, taskB.isDouble, grid, busyMap, config, teacherDailyLoads, teacherWeeklyLoads);
+    taskC.conflictCount = countSlotConflicts(taskC.lesson, taskC.slot.day, taskC.slot.period, taskC.isDouble, grid, busyMap, config, teacherDailyLoads, teacherWeeklyLoads);
+
+    return true;
+  } else {
+    // Simple 2-way chain: A -> B's slot, B -> free slot
+    const originalA = { ...taskA.slot };
+    const originalB = { ...taskB.slot };
+
+    removeTaskFromGrid(taskA, grid, busyMap, dailyLessonMap);
+    removeTaskFromGrid(taskB, grid, busyMap, dailyLessonMap);
+
+    placeTaskGreedy({ lesson: taskA.lesson, isDouble: taskA.isDouble, taskId: taskA.taskId }, originalB, grid, busyMap, dailyLessonMap);
+    placeTaskGreedy({ lesson: taskB.lesson, isDouble: taskB.isDouble, taskId: taskB.taskId }, slotForB, grid, busyMap, dailyLessonMap);
+
+    taskA.slot = originalB;
+    taskB.slot = slotForB;
+
+    taskA.conflictCount = countSlotConflicts(taskA.lesson, taskA.slot.day, taskA.slot.period, taskA.isDouble, grid, busyMap, config, teacherDailyLoads, teacherWeeklyLoads);
+    taskB.conflictCount = countSlotConflicts(taskB.lesson, taskB.slot.day, taskB.slot.period, taskB.isDouble, grid, busyMap, config, teacherDailyLoads, teacherWeeklyLoads);
+
+    return true;
+  }
+}
+
+/**
+ * Find tasks that conflict with the given task
+ */
+function findConflictingTasks(task: PlacedTask, allTasks: PlacedTask[], grid: TimetableGrid): PlacedTask[] {
+  const conflicting: PlacedTask[] = [];
+  const { lesson, slot, isDouble } = task;
+  const periods = isDouble ? [slot.period, slot.period + 1] : [slot.period];
+
+  for (const p of periods) {
+    // Check teacher conflicts
+    for (const teacherId of lesson.teacherIds) {
+      const conflicts = allTasks.filter(t => 
+        t.taskId !== task.taskId &&
+        t.slot.day === slot.day &&
+        (t.isDouble ? [t.slot.period, t.slot.period + 1] : [t.slot.period]).includes(p) &&
+        t.lesson.teacherIds.includes(teacherId)
+      );
+      conflicting.push(...conflicts);
+    }
+
+    // Check class conflicts
+    for (const classId of lesson.classIds) {
+      const gridKey = `${classId}-${slot.day}-${p}`;
+      const slotsAtPosition = grid.get(gridKey) || [];
+      for (const gridSlot of slotsAtPosition) {
+        if (gridSlot.lessonId !== lesson._id) {
+          const conflictTask = allTasks.find(t => t.lesson._id === gridSlot.lessonId);
+          if (conflictTask) conflicting.push(conflictTask);
+        }
+      }
+    }
+  }
+
+  return [...new Set(conflicting)];
+}
+
+/**
+ * Find a better slot for a task (with fewer conflicts)
+ */
+function findBetterSlot(
+  task: PlacedTask,
+  grid: TimetableGrid,
+  busyMap: BusyMap,
+  dailyLessonMap: DailyLessonMap,
+  config: ScheduleConfig
+): SlotPosition | null {
+  const currentPenalty = calculateSlotPenalty(
+    task.lesson,
+    task.slot.day,
+    task.slot.period,
+    task.isDouble,
+    grid,
+    busyMap,
+    config,
+    teacherDailyLoads,
+    teacherWeeklyLoads
+  );
+
+  const { daysOfWeek, numberOfPeriods } = config;
+  const candidates: { slot: SlotPosition; penalty: number }[] = [];
+
+  for (const day of daysOfWeek) {
+    const periodsToCheck = task.isDouble ? validDoubleStarts : Array.from({ length: numberOfPeriods }, (_, i) => i + 1);
+    
+    for (const period of periodsToCheck.slice(0, CHAIN_SEARCH_LIMIT)) {
+      const penalty = calculateSlotPenalty(
+        task.lesson,
+        day,
+        period,
+        task.isDouble,
+        grid,
+        busyMap,
+        config,
+        teacherDailyLoads,
+        teacherWeeklyLoads
+      );
+
+      if (penalty < currentPenalty) {
+        candidates.push({ slot: { day, period }, penalty });
+      }
+    }
+  }
+
+  if (candidates.length === 0) return null;
+  
+  // Return best candidate
+  candidates.sort((a, b) => a.penalty - b.penalty);
+  return candidates[0].slot;
+}
+
+/**
+ * Find task occupying a specific slot
+ */
+function findTaskAtSlot(slot: SlotPosition, allTasks: PlacedTask[]): PlacedTask | null {
+  return allTasks.find(t => 
+    t.slot.day === slot.day && 
+    t.slot.period === slot.period
+  ) || null;
 }
 
 /**

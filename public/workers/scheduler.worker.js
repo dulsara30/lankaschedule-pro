@@ -4,6 +4,23 @@
  * Implements multi-threaded search with typed arrays for performance
  */
 
+// Debug logging - verify worker is loading
+console.log('🔧 Web Worker: Script loaded successfully');
+
+// Global error handler
+self.onerror = function(error) {
+  console.error('🚨 Web Worker Global Error:', error);
+  self.postMessage({
+    type: 'ERROR',
+    error: {
+      message: error.message || 'Unknown worker error',
+      filename: error.filename,
+      lineno: error.lineno,
+      colno: error.colno
+    }
+  });
+};
+
 // Constants
 const MAX_ITERATIONS = 250000; // 250K per thread (4 threads = 1M total)
 const DAILY_PERIOD_LIMIT = 7;
@@ -39,28 +56,60 @@ let teacherWeeklyLoads = new Map();
 let classWeeklyLoads = new Map();
 
 /**
- * Message handler
+ * Message handler with error handling
  */
 self.onmessage = function(e) {
-  const { type, data } = e.data;
+  console.log('🔧 Web Worker: Message received', { type: e.data?.type, threadId: e.data?.data?.threadId });
+  
+  try {
+    const { type, data } = e.data;
 
-  if (type === 'START') {
-    threadId = data.threadId;
-    const { lessons, classes, config: cfg, randomSeed } = data;
-    
-    // Set random seed for reproducibility
-    Math.random = seededRandom(randomSeed);
-    
-    config = cfg;
-    
-    // Run scheduler
-    const result = runScheduler(lessons, classes, cfg);
-    
-    // Send result back
+    if (type === 'START') {
+      threadId = data.threadId;
+      console.log(`🚀 Web Worker ${threadId}: Starting scheduler`);
+      
+      const { lessons, classes, config: cfg, randomSeed } = data;
+      
+      // Validate data
+      if (!lessons || !Array.isArray(lessons)) {
+        throw new Error('Invalid lessons data');
+      }
+      if (!classes || !Array.isArray(classes)) {
+        throw new Error('Invalid classes data');
+      }
+      if (!cfg || !cfg.daysOfWeek || !cfg.numberOfPeriods) {
+        throw new Error('Invalid config data');
+      }
+      
+      console.log(`🔧 Web Worker ${threadId}: Data validated - ${lessons.length} lessons, ${classes.length} classes`);
+      
+      // Set random seed for reproducibility
+      Math.random = seededRandom(randomSeed);
+      
+      config = cfg;
+      
+      // Run scheduler
+      console.log(`🔧 Web Worker ${threadId}: Starting scheduler execution`);
+      const result = runScheduler(lessons, classes, cfg);
+      console.log(`✅ Web Worker ${threadId}: Scheduler completed, conflicts=${result.conflicts}`);
+      
+      // Send result back
+      self.postMessage({
+        type: 'COMPLETE',
+        threadId,
+        data: result
+      });
+    }
+  } catch (error) {
+    console.error(`🚨 Web Worker ${threadId}: Error in message handler:`, error);
     self.postMessage({
-      type: 'COMPLETE',
+      type: 'ERROR',
       threadId,
-      data: result
+      error: {
+        message: error.message || 'Unknown error',
+        stack: error.stack,
+        name: error.name
+      }
     });
   }
 };

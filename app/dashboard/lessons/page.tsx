@@ -384,11 +384,16 @@ export default function LessonsPage() {
 
       const workerPromises = [0, 1, 2, 3].map((threadId) => {
         return new Promise((resolve, reject) => {
-          const worker = new Worker('/workers/scheduler.worker.js');
+          // Fix for Next.js 16 Turbopack compatibility
+          // Use relative path from public directory
+          const worker = new Worker(
+            new URL('../../../public/workers/scheduler.worker.js', import.meta.url),
+            { type: 'module' }
+          );
           workers.push(worker);
 
           worker.onmessage = (e) => {
-            const { type, data, iteration, conflicts, temperature } = e.data;
+            const { type, data, iteration, conflicts, temperature, error } = e.data;
 
             if (type === 'PROGRESS') {
               setWorkerProgress((prev) => ({
@@ -399,16 +404,26 @@ export default function LessonsPage() {
                 },
               }));
             } else if (type === 'COMPLETE') {
+              console.log(`✅ Worker ${threadId + 1} completed with ${data.conflicts} conflicts`);
               resolve(data);
+            } else if (type === 'ERROR') {
+              console.error(`🚨 Worker ${threadId + 1} error:`, error);
+              reject(new Error(error?.message || 'Worker error'));
             }
           };
 
           worker.onerror = (error) => {
-            console.error(`Worker ${threadId} error:`, error);
-            reject(error);
+            console.error(`🚨 Worker ${threadId + 1} onerror:`, {
+              message: error.message,
+              filename: error.filename,
+              lineno: error.lineno,
+              colno: error.colno,
+            });
+            reject(new Error(error.message || 'Worker initialization failed'));
           };
 
           // Start worker with different random seed
+          console.log(`🚀 Starting Worker ${threadId + 1}`);
           worker.postMessage({
             type: 'START',
             data: {

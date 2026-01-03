@@ -9,12 +9,16 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Calendar, Users, User, Save, History, Trash2, Check, ChevronsUpDown, ChevronDown, ChevronUp, Download, RotateCcw, FileDown, Eye, X, Square, CheckSquare2, Upload, Globe, AlertCircle } from 'lucide-react';
+import { Calendar, Users, User, Save, History, Trash2, Check, ChevronsUpDown, ChevronDown, ChevronUp, Download, RotateCcw, FileDown, Eye, X, Square, CheckSquare2, Upload, Globe, AlertCircle, Grid3x3 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import dynamic from 'next/dynamic';
 import { pdf } from '@react-pdf/renderer';
 import TimetablePDF from '@/components/timetable/TimetablePDF';
+import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
+import { saveManualMove } from '@/app/actions/saveManualMove';
+import MasterGrid from './master-editor/MasterGrid';
+import UnscheduledLessonsSidebar from '@/components/dashboard/UnscheduledLessonsSidebar';
 
 // Dynamically import PDFViewer to avoid SSR issues
 const PDFViewer = dynamic(
@@ -45,6 +49,8 @@ interface Lesson {
   subjectIds: Subject[];
   teacherIds: Teacher[];
   classIds: Class[];
+  periodsPerWeek?: number;
+  isDoubleScheduled?: boolean;
 }
 
 interface TimetableSlot {
@@ -80,12 +86,28 @@ export default function TimetablePage() {
   const [slots, setSlots] = useState<TimetableSlot[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [lessons, setLessons] = useState<Lesson[]>([]);
+  const [failedLessons, setFailedLessons] = useState<any[]>([]);
   const [config, setConfig] = useState<SchoolConfig | null>(null);
   const [schoolInfo, setSchoolInfo] = useState<{ name: string; address: string }>({ name: 'EduFlow AI', address: '' });
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<'class' | 'teacher'>('class');
+  const [viewMode, setViewMode] = useState<'class' | 'teacher' | 'master-matrix'>('class');
   const [selectedEntity, setSelectedEntity] = useState<string>('');
   const [entityComboOpen, setEntityComboOpen] = useState(false);
+  
+  // Drag-and-drop state
+  const [activeLesson, setActiveLesson] = useState<Lesson | null>(null);
+  const [activeLessonId, setActiveLessonId] = useState<string | null>(null);
+  const [conflictDialogOpen, setConflictDialogOpen] = useState(false);
+  const [conflictData, setConflictData] = useState<any>(null);
+  
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  );
   
   // Version management state
   const [versions, setVersions] = useState<TimetableVersion[]>([]);
@@ -169,18 +191,20 @@ export default function TimetablePage() {
       setLoading(true);
       const timetableUrl = versionId ? `/api/timetable?versionId=${versionId}` : '/api/timetable';
       
-      const [slotsRes, classesRes, teachersRes, configRes, versionsRes] = await Promise.all([
+      const [slotsRes, classesRes, teachersRes, lessonsRes, configRes, versionsRes] = await Promise.all([
         fetch(timetableUrl, { cache: 'no-store' }),
         fetch('/api/classes', { cache: 'no-store' }),
         fetch('/api/teachers', { cache: 'no-store' }),
+        fetch('/api/lessons', { cache: 'no-store' }),
         fetch('/api/school/config', { cache: 'no-store' }),
         fetch('/api/timetable/versions', { cache: 'no-store' }),
       ]);
 
-      const [slotsData, classesData, teachersData, configData, versionsData] = await Promise.all([
+      const [slotsData, classesData, teachersData, lessonsData, configData, versionsData] = await Promise.all([
         slotsRes.json(),
         classesRes.json(),
         teachersRes.json(),
+        lessonsRes.json(),
         configRes.json(),
         versionsRes.json(),
       ]);
@@ -258,9 +282,17 @@ export default function TimetablePage() {
       if (classesData.success) {
         const classList = classesData.data || [];
         setClasses(classList);
-        if (classList.length > 0) setSelectedEntity(classList[0]._id);
+        if (classList.length > 0 && viewMode === 'class') setSelectedEntity(classList[0]._id);
       }
-      if (teachersData.success) setTeachers(teachersData.data || []);
+      if (teachersData.success) {
+        const teachersList = teachersData.data || [];
+        setTeachers(teachersList);
+        if (teachersList.length > 0 && viewMode === 'teacher') setSelectedEntity(teachersList[0]._id);
+      }
+      if (lessonsData.success) {
+        setLessons(lessonsData.lessons || []);
+        setFailedLessons(lessonsData.failedLessons || []);
+      }
       if (configData.success) {
         const configValue = configData.data?.config || configData.data;
         setConfig(configValue);
@@ -332,6 +364,112 @@ export default function TimetablePage() {
       console.log(`⚠️ Detected ${conflicts.size} conflicting slots`);
     }
   }, [slots]);
+
+  // Drag-and-drop handlers
+  const handleDragStart = (event: DragStartEvent) => {
+    const { active } = event;
+    
+    if (active.data.current?.type === 'lesson') {
+      const lesson = active.data.current.lesson as Lesson;
+      setActiveLesson(lesson);
+      setActiveLessonId(lesson._id);
+    }
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    
+    setActiveLesson(null);
+    setActiveLessonId(null);
+
+    if (!over) return;
+
+    const lessonData = active.data.current?.lesson as Lesson;
+    const dropData = over.data.current;
+
+    if (!lessonData || !dropData) return;
+
+    const { day, period, teacherId } = dropData;
+
+    // Validate that the teacher is assigned to this lesson
+    const isTeacherMatch = lessonData.teacherIds?.some(t => t._id === teacherId);
+    if (!isTeacherMatch) {
+      toast.error('This teacher is not assigned to this lesson');
+      return;
+    }
+
+    // Attempt to save the move
+    const result = await saveManualMove({
+      lessonId: lessonData._id,
+      targetDay: day,
+      targetPeriod: period,
+      versionId: currentVersionId,
+      forcePlace: false,
+    });
+
+    if (result.success) {
+      toast.success(result.message);
+      fetchData(currentVersionId); // Refresh data
+    } else if (result.needsSwapConfirmation) {
+      // Show conflict/swap dialog
+      setConflictData({
+        lessonId: lessonData._id,
+        targetDay: day,
+        targetPeriod: period,
+        teacherId,
+        conflict: result.conflict,
+        existingSlotId: result.existingSlotId,
+      });
+      setConflictDialogOpen(true);
+    } else if (result.conflict) {
+      // Show simple conflict error
+      toast.error(result.message + ': ' + result.conflict.details);
+    } else {
+      toast.error(result.message);
+    }
+  };
+
+  const handleForcePlace = async () => {
+    if (!conflictData) return;
+
+    const result = await saveManualMove({
+      lessonId: conflictData.lessonId,
+      targetDay: conflictData.targetDay,
+      targetPeriod: conflictData.targetPeriod,
+      versionId: currentVersionId,
+      forcePlace: true,
+    });
+
+    if (result.success) {
+      toast.success('Lesson force-placed (conflict marked for manual resolution)');
+      setConflictDialogOpen(false);
+      setConflictData(null);
+      fetchData(currentVersionId);
+    } else {
+      toast.error(result.message);
+    }
+  };
+
+  const handleSwap = async () => {
+    if (!conflictData || !conflictData.existingSlotId) return;
+
+    const result = await saveManualMove({
+      lessonId: conflictData.lessonId,
+      targetDay: conflictData.targetDay,
+      targetPeriod: conflictData.targetPeriod,
+      versionId: currentVersionId,
+      swapWithSlotId: conflictData.existingSlotId,
+    });
+
+    if (result.success) {
+      toast.success('Lessons swapped successfully');
+      setConflictDialogOpen(false);
+      setConflictData(null);
+      fetchData(currentVersionId);
+    } else {
+      toast.error(result.message);
+    }
+  };
 
   const handleSaveVersion = async () => {
     if (!newVersionName.trim()) {
@@ -762,45 +900,42 @@ export default function TimetablePage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-50">
-            Timetable
-          </h1>
-          <p className="mt-2 text-zinc-600 dark:text-zinc-400">
-            View class and teacher schedules
-          </p>
-        </div>
-        
-        <div className="flex gap-3">
-          <Button
-            variant="outline"
-            onClick={handleOpenDownloadDialog}
-            disabled={slots.length === 0 || !config}
-            className="gap-2"
-          >
-            <Download className="h-4 w-4" />
-            Download PDF
-          </Button>
-          <Button
-            variant={showConflicts ? 'default' : 'outline'}
-            onClick={() => setShowConflicts(!showConflicts)}
-            className={`gap-2 ${conflictSlots.size > 0 && showConflicts ? 'bg-red-600 hover:bg-red-700' : ''}`}
-          >
-            <AlertCircle className="h-4 w-4" />
-            {showConflicts ? 'Hide' : 'Show'} Conflicts {conflictSlots.size > 0 && `(${conflictSlots.size})`}
-          </Button>
-          {conflictSlots.size > 0 && (
+    <DndContext
+      sensors={sensors}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-50">
+              Timetable
+            </h1>
+            <p className="mt-2 text-zinc-600 dark:text-zinc-400">
+              {viewMode === 'master-matrix' 
+                ? 'AI-Assisted Master Matrix Editor' 
+                : 'View class and teacher schedules'}
+            </p>
+          </div>
+          
+          <div className="flex gap-3">
             <Button
-              variant="default"
-              onClick={() => window.location.href = '/dashboard/timetable/master-editor'}
-              className="gap-2 bg-blue-600 hover:bg-blue-700"
+              variant="outline"
+              onClick={handleOpenDownloadDialog}
+              disabled={slots.length === 0 || !config}
+              className="gap-2"
             >
-              <Users className="h-4 w-4" />
-              Open Master Grid Editor
+              <Download className="h-4 w-4" />
+              Download PDF
             </Button>
-          )}
+            <Button
+              variant={showConflicts ? 'default' : 'outline'}
+              onClick={() => setShowConflicts(!showConflicts)}
+              className={`gap-2 ${conflictSlots.size > 0 && showConflicts ? 'bg-red-600 hover:bg-red-700' : ''}`}
+            >
+              <AlertCircle className="h-4 w-4" />
+              {showConflicts ? 'Hide' : 'Show'} Conflicts {conflictSlots.size > 0 && `(${conflictSlots.size})`}
+            </Button>
           <Button
             variant={viewMode === 'class' ? 'default' : 'outline'}
             onClick={() => {
@@ -820,6 +955,14 @@ export default function TimetablePage() {
           >
             <User className="mr-2 h-4 w-4" />
             By Teacher
+          </Button>
+          <Button
+            variant={viewMode === 'master-matrix' ? 'default' : 'outline'}
+            onClick={() => setViewMode('master-matrix')}
+            className={`gap-2 ${viewMode === 'master-matrix' ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
+          >
+            <Grid3x3 className="h-4 w-4" />
+            Master Matrix
           </Button>
         </div>
       </div>
@@ -1122,7 +1265,7 @@ export default function TimetablePage() {
             }
           })()}
         </>
-      ) : relevantSlots.length === 0 ? (
+      ) : relevantSlots.length === 0 && viewMode !== 'master-matrix' ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Calendar className="h-16 w-16 text-zinc-400 mb-4" />
@@ -1136,6 +1279,101 @@ export default function TimetablePage() {
             </p>
           </CardContent>
         </Card>
+      ) : viewMode === 'master-matrix' ? (
+        <>
+          {/* Master Matrix View with Unscheduled Sidebar */}
+          <div className="grid grid-cols-12 gap-6">
+            {/* Unscheduled Lessons Sidebar */}
+            <div className="col-span-3">
+              <UnscheduledLessonsSidebar 
+                lessons={lessons} 
+                slots={slots.map(s => ({
+                  ...s,
+                  day: DAYS.indexOf(s.day) + 1
+                })) as any} 
+              />
+            </div>
+
+            {/* Master Matrix */}
+            <div className="col-span-9">
+              <MasterGrid
+                teachers={teachers}
+                slots={slots.map(s => ({
+                  ...s,
+                  day: DAYS.indexOf(s.day) + 1
+                })) as any}
+                lessons={lessons}
+                activeLesson={activeLesson}
+              />
+            </div>
+          </div>
+
+          {/* Drag Overlay */}
+          <DragOverlay>
+            {activeLessonId && activeLesson && (
+              <div className="bg-white border-2 border-blue-500 rounded-lg p-3 shadow-xl opacity-90">
+                <div className="font-semibold text-sm">{activeLesson.lessonName}</div>
+                <div className="text-xs text-gray-600 mt-1">
+                  {activeLesson.subjectIds?.[0]?.name || 'Unknown Subject'}
+                </div>
+              </div>
+            )}
+          </DragOverlay>
+
+          {/* Conflict/Swap Dialog */}
+          <Dialog open={conflictDialogOpen} onOpenChange={setConflictDialogOpen}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <AlertCircle className="h-5 w-5 text-yellow-600" />
+                  Conflict Detected
+                </DialogTitle>
+                <DialogDescription>
+                  This slot is already occupied. Choose an action:
+                </DialogDescription>
+              </DialogHeader>
+              
+              {conflictData?.conflict && (
+                <div className="py-4">
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                    <p className="text-sm text-yellow-800">
+                      <strong>Conflict Type:</strong> {conflictData.conflict.type}
+                    </p>
+                    <p className="text-sm text-yellow-800 mt-1">
+                      {conflictData.conflict.details}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <DialogFooter className="flex flex-col sm:flex-row gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setConflictDialogOpen(false)}
+                  className="w-full sm:w-auto"
+                >
+                  Cancel
+                </Button>
+                {conflictData?.existingSlotId && (
+                  <Button
+                    variant="secondary"
+                    onClick={handleSwap}
+                    className="w-full sm:w-auto"
+                  >
+                    Swap Positions
+                  </Button>
+                )}
+                <Button
+                  variant="destructive"
+                  onClick={handleForcePlace}
+                  className="w-full sm:w-auto"
+                >
+                  Force Place (Mark Conflict)
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </>
       ) : (
         <>
           {/* Entity Selector - Searchable Combobox */}
@@ -1667,6 +1905,7 @@ export default function TimetablePage() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </DndContext>
   );
 }

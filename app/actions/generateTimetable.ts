@@ -16,6 +16,7 @@ import Teacher from '@/models/Teacher';
 import Lesson from '@/models/Lesson';
 import Class from '@/models/Class';
 import TimetableSlot from '@/models/TimetableSlot';
+import TimetableVersion from '@/models/TimetableVersion';
 
 interface SolverResponse {
   success: boolean;
@@ -259,14 +260,41 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
       console.warn(`⚠️  WARNING: Only ${slotCoverage}% of slots were placed. Some lessons may be missing.`);
     }
 
-    // Step 6: Clear existing timetable
-    console.log("\n🗑️  Step 6: Clearing existing timetable...");
+    // Step 6: Ensure Draft version exists and clear its slots
+    console.log("\n📋 Step 6: Ensuring Draft version exists...");
     
-    const deleteResult = await TimetableSlot.deleteMany({ schoolId: school._id });
-    console.log(`✅ Deleted ${deleteResult.deletedCount} old slots`);
+    const draftVersion = await TimetableVersion.findOneAndUpdate(
+      { 
+        schoolId: school._id, 
+        versionName: 'Draft' 
+      },
+      { 
+        schoolId: school._id,
+        versionName: 'Draft',
+        isSaved: false, // Will be set to true after successful save
+        isPublished: false,
+        updatedAt: new Date()
+      },
+      { 
+        upsert: true, // Create if doesn't exist
+        new: true // Return the updated document
+      }
+    );
+    
+    console.log(`✅ Draft version ID: ${draftVersion._id}`);
+    console.log(`[DEBUG] Version name: ${draftVersion.versionName}`);
+    
+    // Delete existing slots for this version only
+    console.log("\n🗑️  Clearing existing slots for Draft version...");
+    const deleteResult = await TimetableSlot.deleteMany({ 
+      schoolId: school._id,
+      versionId: draftVersion._id 
+    });
+    console.log(`✅ Deleted ${deleteResult.deletedCount} old slots from Draft version`);
 
     // Step 7: Save new timetable to MongoDB
     console.log("\n💾 Step 7: Saving timetable to MongoDB...");
+    console.log(`[DEBUG] Linking all slots to versionId: ${draftVersion._id}`);
     
     // Deduplicate slots (safety net)
     const slotMap = new Map<string, any>();
@@ -275,6 +303,7 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
       if (!slotMap.has(key)) {
         slotMap.set(key, {
           schoolId: school._id,
+          versionId: draftVersion._id, // CRITICAL: Link to version
           classId: slot.classId,
           lessonId: slot.lessonId,
           day: slot.day,
@@ -289,19 +318,29 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
 
     const deduplicatedSlots = Array.from(slotMap.values());
     console.log(`🔍 Deduplication: ${result?.slots?.length || 0} → ${deduplicatedSlots.length} slots`);
+    console.log(`[DEBUG] Sample slot:`, deduplicatedSlots[0]);
 
-    // Batch insert
+    // Batch insert with proper error handling
     const insertResult = await TimetableSlot.insertMany(deduplicatedSlots, {
       ordered: false, // Continue on duplicate key errors
     });
 
     console.log(`✅ Inserted ${insertResult.length} slots successfully`);
+    console.log(`[DEBUG] Insert result count: ${insertResult.length}`);
+    
+    // Step 8: Update version status to saved
+    console.log("\n📝 Step 8: Updating Draft version status...");
+    await TimetableVersion.findByIdAndUpdate(draftVersion._id, {
+      isSaved: true,
+      updatedAt: new Date()
+    });
+    console.log(`✅ Draft version marked as saved`);
 
-    // Step 8: Revalidate paths
+    // Step 9: Revalidate paths
     revalidatePath('/dashboard/timetable');
     revalidatePath('/dashboard/lessons');
 
-    // Step 9: Final summary
+    // Step 10: Final summary
     console.log("\n" + "=".repeat(60));
     console.log("✅ TIMETABLE GENERATION COMPLETE");
     console.log("=".repeat(60));
@@ -309,11 +348,12 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
     console.log(`📊 Slots saved: ${insertResult.length}/${expectedSlots}`);
     console.log(`⚠️  Conflicts: ${result.conflicts} (CP-SAT guarantees 0)`);
     console.log(`🎯 Coverage: ${slotCoverage}%`);
+    console.log(`📁 Version: ${draftVersion.versionName} (${draftVersion._id})`);
     console.log("=".repeat(60) + "\n");
 
     return {
       success: true,
-      message: `Timetable generated successfully! ${insertResult.length}/${expectedSlots} slots placed (${slotCoverage}% coverage).`,
+      message: `Timetable generated successfully! ${insertResult.length}/${expectedSlots} slots placed in Draft version (${slotCoverage}% coverage).`,
       slotsPlaced: insertResult.length,
       totalSlots: expectedSlots,
       conflicts: result.conflicts,

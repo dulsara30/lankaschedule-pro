@@ -231,12 +231,24 @@ export default function TimetablePage() {
         const versionsList = versionsData.data || [];
         setVersions(versionsList);
         console.log('DEBUG: Versions set in state:', versionsList.length);
-        // If we have versions but no slots, automatically load the first version
-        if (versionsList.length > 0 && (!slotsData.data || slotsData.data.length === 0) && !versionId) {
-          console.log('📦 Auto-loading first version:', versionsList[0]._id);
-          // Recursively fetch data with the first version ID
-          setTimeout(() => fetchData(versionsList[0]._id), 100);
-          return;
+        
+        // Check if current version has slots
+        const currentVersionHasSlots = slotsData.data && slotsData.data.length > 0;
+        
+        // If we have versions but current has no slots, find a version with slots
+        if (versionsList.length > 0 && !currentVersionHasSlots && !versionId) {
+          // Find version with slots (prefer saved/published)
+          const versionWithSlots = versionsList
+            .sort((a: TimetableVersion, b: TimetableVersion) => (b.isSaved ? 1 : 0) - (a.isSaved ? 1 : 0)) // Saved first
+            .find((v: TimetableVersion) => v.slotCount > 0);
+          
+          if (versionWithSlots) {
+            console.log(`📦 Auto-loading version with slots: ${versionWithSlots.versionName} (${versionWithSlots.slotCount} slots)`);
+            setTimeout(() => fetchData(versionWithSlots._id), 100);
+            return;
+          } else {
+            console.warn('⚠️ No versions have slots');
+          }
         }
       }
       if (classesData.success) {
@@ -944,17 +956,85 @@ export default function TimetablePage() {
           </CardContent>
         </Card>
       ) : slots.length === 0 && versions.length > 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Calendar className="h-16 w-16 text-zinc-400 mb-4" />
-            <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50 mb-2">
-              Loading Timetable...
-            </h3>
-            <p className="text-zinc-600 dark:text-zinc-400 text-center mb-4">
-              {versions.length} version(s) found in database. Loading slots...
-            </p>
-          </CardContent>
-        </Card>
+        <>
+          {/* Check if any version has slots */}
+          {(() => {
+            const versionsWithSlots = versions.filter(v => v.slotCount > 0);
+            const totalSlotsAcrossVersions = versions.reduce((sum, v) => sum + (v.slotCount || 0), 0);
+            
+            if (totalSlotsAcrossVersions > 0) {
+              // Some versions have slots - show smart alert
+              const bestVersion = versionsWithSlots
+                .sort((a: TimetableVersion, b: TimetableVersion) => (b.isSaved ? 1 : 0) - (a.isSaved ? 1 : 0)) // Saved first
+                .sort((a: TimetableVersion, b: TimetableVersion) => (b.slotCount || 0) - (a.slotCount || 0))[0]; // Most slots first
+              
+              return (
+                <Card>
+                  <CardContent className="py-8">
+                    <div className="flex items-start gap-4 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg mb-4">
+                      <div className="flex-shrink-0 mt-1">
+                        <svg className="h-6 w-6 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold text-amber-900 dark:text-amber-100 mb-2">
+                          Current Draft is Empty
+                        </h3>
+                        <p className="text-amber-800 dark:text-amber-200 mb-4">
+                          The selected version has no slots, but <strong>{bestVersion.versionName}</strong> contains <strong>{bestVersion.slotCount} slots</strong>.
+                        </p>
+                        <Button 
+                          onClick={() => fetchData(bestVersion._id)}
+                          className="bg-amber-600 hover:bg-amber-700 text-white"
+                        >
+                          View {bestVersion.versionName} ({bestVersion.slotCount} slots)
+                        </Button>
+                      </div>
+                    </div>
+                    
+                    {/* Show all versions */}
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-3">All Versions:</h4>
+                      {versions.map((version) => (
+                        <div 
+                          key={version._id}
+                          className="flex items-center justify-between p-3 border border-zinc-200 dark:border-zinc-700 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer"
+                          onClick={() => fetchData(version._id)}
+                        >
+                          <div>
+                            <span className="font-medium text-zinc-900 dark:text-zinc-100">{version.versionName}</span>
+                            <span className="text-xs text-zinc-500 dark:text-zinc-400 ml-2">
+                              {version.isSaved ? '(Saved)' : '(Draft)'}
+                            </span>
+                          </div>
+                          <span className="text-sm text-zinc-600 dark:text-zinc-400">
+                            {version.slotCount || 0} slots
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            } else {
+              // No versions have slots - show loading state
+              return (
+                <Card>
+                  <CardContent className="flex flex-col items-center justify-center py-12">
+                    <Calendar className="h-16 w-16 text-zinc-400 mb-4" />
+                    <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50 mb-2">
+                      Loading Timetable...
+                    </h3>
+                    <p className="text-zinc-600 dark:text-zinc-400 text-center mb-4">
+                      {versions.length} version(s) found in database. Checking for slots...
+                    </p>
+                  </CardContent>
+                </Card>
+              );
+            }
+          })()}
+        </>
       ) : relevantSlots.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">

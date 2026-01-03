@@ -31,16 +31,18 @@ export async function GET(request: Request) {
     
     let versionId = versionIdParam;
     
-    // If no versionId specified, fetch the latest (draft or most recent saved)
+    // If no versionId specified, use smart selection: prefer versions with slots
     if (!versionId) {
-      console.log('🔍 No versionId specified, fetching latest version...');
-      const latestVersion = await TimetableVersion.findOne({ schoolId: school._id })
-        .sort({ isSaved: 1, createdAt: -1 }) // Draft first, then by date
+      console.log('🔍 No versionId specified, using smart version selection...');
+      
+      // Get all versions ordered by priority: saved/published first, then drafts
+      const allVersions = await TimetableVersion.find({ schoolId: school._id })
+        .sort({ isSaved: -1, createdAt: -1 }) // Saved first, then by date
         .lean();
       
-      console.log('📦 Latest version found:', latestVersion);
+      console.log(`📦 Found ${allVersions.length} versions in database`);
       
-      if (!latestVersion) {
+      if (allVersions.length === 0) {
         console.log('⚠️ No versions found in database');
         return NextResponse.json({
           success: true,
@@ -49,8 +51,29 @@ export async function GET(request: Request) {
         });
       }
       
-      versionId = latestVersion._id.toString();
-      console.log(`✅ Using version: ${versionId} (${latestVersion.versionName})`);
+      // Check each version for slots, prioritizing saved/published versions
+      let selectedVersion = null;
+      for (const version of allVersions) {
+        const slotCount = await TimetableSlot.countDocuments({ 
+          versionId: version._id,
+          schoolId: school._id 
+        });
+        console.log(`   Version "${version.versionName}" (${version.isSaved ? 'Saved' : 'Draft'}): ${slotCount} slots`);
+        
+        if (slotCount > 0 && !selectedVersion) {
+          selectedVersion = version;
+          console.log(`   ✅ Selected this version (has slots)`);
+        }
+      }
+      
+      // If no version has slots, use the most recent one
+      if (!selectedVersion) {
+        selectedVersion = allVersions[0];
+        console.log(`   ⚠️ No version has slots, using latest: "${selectedVersion.versionName}"`);
+      }
+      
+      versionId = selectedVersion._id.toString();
+      console.log(`✅ Smart selection result: ${versionId} (${selectedVersion.versionName})`);
     }
 
     console.log(`🔍 Querying slots with: schoolId=${school._id}, versionId=${versionId}`);

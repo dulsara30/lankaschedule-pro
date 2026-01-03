@@ -318,12 +318,12 @@ export default function MasterGrid({
       </CardHeader>
 
       <CardContent className="flex-1 overflow-hidden p-0">
-        <ScrollArea className="h-full w-full">
-          <div className="min-w-max">
-            {/* Header Row */}
-            <div className="sticky top-0 bg-white z-20 border-b-2">
+        <div className="h-full w-full overflow-auto">
+          <div className="min-w-max relative">
+            {/* Header Row - Sticky */}
+            <div className="sticky top-0 bg-white z-20 border-b-2 shadow-sm">
               <div className="flex">
-                <div className="w-48 flex-shrink-0 border-r-2 bg-gray-50 p-2 font-semibold text-sm">
+                <div className="sticky left-0 z-30 w-48 flex-shrink-0 border-r-2 bg-gray-50 p-2 font-semibold text-sm">
                   Teacher
                 </div>
                 {days.map((day, dayIndex) => (
@@ -335,7 +335,7 @@ export default function MasterGrid({
                       {periods.map((period) => (
                         <div 
                           key={`${day}-${period}`}
-                          className="w-24 border-r border-gray-200 text-center text-xs py-1 font-medium text-gray-600"
+                          className="w-24 border-r border-gray-200 text-center text-xs py-1 font-medium text-gray-600 bg-blue-50"
                         >
                           P{period}
                         </div>
@@ -350,7 +350,7 @@ export default function MasterGrid({
             <div>
               {displayedTeachers.map((teacher) => (
                 <div key={teacher._id} className="flex border-b hover:bg-gray-50">
-                  <div className="w-48 flex-shrink-0 border-r-2 p-2 flex items-center">
+                  <div className="sticky left-0 z-10 w-48 flex-shrink-0 border-r-2 p-2 flex items-center bg-white">
                     <div className="flex items-center gap-2">
                       <User className="h-4 w-4 text-gray-500" />
                       <span className="text-sm font-medium truncate">{teacher.name}</span>
@@ -387,7 +387,7 @@ export default function MasterGrid({
               ))}
             </div>
           </div>
-        </ScrollArea>
+        </div>
       </CardContent>
     </Card>
   );

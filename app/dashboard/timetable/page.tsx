@@ -290,8 +290,8 @@ export default function TimetablePage() {
         if (teachersList.length > 0 && viewMode === 'teacher') setSelectedEntity(teachersList[0]._id);
       }
       if (lessonsData.success) {
-        setLessons(lessonsData.lessons || []);
-        setFailedLessons(lessonsData.failedLessons || []);
+        setLessons(lessonsData.data || []);
+        console.log(`📚 Lessons loaded: ${lessonsData.data?.length || 0}`);
       }
       if (configData.success) {
         const configValue = configData.data?.config || configData.data;
@@ -1282,20 +1282,22 @@ export default function TimetablePage() {
       ) : viewMode === 'master-matrix' ? (
         <>
           {/* Master Matrix View with Unscheduled Sidebar */}
-          <div className="grid grid-cols-12 gap-6">
-            {/* Unscheduled Lessons Sidebar */}
-            <div className="col-span-3">
-              <UnscheduledLessonsSidebar 
-                lessons={lessons} 
-                slots={slots.map(s => ({
-                  ...s,
-                  day: DAYS.indexOf(s.day) + 1
-                })) as any} 
-              />
+          <div className="flex gap-4 h-[calc(100vh-250px)]">
+            {/* Unscheduled Lessons Sidebar - Fixed on Left */}
+            <div className="w-80 flex-shrink-0">
+              <div className="h-full overflow-y-auto border rounded-lg bg-white">
+                <UnscheduledLessonsSidebar 
+                  lessons={lessons} 
+                  slots={slots.map(s => ({
+                    ...s,
+                    day: DAYS.indexOf(s.day) + 1
+                  })) as any} 
+                />
+              </div>
             </div>
 
-            {/* Master Matrix */}
-            <div className="col-span-9">
+            {/* Master Matrix - Scrollable */}
+            <div className="flex-1 overflow-auto border rounded-lg bg-white">
               <MasterGrid
                 teachers={teachers}
                 slots={slots.map(s => ({

@@ -136,6 +136,10 @@ function DraggableLessonCard({ lesson, periodsNeeded, periodsScheduled }: Dragga
 }
 
 export default function UnscheduledLessonsSidebar({ lessons, slots }: UnscheduledLessonsSidebarProps) {
+  // Debug logging
+  console.log('📋 UnscheduledLessonsSidebar - Lessons:', lessons.length);
+  console.log('📋 UnscheduledLessonsSidebar - Slots:', slots.length);
+  
   // Calculate which lessons are unscheduled or partially scheduled
   const lessonScheduleStatus = useMemo(() => {
     const statusMap = new Map<string, { scheduled: number; needed: number; lesson: Lesson }>();
@@ -197,6 +201,9 @@ export default function UnscheduledLessonsSidebar({ lessons, slots }: Unschedule
   }, [lessonScheduleStatus]);
 
   const totalUnscheduledPeriods = lessonsByClass.reduce((sum, group) => sum + group.totalPeriodsMissing, 0);
+
+  console.log('📊 Total unscheduled periods:', totalUnscheduledPeriods);
+  console.log('📊 Lessons by class:', lessonsByClass.length);
 
   return (
     <Card className="h-full flex flex-col">

@@ -101,7 +101,7 @@ interface PlacedTask {
   conflictCount: number;
 }
 
-type TimetableGrid = Map<string, GridSlot>;
+type TimetableGrid = Map<string, GridSlot[]>;
 type BusyMap = Map<string, boolean>;
 type DailyLessonMap = Map<string, boolean>;
 
@@ -514,10 +514,12 @@ function placeTaskGreedy(
     const p = periods[i];
     const slotType = !isDouble ? 'single' : i === 0 ? 'double-start' : 'double-end';
 
-    // Place in grid
+    // Place in grid (append to array to preserve conflicts)
     for (const classId of lesson.classIds) {
       const gridKey = `${classId}-${day}-${p}`;
-      grid.set(gridKey, { lessonId: lesson._id, slotType });
+      const existing = grid.get(gridKey) || [];
+      existing.push({ lessonId: lesson._id, slotType });
+      grid.set(gridKey, existing);
     }
 
     // Mark busy
@@ -844,23 +846,28 @@ function countTotalConflicts(
 function gridToSlots(grid: TimetableGrid): TimetableSlot[] {
   const slots: TimetableSlot[] = [];
 
-  for (const [key, gridSlot] of grid.entries()) {
+  // Flatten the grid: each position may have multiple lessons (conflicts)
+  for (const [key, gridSlots] of grid.entries()) {
     const [classId, day, periodStr] = key.split('-');
     const period = parseInt(periodStr);
 
-    const isDoubleStart = gridSlot.slotType === 'double-start';
-    const isDoubleEnd = gridSlot.slotType === 'double-end';
+    // Add ALL lessons at this position, including conflicts
+    for (const gridSlot of gridSlots) {
+      const isDoubleStart = gridSlot.slotType === 'double-start';
+      const isDoubleEnd = gridSlot.slotType === 'double-end';
 
-    slots.push({
-      classId,
-      lessonId: gridSlot.lessonId,
-      day,
-      periodNumber: period,
-      isDoubleStart,
-      isDoubleEnd,
-    });
+      slots.push({
+        classId,
+        lessonId: gridSlot.lessonId,
+        day,
+        periodNumber: period,
+        isDoubleStart,
+        isDoubleEnd,
+      });
+    }
   }
 
+  console.log(`📦 gridToSlots: Flattened ${grid.size} grid positions into ${slots.length} total slots (including conflicts)`);
   return slots;
 }
 
@@ -916,9 +923,10 @@ function generateConflictDiagnostics(
         for (const classId of lesson.classIds) {
           const gridKey = `${classId}-${day}-${p}`;
           if (grid.has(gridKey)) {
-            // Check if it's a different lesson
-            const existingSlot = grid.get(gridKey);
-            if (existingSlot && existingSlot.lessonId !== lessonId) {
+            // Check if any slot at this position is a different lesson
+            const existingSlots = grid.get(gridKey) || [];
+            const hasDifferentLesson = existingSlots.some(slot => slot.lessonId !== lessonId);
+            if (hasDifferentLesson) {
               classBusyCount++;
             }
           }
@@ -980,7 +988,8 @@ function generateSwapSuggestions(
         if (conflicts < task.conflictCount) {
           // Found a better slot
           const gridKey = `${lesson.classIds[0]}-${day}-${period}`;
-          const blockingSlot = grid.get(gridKey);
+          const blockingSlots = grid.get(gridKey) || [];
+          const blockingSlot = blockingSlots[0]; // Get first blocking slot
 
           if (blockingSlot) {
             const blockingLesson = lessonMetadataCache.get(blockingSlot.lessonId);

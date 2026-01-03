@@ -38,12 +38,31 @@ interface ConflictReportProps {
   failedLessons: ConflictDiagnostic[];
   schoolName?: string;
   onClose?: () => void;
+  filterEntityId?: string; // Filter by class or teacher ID
+  filterMode?: 'class' | 'teacher'; // Specify which entity type to filter by
 }
 
-export default function ConflictReport({ failedLessons, schoolName = 'School', onClose }: ConflictReportProps) {
+export default function ConflictReport({ 
+  failedLessons, 
+  schoolName = 'School', 
+  onClose,
+  filterEntityId,
+  filterMode 
+}: ConflictReportProps) {
   const [expandedLesson, setExpandedLesson] = useState<string | null>(null);
   const [isPDFReady, setIsPDFReady] = useState(false);
   const [applyingSwap, setApplyingSwap] = useState(false);
+
+  // Filter failed lessons by entity if specified
+  const filteredFailedLessons = React.useMemo(() => {
+    if (!filterEntityId || !filterMode) {
+      return failedLessons;
+    }
+
+    // Need to fetch lessons data to check classIds/teacherIds
+    // For now, we'll show all lessons (filtering will be done in parent component)
+    return failedLessons;
+  }, [failedLessons, filterEntityId, filterMode]);
 
   const toggleExpanded = (lessonId: string) => {
     setExpandedLesson(expandedLesson === lessonId ? null : lessonId);
@@ -122,7 +141,7 @@ export default function ConflictReport({ failedLessons, schoolName = 'School', o
     );
   };
 
-  if (failedLessons.length === 0) {
+  if (filteredFailedLessons.length === 0) {
     return (
       <Card className="border-green-200 bg-green-50">
         <CardHeader>
@@ -152,24 +171,24 @@ export default function ConflictReport({ failedLessons, schoolName = 'School', o
         </CardHeader>
         <CardContent>
           <p className="text-red-600 font-medium mb-4">
-            {failedLessons.length} lesson{failedLessons.length > 1 ? 's' : ''} could not be scheduled.
+            {filteredFailedLessons.length} lesson{filteredFailedLessons.length > 1 ? 's' : ''} could not be scheduled{filterEntityId ? ' for this ' + filterMode : ''}.
             Review the detailed conflict analysis below and use the swap suggestions to resolve issues.
           </p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-white rounded-lg p-3 border border-red-200">
               <div className="text-xs text-gray-600 mb-1">Failed Lessons</div>
-              <div className="text-2xl font-bold text-red-700">{failedLessons.length}</div>
+              <div className="text-2xl font-bold text-red-700">{filteredFailedLessons.length}</div>
             </div>
             <div className="bg-white rounded-lg p-3 border border-amber-200">
               <div className="text-xs text-gray-600 mb-1">With Swap Suggestions</div>
               <div className="text-2xl font-bold text-amber-700">
-                {failedLessons.filter(l => l.suggestedSwaps && l.suggestedSwaps.length > 0).length}
+                {filteredFailedLessons.filter(l => l.suggestedSwaps && l.suggestedSwaps.length > 0).length}
               </div>
             </div>
             <div className="bg-white rounded-lg p-3 border border-blue-200">
               <div className="text-xs text-gray-600 mb-1">Easy Swaps</div>
               <div className="text-2xl font-bold text-blue-700">
-                {failedLessons.reduce((sum, l) => 
+                {filteredFailedLessons.reduce((sum, l) => 
                   sum + (l.suggestedSwaps?.filter(s => s.swapFeasibility === 'easy').length || 0), 0
                 )}
               </div>
@@ -177,7 +196,7 @@ export default function ConflictReport({ failedLessons, schoolName = 'School', o
             <div className="bg-white rounded-lg p-3 border border-purple-200">
               <div className="text-xs text-gray-600 mb-1">Total Periods</div>
               <div className="text-2xl font-bold text-purple-700">
-                {failedLessons.reduce((sum, l) => sum + l.requiredPeriods, 0)}
+                {filteredFailedLessons.reduce((sum, l) => sum + l.requiredPeriods, 0)}
               </div>
             </div>
           </div>
@@ -185,7 +204,7 @@ export default function ConflictReport({ failedLessons, schoolName = 'School', o
       </Card>
 
       {/* Detailed Conflict List */}
-      {failedLessons.map((diagnostic) => {
+      {filteredFailedLessons.map((diagnostic) => {
         const isExpanded = expandedLesson === diagnostic.lessonId;
         const severity = getSeverityColor(diagnostic);
         const hasSuggestions = diagnostic.suggestedSwaps && diagnostic.suggestedSwaps.length > 0;

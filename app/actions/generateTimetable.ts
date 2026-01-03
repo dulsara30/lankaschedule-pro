@@ -80,19 +80,33 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
       };
     }
 
-    const config = school.config || {
-      daysOfWeek: [
-        { name: "Monday", abbreviation: "Mon" },
-        { name: "Tuesday", abbreviation: "Tue" },
-        { name: "Wednesday", abbreviation: "Wed" },
-        { name: "Thursday", abbreviation: "Thu" },
-        { name: "Friday", abbreviation: "Fri" },
-      ],
-      numberOfPeriods: 7,
-      intervalSlots: [{ afterPeriod: 3, duration: 15 }],
+    console.log(`[DEBUG] Fetched School: ${school.name}`);
+    console.log(`[DEBUG] School ID: ${school._id}`);
+    console.log(`[DEBUG] Raw Config:`, JSON.stringify(school.config, null, 2));
+
+    // CRITICAL: daysOfWeek is NOT in the DB schema, so we hardcode it
+    // The school operates Monday-Friday (5 days)
+    const HARDCODED_DAYS = [
+      { name: "Monday", abbreviation: "Mon" },
+      { name: "Tuesday", abbreviation: "Tue" },
+      { name: "Wednesday", abbreviation: "Wed" },
+      { name: "Thursday", abbreviation: "Thu" },
+      { name: "Friday", abbreviation: "Fri" },
+    ];
+
+    // Build config with robust fallbacks
+    const config = {
+      daysOfWeek: HARDCODED_DAYS, // Always use hardcoded 5-day week
+      numberOfPeriods: school.config?.numberOfPeriods || 7, // Default to 7 if missing
+      intervalSlots: school.config?.intervalSlots || [{ afterPeriod: 3, duration: 15 }],
+      startTime: school.config?.startTime || '07:30',
+      periodDuration: school.config?.periodDuration || 50,
     };
 
-    console.log(`✅ Config: ${config.daysOfWeek.length} days, ${config.numberOfPeriods} periods`);
+    console.log(`[DEBUG] Config found. Working Days: ${config.daysOfWeek.length}`);
+    console.log(`[DEBUG] Number of Periods: ${config.numberOfPeriods}`);
+    console.log(`[DEBUG] Interval Slots:`, config.intervalSlots);
+    console.log(`✅ Config validated: ${config.daysOfWeek.length} days, ${config.numberOfPeriods} periods`);
 
     // Step 2: Fetch all lessons and classes
     console.log("\n📊 Step 2: Fetching lessons and classes...");
@@ -120,6 +134,7 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
 
     // Step 3: Prepare payload for Python solver
     console.log("\n📦 Step 3: Preparing payload for Python solver...");
+    console.log("[DEBUG] Starting Payload Mapping for Python Solver...");
     
     const payload = {
       lessons: lessonsData.map((lesson: any) => ({
@@ -138,17 +153,23 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
         grade: cls.grade,
       })),
       config: {
-        numberOfPeriods: config.numberOfPeriods,
+        numberOfPeriods: config.numberOfPeriods || 7, // Ensure default
         intervalSlots: (config.intervalSlots || []).map((slot: any) => ({
-          afterPeriod: slot.afterPeriod,
-          duration: slot.duration || 15,
+          afterPeriod: slot?.afterPeriod || 0,
+          duration: slot?.duration || 15,
         })),
-        daysOfWeek: config.daysOfWeek.map((day: any) => ({
-          name: day.name || day,
-          abbreviation: day.abbreviation || (typeof day === "string" ? day.slice(0, 3) : ""),
+        daysOfWeek: (config.daysOfWeek || []).map((day: any) => ({
+          name: day?.name || (typeof day === "string" ? day : "Monday"),
+          abbreviation: day?.abbreviation || (typeof day === "string" ? day.slice(0, 3) : "Mon"),
         })),
       },
     };
+
+    console.log(`[DEBUG] Payload prepared successfully`);
+    console.log(`[DEBUG] Lessons in payload: ${payload.lessons.length}`);
+    console.log(`[DEBUG] Classes in payload: ${payload.classes.length}`);
+    console.log(`[DEBUG] Days in config payload: ${payload.config.daysOfWeek.length}`);
+    console.log(`[DEBUG] Periods in config payload: ${payload.config.numberOfPeriods}`);
 
     // Calculate expected slots
     const expectedSlots = lessonsData.reduce((total: number, lesson: any) => {
@@ -163,6 +184,8 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
 
     // Step 4: Call Python solver
     console.log("\n🔧 Step 4: Calling Python CP-SAT solver...");
+    console.log("[DEBUG] Solver URL:", process.env.SOLVER_URL || "http://localhost:8000");
+    console.log("[DEBUG] Payload size:", JSON.stringify(payload).length, "bytes");
     console.log("📍 Endpoint: http://localhost:8000/solve");
     
     const solverUrl = process.env.SOLVER_URL || "http://localhost:8000";

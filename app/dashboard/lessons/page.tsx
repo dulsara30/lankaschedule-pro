@@ -12,9 +12,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
-import { generateTimetableAction, GenerateTimetableResult } from '@/app/actions/generateTimetable';
+import { generateTimetableAction } from '@/app/actions/generateTimetable';
 import { cn } from '@/lib/utils';
-import ConflictReport from '@/components/dashboard/ConflictReport';
 
 interface Subject {
   _id: string;
@@ -57,15 +56,6 @@ export default function LessonsPage() {
   const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStep, setGenerationStep] = useState(0);
-  const [showConflictReport, setShowConflictReport] = useState(false);
-  const [generationResult, setGenerationResult] = useState<GenerateTimetableResult | null>(null);
-  const [schoolName, setSchoolName] = useState('School');
-  const [workerProgress, setWorkerProgress] = useState<{
-    thread1: { iteration: number; conflicts: number };
-    thread2: { iteration: number; conflicts: number };
-    thread3: { iteration: number; conflicts: number };
-    thread4: { iteration: number; conflicts: number };
-  } | null>(null);
 
   const [formData, setFormData] = useState({
     lessonName: '',
@@ -184,27 +174,24 @@ export default function LessonsPage() {
 
   const fetchData = async () => {
     try {
-      const [lessonsRes, subjectsRes, teachersRes, classesRes, schoolRes] = await Promise.all([
+      const [lessonsRes, subjectsRes, teachersRes, classesRes] = await Promise.all([
         fetch('/api/lessons', { cache: 'no-store' }),
         fetch('/api/subjects', { cache: 'no-store' }),
         fetch('/api/teachers', { cache: 'no-store' }),
         fetch('/api/classes', { cache: 'no-store' }),
-        fetch('/api/school/info', { cache: 'no-store' }),
       ]);
 
-      const [lessonsData, subjectsData, teachersData, classesData, schoolData] = await Promise.all([
+      const [lessonsData, subjectsData, teachersData, classesData] = await Promise.all([
         lessonsRes.json(),
         subjectsRes.json(),
         teachersRes.json(),
         classesRes.json(),
-        schoolRes.json(),
       ]);
 
       if (lessonsData.success) setLessons(lessonsData.data);
       if (subjectsData.success) setSubjects(subjectsData.data);
       if (teachersData.success) setTeachers(teachersData.data);
       if (classesData.success) setClasses(classesData.data);
-      if (schoolData.success && schoolData.data?.name) setSchoolName(schoolData.data.name);
     } catch {
       toast.error('Failed to load data');
     }
@@ -355,245 +342,33 @@ export default function LessonsPage() {
 
     setIsGenerating(true);
     setGenerationStep(1);
-    setWorkerProgress({
-      thread1: { iteration: 0, conflicts: 0 },
-      thread2: { iteration: 0, conflicts: 0 },
-      thread3: { iteration: 0, conflicts: 0 },
-      thread4: { iteration: 0, conflicts: 0 },
-    });
 
     try {
-      // Fetch config and classes
-      const [configRes, classesRes] = await Promise.all([
-        fetch('/api/school/config'),
-        fetch('/api/classes'),
-      ]);
-
-      const configData = await configRes.json();
-      const classesData = await classesRes.json();
-
-      if (!configData.success || !classesData.success) {
-        throw new Error('Failed to fetch configuration');
-      }
-
-      // ROBUST CONFIG GUARD: Handle empty or partial config
-      let finalConfig = configData.data;
+      toast.info('Starting Python CP-SAT solver...', { duration: 2000 });
       
-      // Check if config is empty or missing critical fields
-      if (!finalConfig || !finalConfig.daysOfWeek || !finalConfig.numberOfPeriods) {
-        console.warn('⚠️ Config is empty or incomplete, checking school data...');
-        
-        // Try to get config from school object if available
-        const school = configData.school || configData.data?.school;
-        if (school?.config?.daysOfWeek && school?.config?.numberOfPeriods) {
-          console.log('✅ Using config from school object');
-          finalConfig = school.config;
-        } else {
-          // HARDCODED DEFAULTS (Safety Net)
-          console.warn('⚠️ Using hardcoded defaults: 5 days (Mon-Fri), 7 periods');
-          finalConfig = {
-            daysOfWeek: [
-              { name: 'Monday', abbreviation: 'Mon' },
-              { name: 'Tuesday', abbreviation: 'Tue' },
-              { name: 'Wednesday', abbreviation: 'Wed' },
-              { name: 'Thursday', abbreviation: 'Thu' },
-              { name: 'Friday', abbreviation: 'Fri' }
-            ],
-            numberOfPeriods: 7,
-            intervalSlots: [],
-            startTime: '07:30',
-            periodDuration: 40
-          };
-        }
-      }
-      
-      // Ensure intervalSlots is always an array
-      if (!finalConfig.intervalSlots) {
-        finalConfig.intervalSlots = [];
-      }
-      
-      console.log('✅ Final config validated:', {
-        hasDaysOfWeek: !!finalConfig.daysOfWeek,
-        daysOfWeekCount: finalConfig.daysOfWeek?.length,
-        numberOfPeriods: finalConfig.numberOfPeriods,
-        intervalSlotsCount: finalConfig.intervalSlots?.length || 0
-      });
-      
-      console.log('🔍 DEBUG: Final Config being sent to worker:', finalConfig);
-
       setGenerationStep(2);
-
-      // OPTIMIZE FOR LOW-CORE DEVICES: Check hardware concurrency
-      const maxCores = navigator.hardwareConcurrency || 4;
-      const optimalWorkerCount = maxCores <= 4 ? Math.max(1, maxCores - 1) : 4;
-      console.log(`💻 Hardware: ${maxCores} cores detected, spawning ${optimalWorkerCount} workers`);
-
-      // Spawn Web Workers for parallel search
-      const workers: Worker[] = [];
-      let firstResultReceived = false;
-      let bestResult: any = null;
-
-      const workerPromises = Array.from({ length: optimalWorkerCount }, (_, threadId) => {
-        return new Promise((resolve, reject) => {
-          // Fix for Next.js 16 Turbopack compatibility
-          // Use relative path from public directory
-          const worker = new Worker(
-            new URL('../../../public/workers/scheduler.worker.js', import.meta.url),
-            { type: 'module' }
-          );
-          workers.push(worker);
-
-          worker.onmessage = (e) => {
-            const { type, data, iteration, conflicts, temperature, error } = e.data;
-
-            if (type === 'PROGRESS') {
-              // Only update progress if not already finished
-              if (!firstResultReceived) {
-                setWorkerProgress((prev) => ({
-                  ...prev!,
-                  [`thread${threadId + 1}` as keyof typeof prev]: {
-                    iteration: iteration || 0,
-                    conflicts: conflicts || 0,
-                  },
-                }));
-              }
-            } else if (type === 'COMPLETE') {
-              console.log(`✅ Worker ${threadId + 1} completed with ${data.conflicts} conflicts`);
-              
-              // FIRST RESULT WINS: Accept first successful result with lowest conflicts
-              if (!firstResultReceived || (bestResult && data.conflicts < bestResult.conflicts)) {
-                if (!firstResultReceived) {
-                  console.log(`🏆 Worker ${threadId + 1} finished first! Terminating other workers...`);
-                  toast.info('Optimization complete! Stopping other threads and saving...', { duration: 3000 });
-                  firstResultReceived = true;
-                  
-                  // IMMEDIATELY TERMINATE ALL OTHER WORKERS to stop CPU load
-                  workers.forEach((w, idx) => {
-                    if (idx !== threadId) {
-                      console.log(`⏹️ Terminating Worker ${idx + 1}`);
-                      w.terminate();
-                    }
-                  });
-                }
-                bestResult = data;
-              }
-              
-              resolve(data);
-            } else if (type === 'ERROR') {
-              console.error(`🚨 Worker ${threadId + 1} error:`, error);
-              reject(new Error(error?.message || 'Worker error'));
-            }
-          };
-
-          worker.onerror = (error) => {
-            console.error(`🚨 Worker ${threadId + 1} onerror:`, {
-              message: error.message,
-              filename: error.filename,
-              lineno: error.lineno,
-              colno: error.colno,
-            });
-            reject(new Error(error.message || 'Worker initialization failed'));
-          };
-
-          // Start worker with different random seed
-          console.log(`🚀 Starting Worker ${threadId + 1}`);
-          
-          // CLEAN OBJECT SERIALIZATION: Use finalConfig with JSON sterilization
-          const safeConfig = JSON.parse(JSON.stringify({
-            daysOfWeek: finalConfig.daysOfWeek.map((d: any) => ({ 
-              name: d.name || d,
-              abbreviation: d.abbreviation || (typeof d === 'string' ? d.slice(0, 3) : '')
-            })),
-            numberOfPeriods: finalConfig.numberOfPeriods,
-            intervalSlots: finalConfig.intervalSlots ? finalConfig.intervalSlots.map((s: any) => ({ 
-              afterPeriod: s.afterPeriod || s,
-              duration: s.duration || 15
-            })) : []
-          }));
-          
-          console.log(`📦 Worker ${threadId + 1} payload:`, {
-            lessons: lessons.length,
-            classes: classesData.data.length,
-            config: safeConfig
-          });
-          
-          worker.postMessage({
-            type: 'START',
-            data: {
-              threadId: threadId + 1,
-              lessons: JSON.parse(JSON.stringify(lessons)),
-              classes: JSON.parse(JSON.stringify(classesData.data)),
-              config: safeConfig,
-              randomSeed: Date.now() + threadId * 1000,
-            },
-          });
-        });
-      });
-
-      // Wait for all workers to complete (or first to finish with early termination)
-      await Promise.allSettled(workerPromises);
-
-      // Ensure all workers are terminated
-      workers.forEach((w, idx) => {
-        try {
-          w.terminate();
-          console.log(`✅ Worker ${idx + 1} terminated`);
-        } catch (e) {
-          // Already terminated
-        }
-      });
-
-      if (!bestResult) {
-        throw new Error('No valid result received from workers');
-      }
-
-      console.log(`🏆 Best result: ${bestResult.conflicts} conflicts, ${bestResult.slots.length} slots`);
-
-      setGenerationStep(3);
-
-      // DEDUPLICATE SLOTS: Remove any duplicates by classId-day-period
-      const slotMap = new Map<string, any>();
-      bestResult.slots.forEach((slot: any) => {
-        const key = `${slot.classId}-${slot.day}-${slot.periodNumber}`;
-        if (!slotMap.has(key)) {
-          slotMap.set(key, slot);
-        } else {
-          console.warn(`⚠️ Duplicate slot detected and removed: ${key}`);
-        }
-      });
       
-      const deduplicatedSlots = Array.from(slotMap.values());
-      console.log(`🔍 Deduplication: ${bestResult.slots.length} → ${deduplicatedSlots.length} slots`);
+      // Call the Python CP-SAT solver via server action
+      const result = await generateTimetableAction();
 
-      // Save to database
-      const saveRes = await fetch('/api/timetable/save-bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          slots: deduplicatedSlots,
-          versionName: 'Draft',
-          conflicts: bestResult.conflicts,
-        }),
-      });
-
-      const saveData = await saveRes.json();
-
-      if (saveData.success) {
-        setGenerationStep(4);
-        toast.success(`Generated ${saveData.slotsInserted} slots with ${bestResult.conflicts} conflicts`);
+      if (result.success) {
+        setGenerationStep(3);
         
-        if (bestResult.conflicts === 0) {
+        const slotsPlaced = result.slotsPlaced || result.stats?.totalSlots || 0;
+        const conflicts = result.conflicts || 0;
+        
+        toast.success(`Generated ${slotsPlaced} slots with ${conflicts} conflicts`);
+        
+        if (conflicts === 0) {
           toast.success('🎉 Perfect timetable - Zero conflicts!', { duration: 5000 });
-        } else if (bestResult.conflicts < 50) {
-          toast.info(`✅ Good result - ${bestResult.conflicts} minor conflicts remaining`);
         }
 
         // Navigate to timetable page
         setTimeout(() => {
           router.push('/dashboard/timetable');
-        }, 1000);
+        }, 1500);
       } else {
-        throw new Error(saveData.error || 'Failed to save timetable');
+        throw new Error(result.message || 'Failed to generate timetable');
       }
     } catch (error: unknown) {
       console.error('Timetable generation error:', error);
@@ -601,7 +376,6 @@ export default function LessonsPage() {
     } finally {
       setIsGenerating(false);
       setGenerationStep(0);
-      setWorkerProgress(null);
     }
   };
 
@@ -691,42 +465,15 @@ export default function LessonsPage() {
 
   const generationSteps = [
     'Fetching School Configuration...',
-    'Running Parallel AI Optimization (4 threads)...',
-    'Saving Best Result to Database...',
+    'Calling Python CP-SAT Solver...',
+    'Saving Optimized Timetable...',
     'Complete! ✓',
   ];
 
   return (
     <div className="space-y-6">
-      {/* Conflict Report Modal */}
-      {showConflictReport && generationResult?.failedLessons && generationResult.failedLessons.length > 0 && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="w-full max-w-6xl max-h-[90vh] overflow-y-auto bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl p-6">
-            <div className="mb-6">
-              <h2 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">
-                Timetable Generation Conflict Report
-              </h2>
-              <p className="text-zinc-600 dark:text-zinc-400 mt-2">
-                Review detailed conflict analysis and smart swap suggestions below
-              </p>
-            </div>
-            
-            <ConflictReport 
-              failedLessons={generationResult.failedLessons}
-              schoolName={schoolName}
-              onClose={() => {
-                setShowConflictReport(false);
-                setIsGenerating(false);
-                setGenerationStep(0);
-                router.push('/dashboard/timetable');
-              }}
-            />
-          </div>
-        </div>
-      )}
-
       {/* Full-Screen AI Generation Overlay */}
-      {isGenerating && !showConflictReport && (
+      {isGenerating && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm">
           <div className="relative flex flex-col items-center max-w-2xl px-8">
             {/* Animated Brain/AI Icon */}
@@ -821,46 +568,6 @@ export default function LessonsPage() {
                 );
               })}
             </div>
-
-            {/* Worker Thread Progress (Live Updates) */}
-            {workerProgress && generationStep === 2 && (
-              <div className="w-full max-w-xl mt-8 space-y-3">
-                <h3 className="text-sm font-semibold text-zinc-300 mb-4 flex items-center gap-2">
-                  <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Live Thread Progress
-                </h3>
-                {(['thread1', 'thread2', 'thread3', 'thread4'] as const).map((threadKey, idx) => {
-                  const thread = workerProgress[threadKey];
-                  const progress = thread.iteration / 250000 * 100;
-                  
-                  return (
-                    <div key={threadKey} className="bg-zinc-800/50 rounded-lg p-3 border border-zinc-700">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-medium text-zinc-400">Thread {idx + 1}</span>
-                        <span className={`text-xs font-bold ${
-                          thread.conflicts === 0 ? 'text-green-400' :
-                          thread.conflicts < 100 ? 'text-yellow-400' : 'text-red-400'
-                        }`}>
-                          {thread.conflicts} conflicts
-                        </span>
-                      </div>
-                      <div className="w-full bg-zinc-700 rounded-full h-2 overflow-hidden">
-                        <div 
-                          className="h-full bg-gradient-to-r from-purple-500 to-blue-500 transition-all duration-300"
-                          style={{ width: `${progress}%` }}
-                        />
-                      </div>
-                      <div className="text-[10px] text-zinc-500 mt-1">
-                        {thread.iteration.toLocaleString()} / 250,000 iterations
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
           </div>
         </div>
       )}

@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Calendar, Users, User, Save, History, Trash2, Check, ChevronsUpDown, ChevronDown, ChevronUp, Download, RotateCcw, FileDown, Eye, X, Square, CheckSquare2, Upload, Globe } from 'lucide-react';
+import { Calendar, Users, User, Save, History, Trash2, Check, ChevronsUpDown, ChevronDown, ChevronUp, Download, RotateCcw, FileDown, Eye, X, Square, CheckSquare2, Upload, Globe, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import dynamic from 'next/dynamic';
@@ -100,6 +100,10 @@ export default function TimetablePage() {
   const [publishingVersionId, setPublishingVersionId] = useState<string>('');
   const [adminNote, setAdminNote] = useState('');
   const [isPublishing, setIsPublishing] = useState(false);
+
+  // Conflict detection state
+  const [showConflicts, setShowConflicts] = useState(true);
+  const [conflictSlots, setConflictSlots] = useState<Set<string>>(new Set());
 
   // PDF Export state
   const [downloadDialogOpen, setDownloadDialogOpen] = useState(false);
@@ -275,6 +279,59 @@ export default function TimetablePage() {
       setLoading(false);
     }
   };
+
+  // Detect conflicts: Check for overlapping teacher/class assignments
+  const detectConflicts = (slotsData: TimetableSlot[]): Set<string> => {
+    const conflicts = new Set<string>();
+    const occupiedSlots = new Map<string, TimetableSlot[]>(); // key: day-period-entityId
+
+    // Build occupation map
+    for (const slot of slotsData) {
+      const { day, periodNumber, lessonId, classId } = slot;
+      
+      if (!lessonId || !classId) continue;
+
+      // Check class conflicts
+      const classKey = `${day}-${periodNumber}-class-${classId._id}`;
+      if (!occupiedSlots.has(classKey)) {
+        occupiedSlots.set(classKey, []);
+      }
+      occupiedSlots.get(classKey)!.push(slot);
+
+      // Check teacher conflicts
+      if (lessonId.teacherIds) {
+        for (const teacher of lessonId.teacherIds) {
+          const teacherKey = `${day}-${periodNumber}-teacher-${teacher._id}`;
+          if (!occupiedSlots.has(teacherKey)) {
+            occupiedSlots.set(teacherKey, []);
+          }
+          occupiedSlots.get(teacherKey)!.push(slot);
+        }
+      }
+    }
+
+    // Find conflicts (more than one slot per resource per time)
+    for (const [key, slotList] of occupiedSlots.entries()) {
+      if (slotList.length > 1) {
+        // Mark all conflicting slots
+        for (const slot of slotList) {
+          conflicts.add(slot._id);
+        }
+      }
+    }
+
+    return conflicts;
+  };
+
+  // Update conflicts when slots change
+  useEffect(() => {
+    const conflicts = detectConflicts(slots);
+    setConflictSlots(conflicts);
+    
+    if (conflicts.size > 0) {
+      console.log(`⚠️ Detected ${conflicts.size} conflicting slots`);
+    }
+  }, [slots]);
 
   const handleSaveVersion = async () => {
     if (!newVersionName.trim()) {
@@ -600,6 +657,9 @@ export default function TimetablePage() {
       return <div className="text-xs text-zinc-400 dark:text-zinc-500 italic p-3 font-medium">Invalid data</div>;
     }
 
+    // Check if this slot has conflicts
+    const hasConflict = conflictSlots.has(slot._id);
+
     const subjects = lesson.subjectIds;
     
     // Friendly rounded card styling with diagonal gradients
@@ -628,11 +688,20 @@ export default function TimetablePage() {
 
     return (
       <div 
-        className={`h-full w-full rounded-2xl flex flex-col justify-center items-center ${textColorClass} relative shadow-lg hover:shadow-xl transition-all duration-200 overflow-hidden`}
+        className={`h-full w-full rounded-2xl flex flex-col justify-center items-center ${textColorClass} relative shadow-lg hover:shadow-xl transition-all duration-200 overflow-hidden ${
+          hasConflict && showConflicts ? 'ring-4 ring-red-500 ring-offset-2 animate-pulse' : ''
+        }`}
         style={backgroundStyle}
       >
         {/* Subtle white overlay for text contrast */}
         <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none" />
+        
+        {/* Conflict badge - red alert */}
+        {hasConflict && showConflicts && (
+          <div className="absolute top-2 left-2 bg-red-600 border-2 border-white text-white text-[10px] px-2.5 py-1 rounded-full font-bold shadow-lg z-10 animate-pulse">
+            ⚠ CONFLICT
+          </div>
+        )}
         
         {/* Modern double period badge - glassmorphism */}
         {isDoubleStart && (
@@ -713,6 +782,14 @@ export default function TimetablePage() {
           >
             <Download className="h-4 w-4" />
             Download PDF
+          </Button>
+          <Button
+            variant={showConflicts ? 'default' : 'outline'}
+            onClick={() => setShowConflicts(!showConflicts)}
+            className={`gap-2 ${conflictSlots.size > 0 && showConflicts ? 'bg-red-600 hover:bg-red-700' : ''}`}
+          >
+            <AlertCircle className="h-4 w-4" />
+            {showConflicts ? 'Hide' : 'Show'} Conflicts {conflictSlots.size > 0 && `(${conflictSlots.size})`}
           </Button>
           <Button
             variant={viewMode === 'class' ? 'default' : 'outline'}

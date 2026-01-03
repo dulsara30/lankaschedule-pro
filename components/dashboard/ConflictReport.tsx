@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { AlertCircle, AlertTriangle, CheckCircle2, ArrowRightLeft, ChevronDown, ChevronUp, Download } from 'lucide-react';
 import { PDFDownloadLink } from '@react-pdf/renderer';
 import ConflictReportPDF from '@/components/timetable/ConflictReportPDF';
+import { toast } from 'sonner';
 
 interface ConflictDiagnostic {
   lessonId: string;
@@ -41,9 +42,72 @@ interface ConflictReportProps {
 export default function ConflictReport({ failedLessons, schoolName = 'School', onClose }: ConflictReportProps) {
   const [expandedLesson, setExpandedLesson] = useState<string | null>(null);
   const [isPDFReady, setIsPDFReady] = useState(false);
+  const [applyingSwap, setApplyingSwap] = useState(false);
 
   const toggleExpanded = (lessonId: string) => {
     setExpandedLesson(expandedLesson === lessonId ? null : lessonId);
+  };
+
+  // Handle manual swap application
+  const handleApplySwap = async (swap: SwapSuggestion) => {
+    setApplyingSwap(true);
+    try {
+      // Find the slot for the conflicting lesson
+      const response = await fetch('/api/timetable/slots', {
+        method: 'GET',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch slots');
+      }
+
+      const slotsData = await response.json();
+      
+      // Find the slot to move (conflicting lesson's slot)
+      const slotToMove = slotsData.slots.find((slot: any) => 
+        slot.lessonId._id === swap.conflictingLesson.lessonId &&
+        slot.day === swap.targetSlot.day &&
+        slot.periodNumber === swap.targetSlot.period
+      );
+
+      if (!slotToMove) {
+        throw new Error('Could not find slot to move');
+      }
+
+      // Pick the first alternative slot
+      const targetAlt = swap.alternativeSlots[0];
+      if (!targetAlt) {
+        throw new Error('No alternative slot available');
+      }
+
+      // Move the slot
+      const moveResponse = await fetch('/api/timetable/move', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slotId: slotToMove._id,
+          newDay: targetAlt.day,
+          newPeriod: targetAlt.period,
+        }),
+      });
+
+      if (!moveResponse.ok) {
+        const errorData = await moveResponse.json();
+        throw new Error(errorData.message || 'Failed to move slot');
+      }
+
+      toast.success('Swap applied successfully! Refreshing timetable...');
+      
+      // Refresh the page to show updated timetable
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+    } catch (error) {
+      console.error('Error applying swap:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to apply swap');
+    } finally {
+      setApplyingSwap(false);
+    }
   };
 
   const getSeverityColor = (diagnostic: ConflictDiagnostic): string => {
@@ -266,13 +330,11 @@ export default function ConflictReport({ failedLessons, schoolName = 'School', o
                           <Button 
                             size="sm" 
                             className="w-full mt-3 bg-blue-600 hover:bg-blue-700"
-                            onClick={() => {
-                              // TODO: Implement manual swap action
-                              console.log('Swap suggestion:', swap);
-                            }}
+                            onClick={() => handleApplySwap(swap)}
+                            disabled={applyingSwap || swap.alternativeSlots.length === 0}
                           >
                             <ArrowRightLeft className="h-4 w-4 mr-2" />
-                            Apply Swap
+                            {applyingSwap ? 'Applying...' : 'Apply Swap'}
                           </Button>
                         </div>
                       ))}

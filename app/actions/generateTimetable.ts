@@ -218,11 +218,12 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
     revalidatePath('/dashboard/timetable');
     revalidatePath('/dashboard/lessons');
 
-    // 10. Return result with full diagnostics
+    // 10. Return result with full diagnostics (ALWAYS save partial/best-effort results)
+    // Best-effort results: Save draft even with conflicts for manual resolution
     if (result.failedLessons.length > 0) {
       return {
-        success: true,
-        message: `Timetable generated with ${result.failedLessons.length} lesson(s) that could not be scheduled.`,
+        success: true, // Changed from partial success to full success (draft saved)
+        message: `Timetable generated as 'Draft with Conflicts'. ${result.stats.totalSlots} slots placed, ${result.stats.conflictsRemaining || result.failedLessons.length} conflicts remaining. Use conflict report to manually resolve issues.`,
         stats: result.stats,
         failedLessons: result.failedLessons,
       };
@@ -230,7 +231,7 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
 
     return {
       success: true,
-      message: `Timetable generated successfully! Scheduled ${result.stats.scheduledLessons} lessons across ${result.stats.totalSlots} slots.`,
+      message: `Timetable generated successfully! Scheduled ${result.stats.scheduledLessons} lessons across ${result.stats.totalSlots} slots with zero conflicts.`,
       stats: result.stats,
     };
   } catch (error: unknown) {

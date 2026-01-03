@@ -48,7 +48,7 @@ class Lesson(BaseModel):
     model_config = {"populate_by_name": True}
     
     lesson_id: str = Field(alias='_id')
-    lessonName: str
+    lesson_name: str = Field(alias='lessonName')
     subjectIds: List[str]
     teacherIds: List[str]
     classIds: List[str]
@@ -516,9 +516,9 @@ class TimetableSolver:
                 unplaced_tasks.append(UnplacedTask(
                     lessonId=lesson.lesson_id,
                     classId=class_id,
-                    lessonName=lesson.name,
+                    lessonName=lesson.lesson_name,
                     className=class_name,
-                    teacherName=lesson.teacherName,
+                    teacherName="N/A",  # Teacher names not available in lesson model
                     taskType=task_type
                 ))
                 continue  # Skip to next task

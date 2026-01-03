@@ -365,6 +365,9 @@ export default function LessonsPage() {
           toast.success('🎉 Perfect timetable - Zero conflicts!', { duration: 5000 });
         }
 
+        // Refresh to ensure sidebar picks up unscheduled lessons
+        router.refresh();
+        
         // Navigate to timetable page
         setTimeout(() => {
           router.push('/dashboard/timetable');

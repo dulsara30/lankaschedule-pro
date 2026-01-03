@@ -203,6 +203,7 @@ export default function TimetablePage() {
       console.log('📋 Client: Classes:', classesData.data?.length || 0);
       console.log('⚙️ Client: Config:', configData.data);
       console.log('📚 Client: Versions:', versionsData.data?.length || 0);
+      console.log('DEBUG: Found versions:', versionsData.data?.length || 0); // Diagnostic log
       if (versionsData.data?.length > 0) {
         console.log('📚 Versions list:', versionsData.data);
       }
@@ -226,7 +227,18 @@ export default function TimetablePage() {
         });
         setLessonNameMap(newMap);
       }
-      if (versionsData.success) setVersions(versionsData.data || []);
+      if (versionsData.success) {
+        const versionsList = versionsData.data || [];
+        setVersions(versionsList);
+        console.log('DEBUG: Versions set in state:', versionsList.length);
+        // If we have versions but no slots, automatically load the first version
+        if (versionsList.length > 0 && (!slotsData.data || slotsData.data.length === 0) && !versionId) {
+          console.log('📦 Auto-loading first version:', versionsList[0]._id);
+          // Recursively fetch data with the first version ID
+          setTimeout(() => fetchData(versionsList[0]._id), 100);
+          return;
+        }
+      }
       if (classesData.success) {
         const classList = classesData.data || [];
         setClasses(classList);
@@ -916,7 +928,7 @@ export default function TimetablePage() {
         </DialogContent>
       </Dialog>
 
-      {slots.length === 0 ? (
+      {slots.length === 0 && versions.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Calendar className="h-16 w-16 text-zinc-400 mb-4" />
@@ -929,6 +941,18 @@ export default function TimetablePage() {
             <Button onClick={() => window.location.href = '/dashboard/lessons'}>
               Go to Lessons
             </Button>
+          </CardContent>
+        </Card>
+      ) : slots.length === 0 && versions.length > 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <Calendar className="h-16 w-16 text-zinc-400 mb-4" />
+            <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50 mb-2">
+              Loading Timetable...
+            </h3>
+            <p className="text-zinc-600 dark:text-zinc-400 text-center mb-4">
+              {versions.length} version(s) found in database. Loading slots...
+            </p>
           </CardContent>
         </Card>
       ) : relevantSlots.length === 0 ? (

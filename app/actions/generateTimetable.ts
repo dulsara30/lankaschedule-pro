@@ -166,10 +166,16 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
     });
     console.log(`📚 Saved versions protected: ${savedVersionCount} versions remain intact`);
 
-    // 7. Create new draft version
+    // 7. Create new draft version with conflict-aware naming
     console.log('📦 Creating new draft version...');
     
-    const versionName = `Version ${savedVersionCount + 1}.0 (Draft)`;
+    // CRITICAL: Indicate if manual review is needed due to conflicts
+    const hasConflicts = result.stats.conflictsRemaining && result.stats.conflictsRemaining > 0;
+    const versionName = hasConflicts 
+      ? `Version ${savedVersionCount + 1}.0 (Draft - Requires Review)` 
+      : `Version ${savedVersionCount + 1}.0 (Draft)`;
+    
+    console.log(`   Version status: ${hasConflicts ? '⚠️ Has conflicts - Manual review required' : '✅ Conflict-free'}`);
     
     const newVersion = await TimetableVersion.create({
       schoolId: school._id,
@@ -179,8 +185,10 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
     
     console.log(`✅ Created new version: ${newVersion.versionName} (ID: ${newVersion._id})`);
 
-    // 8. Save generated slots to database with versionId
+    // 8. CRITICAL: Save generated slots to database ALWAYS (best-effort approach)
     if (result.slots.length > 0) {
+      console.log(`💾 BEST-EFFORT SAVE: Persisting ${result.slots.length} slots to database...`);
+      
       // Explicitly cast versionId to mongoose.Types.ObjectId to ensure type compatibility
       const versionObjectId = new mongoose.Types.ObjectId(newVersion._id.toString());
       
@@ -196,10 +204,8 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
         isLocked: false,
       }));
 
-      console.log('💾 Saving slots to database...');
       console.log(`   Total slots to save: ${slotsToSave.length}`);
       console.log(`   Version ID being used: ${newVersion._id}`);
-      console.log(`   Sample slot with versionId:`, JSON.stringify(slotsToSave[0], null, 2));
       
       // Debug: Show what we're saving
       const doubleSlotsCount = slotsToSave.filter(s => s.isDoubleStart || s.isDoubleEnd).length;
@@ -207,31 +213,44 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
       
       const insertedSlots = await TimetableSlot.insertMany(slotsToSave);
       
-      console.log(`✅ Slots saved successfully! Inserted ${insertedSlots.length} documents`);
+      console.log(`✅ BEST-EFFORT SAVE COMPLETE: Inserted ${insertedSlots.length} documents`);
+      
+      if (result.stats.conflictsRemaining && result.stats.conflictsRemaining > 0) {
+        console.log(`⚠️ Saved ${insertedSlots.length} slots with ${result.stats.conflictsRemaining} conflicts for manual resolution`);
+      }
       
       // Verify that versionId was saved
       const verifySlot = await TimetableSlot.findOne({ versionId: newVersion._id }).lean();
       console.log('🔍 Verification - Sample saved slot:', JSON.stringify(verifySlot, null, 2));
+    } else {
+      // Should NEVER happen with stochastic scheduler (Phase 1 greedy initialization places all tasks)
+      console.error('❌ CRITICAL: No slots returned from scheduler!');
+      return { 
+        success: false, 
+        message: 'Critical error: Scheduler failed to place any lessons. Please check lesson data and try again.' 
+      };
     }
 
-    // 9. Revalidate paths
+    // 9. Revalidate paths to update UI immediately
     revalidatePath('/dashboard/timetable');
     revalidatePath('/dashboard/lessons');
+    console.log('🔄 Paths revalidated - UI will update with new draft');
 
-    // 10. Return result with full diagnostics (ALWAYS save partial/best-effort results)
-    // Best-effort results: Save draft even with conflicts for manual resolution
-    if (result.failedLessons.length > 0) {
+    // 10. Return result with full diagnostics (use conflictsRemaining for consistency)
+    if (result.stats.conflictsRemaining && result.stats.conflictsRemaining > 0) {
+      console.log(`✅ BEST-EFFORT SUCCESS: Draft saved with ${result.stats.conflictsRemaining} conflicts`);
       return {
-        success: true, // Changed from partial success to full success (draft saved)
-        message: `Timetable generated as 'Draft with Conflicts'. ${result.stats.totalSlots} slots placed, ${result.stats.conflictsRemaining || result.failedLessons.length} conflicts remaining. Use conflict report to manually resolve issues.`,
+        success: true, // SUCCESS: Draft saved (conflicts can be manually resolved)
+        message: `✅ Timetable draft saved! ${result.stats.totalSlots} slots placed. ⚠️ ${result.stats.conflictsRemaining} conflicts detected - use Conflict Report to resolve manually.`,
         stats: result.stats,
         failedLessons: result.failedLessons,
       };
     }
 
+    console.log(`🎉 PERFECT SUCCESS: Draft saved with zero conflicts`);
     return {
       success: true,
-      message: `Timetable generated successfully! Scheduled ${result.stats.scheduledLessons} lessons across ${result.stats.totalSlots} slots with zero conflicts.`,
+      message: `🎉 Timetable generated successfully! ${result.stats.totalSlots} slots placed with zero conflicts.`,
       stats: result.stats,
     };
   } catch (error: unknown) {

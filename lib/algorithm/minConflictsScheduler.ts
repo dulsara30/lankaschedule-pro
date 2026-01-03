@@ -180,13 +180,13 @@ export function generateTimetable(
   console.log(`\n🔧 PHASE 2: Stochastic Repair (1M iterations)`);
   stochasticRepair(placedTasks, grid, busyMap, dailyLessonMap, config);
 
-  // Convert grid to slots
+  // BEST-EFFORT RESULT: Convert grid to slots (ALWAYS returns all placed slots)
   const slots = gridToSlots(grid);
 
   // Calculate final conflict count
   const finalConflicts = countTotalConflicts(placedTasks, grid, busyMap);
   
-  console.log(`\n✅ Scheduler Complete`);
+  console.log(`\n✅ Scheduler Complete - BEST EFFORT RESULT`);
   console.log(`📊 Final Stats:`);
   console.log(`   - Total slots created: ${slots.length}`);
   console.log(`   - Lessons scheduled: ${lessons.length}`);
@@ -196,14 +196,19 @@ export function generateTimetable(
   console.log(`   - Iterations: ${iterationCount.toLocaleString()}/${MAX_ITERATIONS.toLocaleString()}`);
   console.log(`   - Remaining conflicts: ${finalConflicts}`);
 
+  if (finalConflicts > 0) {
+    console.log(`⚠️ BEST-EFFORT MODE: Returning ${slots.length} slots with ${finalConflicts} conflicts for manual resolution`);
+  }
+
   // Generate diagnostics for remaining conflicts
   const failedDiagnostics = generateConflictDiagnostics(placedTasks, grid, busyMap, dailyLessonMap, config);
 
   const success = finalConflicts === 0;
 
+  // CRITICAL: Always return slots, even with conflicts (best-effort approach)
   return {
     success,
-    slots,
+    slots, // GUARANTEED: All tasks placed during Phase 1 are included
     failedLessons: failedDiagnostics,
     stats: {
       totalSlots: slots.length,

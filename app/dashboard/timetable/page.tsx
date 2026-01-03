@@ -791,6 +791,16 @@ export default function TimetablePage() {
             <AlertCircle className="h-4 w-4" />
             {showConflicts ? 'Hide' : 'Show'} Conflicts {conflictSlots.size > 0 && `(${conflictSlots.size})`}
           </Button>
+          {conflictSlots.size > 0 && (
+            <Button
+              variant="default"
+              onClick={() => window.location.href = '/dashboard/timetable/master-editor'}
+              className="gap-2 bg-blue-600 hover:bg-blue-700"
+            >
+              <Users className="h-4 w-4" />
+              Open Master Grid Editor
+            </Button>
+          )}
           <Button
             variant={viewMode === 'class' ? 'default' : 'outline'}
             onClick={() => {

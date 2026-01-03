@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils';
 import dynamic from 'next/dynamic';
 import { pdf } from '@react-pdf/renderer';
 import TimetablePDF from '@/components/timetable/TimetablePDF';
-import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
+import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, useSensor, useSensors, PointerSensor, useDroppable } from '@dnd-kit/core';
 import { saveManualMove } from '@/app/actions/saveManualMove';
 import MasterGrid from './master-editor/MasterGrid';
 import UnscheduledLessonsSidebar from '@/components/dashboard/UnscheduledLessonsSidebar';
@@ -92,6 +92,7 @@ export default function TimetablePage() {
   const [schoolInfo, setSchoolInfo] = useState<{ name: string; address: string }>({ name: 'EduFlow AI', address: '' });
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'class' | 'teacher' | 'master-matrix'>('class');
+  const [previousViewMode, setPreviousViewMode] = useState<'class' | 'teacher'>('class');
   const [selectedEntity, setSelectedEntity] = useState<string>('');
   const [entityComboOpen, setEntityComboOpen] = useState(false);
   
@@ -863,6 +864,87 @@ export default function TimetablePage() {
     );
   };
 
+  // DroppableCell component for Class and Teacher views
+  const DroppableCell = ({ 
+    day, 
+    period, 
+    slot, 
+    isDoubleStart, 
+    rowSpan 
+  }: { 
+    day: string; 
+    period: number; 
+    slot: TimetableSlot | undefined; 
+    isDoubleStart: boolean; 
+    rowSpan: number;
+  }) => {
+    // Get the first teacher for this slot (for validation in drag-end)
+    const teacherId = viewMode === 'teacher' 
+      ? selectedEntity 
+      : (slot?.lessonId?.teacherIds?.[0]?._id || '');
+
+    const dropId = `cell-${day}-${period}-${teacherId}`;
+    const { setNodeRef, isOver } = useDroppable({
+      id: dropId,
+      data: {
+        day,
+        period,
+        teacherId,
+        classId: viewMode === 'class' ? selectedEntity : (slot?.classId?._id || ''),
+      },
+    });
+
+    // Check if active lesson can be dropped here
+    const canDrop = activeLesson ? (
+      viewMode === 'teacher' 
+        ? activeLesson.teacherIds?.some(t => t._id === selectedEntity)
+        : activeLesson.classIds?.some(c => c._id === selectedEntity)
+    ) : false;
+
+    return (
+      <TooltipProvider delayDuration={200}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <td
+              ref={setNodeRef}
+              rowSpan={rowSpan}
+              className={cn(
+                'relative cursor-pointer transition-all',
+                isDoubleStart && rowSpan === 2 ? 'h-40' : 'h-24',
+                'border border-zinc-100 dark:border-zinc-800 p-2',
+                // Drag-and-drop feedback
+                isOver && canDrop && 'bg-green-100 dark:bg-green-900/20 ring-2 ring-green-500',
+                isOver && !canDrop && 'bg-red-100 dark:bg-red-900/20 ring-2 ring-red-500',
+                !isOver && 'bg-zinc-50 dark:bg-zinc-900'
+              )}
+              style={{
+                minWidth: '160px',
+              }}
+            >
+              {renderSlotContent(slot, isDoubleStart, period)}
+            </td>
+          </TooltipTrigger>
+          {slot && (
+            <TooltipContent side="top" className="bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 border-zinc-700 dark:border-zinc-300">
+              <div className="space-y-1">
+                <div className="font-semibold">{slot.lessonId?.lessonName}</div>
+                <div className="text-xs">
+                  <span className="opacity-80">Teacher:</span> {slot.lessonId?.teacherIds?.map(t => t?.name).filter(Boolean).join(', ') || 'N/A'}
+                </div>
+                <div className="text-xs">
+                  <span className="opacity-80">Class:</span> {slot.lessonId?.classIds?.map(c => c?.name).filter(Boolean).join(', ') || 'N/A'}
+                </div>
+                <div className="text-xs">
+                  <span className="opacity-80">Time:</span> {calculateTime(period)} - {calculateTime(period + (isDoubleStart ? 2 : 1))}
+                </div>
+              </div>
+            </TooltipContent>
+          )}
+        </Tooltip>
+      </TooltipProvider>
+    );
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -940,6 +1022,7 @@ export default function TimetablePage() {
             variant={viewMode === 'class' ? 'default' : 'outline'}
             onClick={() => {
               setViewMode('class');
+              setPreviousViewMode('class');
               if (classes.length > 0) setSelectedEntity(classes[0]._id);
             }}
           >
@@ -950,6 +1033,7 @@ export default function TimetablePage() {
             variant={viewMode === 'teacher' ? 'default' : 'outline'}
             onClick={() => {
               setViewMode('teacher');
+              setPreviousViewMode('teacher');
               if (teachers.length > 0) setSelectedEntity(teachers[0]._id);
             }}
           >
@@ -958,11 +1042,19 @@ export default function TimetablePage() {
           </Button>
           <Button
             variant={viewMode === 'master-matrix' ? 'default' : 'outline'}
-            onClick={() => setViewMode('master-matrix')}
+            onClick={() => {
+              if (viewMode === 'master-matrix') {
+                // Toggle back to previous view
+                setViewMode(previousViewMode);
+              } else {
+                // Switch to master matrix
+                setViewMode('master-matrix');
+              }
+            }}
             className={`gap-2 ${viewMode === 'master-matrix' ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
           >
             <Grid3x3 className="h-4 w-4" />
-            Master Matrix
+            {viewMode === 'master-matrix' ? 'Back to ' + (previousViewMode === 'class' ? 'Class' : 'Teacher') : 'Master Matrix'}
           </Button>
         </div>
       </div>
@@ -1378,34 +1470,51 @@ export default function TimetablePage() {
         </>
       ) : (
         <>
-          {/* Entity Selector - Searchable Combobox */}
-          <div className="flex items-center gap-3">
-            <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-              {viewMode === 'class' ? 'Select Class:' : 'Select Teacher:'}
-            </label>
-            <Popover open={entityComboOpen} onOpenChange={setEntityComboOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  role="combobox"
-                  aria-expanded={entityComboOpen}
-                  className="w-[300px] justify-between"
-                >
-                  {selectedEntity
-                    ? entityList.find((entity) => entity._id === selectedEntity)?.name
-                    : `Search ${viewMode === 'class' ? 'classes' : 'teachers'}...`}
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-[300px] p-0">
-                <Command>
-                  <CommandInput placeholder={`Search ${viewMode === 'class' ? 'class' : 'teacher'}...`} />
-                  <CommandList>
-                    <CommandEmpty>No {viewMode === 'class' ? 'class' : 'teacher'} found.</CommandEmpty>
-                    <CommandGroup>
-                      {entityList.map((entity) => {
-                        const entityAsClass = entity as Class;
-                        return (
+          {/* Class and Teacher View with Unscheduled Sidebar */}
+          <div className="flex gap-4">
+            {/* Unscheduled Lessons Sidebar - Fixed on Left */}
+            <div className="w-80 flex-shrink-0">
+              <div className="h-full overflow-y-auto border rounded-lg bg-white sticky top-0">
+                <UnscheduledLessonsSidebar 
+                  lessons={lessons} 
+                  slots={slots.map(s => ({
+                    ...s,
+                    day: DAYS.indexOf(s.day) + 1
+                  })) as any} 
+                />
+              </div>
+            </div>
+
+            {/* Main Content - Timetable Grid */}
+            <div className="flex-1 space-y-4">
+              {/* Entity Selector - Searchable Combobox */}
+              <div className="flex items-center gap-3">
+                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  {viewMode === 'class' ? 'Select Class:' : 'Select Teacher:'}
+                </label>
+                <Popover open={entityComboOpen} onOpenChange={setEntityComboOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={entityComboOpen}
+                      className="w-[300px] justify-between"
+                    >
+                      {selectedEntity
+                        ? entityList.find((entity) => entity._id === selectedEntity)?.name
+                        : `Search ${viewMode === 'class' ? 'classes' : 'teachers'}...`}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[300px] p-0">
+                    <Command>
+                      <CommandInput placeholder={`Search ${viewMode === 'class' ? 'class' : 'teacher'}...`} />
+                      <CommandList>
+                        <CommandEmpty>No {viewMode === 'class' ? 'class' : 'teacher'} found.</CommandEmpty>
+                        <CommandGroup>
+                          {entityList.map((entity) => {
+                            const entityAsClass = entity as Class;
+                            return (
                           <CommandItem
                             key={entity._id}
                             value={entity.name}
@@ -1505,39 +1614,14 @@ export default function TimetablePage() {
                               }
                               
                               return (
-                                <TooltipProvider key={`${day}-${period}`} delayDuration={200}>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <td
-                                        rowSpan={rowSpan}
-                                        className={`relative cursor-pointer transition-all bg-zinc-50 dark:bg-zinc-900 ${
-                                          isDoubleStart && rowSpan === 2 ? 'h-40' : 'h-24'
-                                        } border border-zinc-100 dark:border-zinc-800 p-2`}
-                                        style={{
-                                          minWidth: '160px',
-                                        }}
-                                      >
-                                        {renderSlotContent(slot, isDoubleStart, period)}
-                                      </td>
-                                    </TooltipTrigger>
-                                    {slot && (
-                                      <TooltipContent side="top" className="bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 border-zinc-700 dark:border-zinc-300">
-                                        <div className="space-y-1">
-                                          <div className="font-semibold">{slot.lessonId?.lessonName}</div>
-                                          <div className="text-xs">
-                                            <span className="opacity-80">Teacher:</span> {slot.lessonId?.teacherIds?.map(t => t?.name).filter(Boolean).join(', ') || 'N/A'}
-                                          </div>
-                                          <div className="text-xs">
-                                            <span className="opacity-80">Class:</span> {slot.lessonId?.classIds?.map(c => c?.name).filter(Boolean).join(', ') || 'N/A'}
-                                          </div>
-                                          <div className="text-xs">
-                                            <span className="opacity-80">Time:</span> {calculateTime(period)} - {calculateTime(period + (isDoubleStart ? 2 : 1))}
-                                          </div>
-                                        </div>
-                                      </TooltipContent>
-                                    )}
-                                  </Tooltip>
-                                </TooltipProvider>
+                                <DroppableCell
+                                  key={`${day}-${period}`}
+                                  day={day}
+                                  period={period}
+                                  slot={slot}
+                                  isDoubleStart={isDoubleStart}
+                                  rowSpan={rowSpan}
+                                />
                               );
                             })}
                           </tr>
@@ -1573,6 +1657,67 @@ export default function TimetablePage() {
               </div>
             </CardContent>
           </Card>
+            </div>
+          </div>
+
+          {/* Drag Overlay for Class/Teacher Views */}
+          <DragOverlay>
+            {activeLessonId && activeLesson && (
+              <div className="bg-white border-2 border-blue-500 rounded-lg p-3 shadow-xl opacity-90">
+                <div className="font-semibold text-sm">{activeLesson.lessonName}</div>
+                <div className="text-xs text-gray-600 mt-1">
+                  {activeLesson.subjectIds?.[0]?.name || 'Unknown Subject'}
+                </div>
+              </div>
+            )}
+          </DragOverlay>
+
+          {/* Conflict/Swap Dialog for Class/Teacher Views */}
+          <Dialog open={conflictDialogOpen} onOpenChange={setConflictDialogOpen}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>Slot Conflict</DialogTitle>
+                <DialogDescription>
+                  {conflictData?.conflict?.type === 'teacher' 
+                    ? 'This teacher is already teaching another class at this time.'
+                    : 'This class already has a lesson scheduled at this time.'}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="py-4">
+                <div className="text-sm text-gray-700 bg-amber-50 p-3 rounded border border-amber-200">
+                  <p className="font-medium mb-1">Conflict Details:</p>
+                  <p className="text-xs">{conflictData?.conflict?.details}</p>
+                </div>
+              </div>
+
+              <DialogFooter className="flex flex-col sm:flex-row gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setConflictDialogOpen(false)}
+                  className="w-full sm:w-auto"
+                >
+                  Cancel
+                </Button>
+                {conflictData?.existingSlotId && (
+                  <Button
+                    variant="secondary"
+                    onClick={handleSwap}
+                    className="w-full sm:w-auto"
+                  >
+                    Swap Positions
+                  </Button>
+                )}
+                <Button
+                  variant="destructive"
+                  onClick={handleForcePlace}
+                  className="w-full sm:w-auto"
+                >
+                  Force Place (Mark Conflict)
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </>
       )}
 

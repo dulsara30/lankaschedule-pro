@@ -91,13 +91,15 @@ export async function GET(request: Request) {
       .populate({
         path: 'classId',
         select: 'name grade',
+        strictPopulate: false,
       })
       .populate({
         path: 'lessonId',
+        strictPopulate: false,
         populate: [
-          { path: 'subjectIds', select: 'name color' },
-          { path: 'teacherIds', select: 'name email' },
-          { path: 'classIds', select: 'name grade' },
+          { path: 'subjectIds', select: 'name color', strictPopulate: false },
+          { path: 'teacherIds', select: 'name email', strictPopulate: false },
+          { path: 'classIds', select: 'name grade', strictPopulate: false },
         ],
       })
       .sort({ day: 1, periodNumber: 1 })

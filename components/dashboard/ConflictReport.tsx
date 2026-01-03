@@ -8,6 +8,7 @@ import { AlertCircle, AlertTriangle, CheckCircle2, ArrowRightLeft, ChevronDown, 
 import { PDFDownloadLink } from '@react-pdf/renderer';
 import ConflictReportPDF from '@/components/timetable/ConflictReportPDF';
 import { toast } from 'sonner';
+import { saveManualMove } from '@/app/actions/saveManualMove';
 
 interface ConflictDiagnostic {
   lessonId: string;
@@ -48,60 +49,39 @@ export default function ConflictReport({ failedLessons, schoolName = 'School', o
     setExpandedLesson(expandedLesson === lessonId ? null : lessonId);
   };
 
-  // Handle manual swap application
-  const handleApplySwap = async (swap: SwapSuggestion) => {
+  // Handle manual swap application using saveManualMove server action
+  const handleApplySwap = async (swap: SwapSuggestion, versionId?: string) => {
     setApplyingSwap(true);
     try {
-      // Find the slot for the conflicting lesson
-      const response = await fetch('/api/timetable/slots', {
-        method: 'GET',
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch slots');
-      }
-
-      const slotsData = await response.json();
-      
-      // Find the slot to move (conflicting lesson's slot)
-      const slotToMove = slotsData.slots.find((slot: any) => 
-        slot.lessonId._id === swap.conflictingLesson.lessonId &&
-        slot.day === swap.targetSlot.day &&
-        slot.periodNumber === swap.targetSlot.period
-      );
-
-      if (!slotToMove) {
-        throw new Error('Could not find slot to move');
-      }
-
       // Pick the first alternative slot
       const targetAlt = swap.alternativeSlots[0];
       if (!targetAlt) {
         throw new Error('No alternative slot available');
       }
 
-      // Move the slot
-      const moveResponse = await fetch('/api/timetable/move', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          slotId: slotToMove._id,
-          newDay: targetAlt.day,
-          newPeriod: targetAlt.period,
-        }),
+      // Convert day string to day number (Monday=1, Tuesday=2, etc.)
+      const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+      const dayNumber = DAYS.indexOf(targetAlt.day) + 1;
+
+      // Use saveManualMove to move the conflicting lesson to an alternative slot
+      const result = await saveManualMove({
+        lessonId: swap.conflictingLesson.lessonId,
+        targetDay: dayNumber,
+        targetPeriod: targetAlt.period,
+        versionId: versionId || '',
+        forcePlace: true, // Force place to allow the swap
       });
 
-      if (!moveResponse.ok) {
-        const errorData = await moveResponse.json();
-        throw new Error(errorData.message || 'Failed to move slot');
+      if (result.success) {
+        toast.success('✅ Swap applied successfully! Refreshing...');
+        
+        // Refresh the page to show updated timetable
+        setTimeout(() => {
+          window.location.reload();
+        }, 800);
+      } else {
+        throw new Error(result.message || 'Failed to apply swap');
       }
-
-      toast.success('Swap applied successfully! Refreshing timetable...');
-      
-      // Refresh the page to show updated timetable
-      setTimeout(() => {
-        window.location.reload();
-      }, 1000);
     } catch (error) {
       console.error('Error applying swap:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to apply swap');
@@ -330,7 +310,12 @@ export default function ConflictReport({ failedLessons, schoolName = 'School', o
                           <Button 
                             size="sm" 
                             className="w-full mt-3 bg-blue-600 hover:bg-blue-700"
-                            onClick={() => handleApplySwap(swap)}
+                            onClick={() => {
+                              // Get current versionId from URL or use latest
+                              const urlParams = new URLSearchParams(window.location.search);
+                              const versionId = urlParams.get('versionId') || '';
+                              handleApplySwap(swap, versionId);
+                            }}
                             disabled={applyingSwap || swap.alternativeSlots.length === 0}
                           >
                             <ArrowRightLeft className="h-4 w-4 mr-2" />

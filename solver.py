@@ -76,9 +76,19 @@ class TimetableSlot(BaseModel):
     isDoubleStart: bool = False
     isDoubleEnd: bool = False
 
+class UnplacedTask(BaseModel):
+    """Represents a lesson task that could not be scheduled"""
+    lessonId: str
+    classId: str
+    lessonName: str
+    className: str
+    teacherName: str
+    taskType: str  # 'single' or 'double'
+
 class SolverResponse(BaseModel):
     success: bool
     slots: List[TimetableSlot]
+    unplacedTasks: List[UnplacedTask]
     conflicts: int
     solvingTime: float
     stats: Dict[str, int]
@@ -389,7 +399,7 @@ class TimetableSolver:
         
         # Step 6: Extract solution (accept OPTIMAL, FEASIBLE, or UNKNOWN with solution)
         if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
-            slots = self._extract_solution()
+            slots, unplaced_tasks = self._extract_solution()
             conflicts = 0  # CP-SAT guarantees no conflicts
             
             placed_count = len(slots)
@@ -414,6 +424,7 @@ class TimetableSolver:
             return SolverResponse(
                 success=success,
                 slots=slots,
+                unplacedTasks=unplaced_tasks,
                 conflicts=conflicts,
                 solvingTime=solving_time,
                 stats=self.stats,
@@ -423,7 +434,7 @@ class TimetableSolver:
             # Time limit reached but may have found some solution
             print("\n⚠️  Time limit reached (UNKNOWN status)")
             try:
-                slots = self._extract_solution()
+                slots, unplaced_tasks = self._extract_solution()
                 if len(slots) > 0:
                     placed_count = len(slots)
                     total_tasks = self.stats['totalTasks']
@@ -437,6 +448,7 @@ class TimetableSolver:
                     return SolverResponse(
                         success=True,
                         slots=slots,
+                        unplacedTasks=unplaced_tasks,
                         conflicts=0,
                         solvingTime=solving_time,
                         stats=self.stats,
@@ -454,6 +466,7 @@ class TimetableSolver:
             return SolverResponse(
                 success=False,
                 slots=[],
+                unplacedTasks=[],
                 conflicts=999999,
                 solvingTime=solving_time,
                 stats=self.stats,
@@ -469,23 +482,46 @@ class TimetableSolver:
             return SolverResponse(
                 success=False,
                 slots=[],
+                unplacedTasks=[],
                 conflicts=999999,
                 solvingTime=solving_time,
                 stats=self.stats,
                 message=error_msg
             )
     
-    def _extract_solution(self) -> List[TimetableSlot]:
-        """Extract assigned slots from the solved model (only placed tasks)"""
+    def _extract_solution(self) -> tuple[List[TimetableSlot], List[UnplacedTask]]:
+        """Extract assigned slots and unplaced tasks from the solved model"""
         slots = []
+        unplaced_tasks = []
         
         for task in self.task_info:
             task_idx = task['task_idx']
             
-            # Skip tasks that were not placed (presence_var = 0)
+            # Check if task was placed
+            task_placed = True
             if task_idx in self.presence_vars:
                 if not self.solver.Value(self.presence_vars[task_idx]):
-                    continue  # Task not placed, skip it
+                    task_placed = False
+            
+            if not task_placed:
+                # Task not placed - add to unplaced list
+                lesson = task['lesson']
+                class_id = task['class_id']
+                task_type = task['type']
+                
+                # Find class name
+                class_obj = next((c for c in self.request.classes if c.class_id == class_id), None)
+                class_name = f"{class_obj.grade}-{class_obj.name}" if class_obj else "Unknown"
+                
+                unplaced_tasks.append(UnplacedTask(
+                    lessonId=lesson.lesson_id,
+                    classId=class_id,
+                    lessonName=lesson.name,
+                    className=class_name,
+                    teacherName=lesson.teacherName,
+                    taskType=task_type
+                ))
+                continue  # Skip to next task
             
             lesson_idx = task['lesson_idx']
             lesson = task['lesson']
@@ -533,7 +569,7 @@ class TimetableSolver:
                             ))
                             break
         
-        return slots
+        return slots, unplaced_tasks
 
 # ==================== API ENDPOINTS ====================
 

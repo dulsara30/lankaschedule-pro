@@ -20,11 +20,12 @@ export interface ITimetableSlot extends Document {
   versionId: mongoose.Types.ObjectId; // Links to TimetableVersion
   classId: mongoose.Types.ObjectId; // The class this slot belongs to
   lessonId: mongoose.Types.ObjectId; // The lesson assigned to this slot
-  day: 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday';
-  periodNumber: number; // 1-7 (or as configured in school settings)
+  day: 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | null; // null for unscheduled
+  periodNumber: number | null; // null for unscheduled
   isDoubleStart?: boolean; // TRUE if this is the first period of a double block
   isDoubleEnd?: boolean; // TRUE if this is the second period of a double block
   isLocked?: boolean; // Prevent auto-generation from modifying this slot
+  isUnscheduled?: boolean; // TRUE if this lesson could not be placed in the grid
   createdAt: Date;
   updatedAt: Date;
 }
@@ -57,13 +58,15 @@ const TimetableSlotSchema = new Schema<ITimetableSlot>(
     },
     day: {
       type: String,
-      required: [true, 'Day is required'],
-      enum: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+      required: false, // Allow null for unscheduled lessons
+      enum: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', null],
+      default: null,
     },
     periodNumber: {
       type: Number,
-      required: [true, 'Period number is required'],
+      required: false, // Allow null for unscheduled lessons
       min: [1, 'Period number must be at least 1'],
+      default: null,
     },
     isDoubleStart: {
       type: Boolean,
@@ -78,6 +81,11 @@ const TimetableSlotSchema = new Schema<ITimetableSlot>(
     isLocked: {
       type: Boolean,
       default: false,
+    },
+    isUnscheduled: {
+      type: Boolean,
+      default: false,
+      index: true,
     },
   },
   {

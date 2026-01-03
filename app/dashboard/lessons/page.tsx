@@ -56,6 +56,7 @@ export default function LessonsPage() {
   const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStep, setGenerationStep] = useState(0);
+  const [versionName, setVersionName] = useState('Draft');
 
   const [formData, setFormData] = useState({
     lessonName: '',
@@ -349,7 +350,7 @@ export default function LessonsPage() {
       setGenerationStep(2);
       
       // Call the Python CP-SAT solver via server action
-      const result = await generateTimetableAction();
+      const result = await generateTimetableAction(versionName);
 
       if (result?.success) {
         setGenerationStep(3);
@@ -583,12 +584,26 @@ export default function LessonsPage() {
             Create lesson units with multiple subjects, teachers, and parallel classes
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-3 items-center">
+          <div className="flex flex-col gap-1">
+            <label htmlFor="versionName" className="text-xs text-zinc-600 dark:text-zinc-400">
+              Version Name
+            </label>
+            <input
+              id="versionName"
+              type="text"
+              value={versionName}
+              onChange={(e) => setVersionName(e.target.value)}
+              placeholder="e.g., 2026 First Term"
+              disabled={isGenerating}
+              className="px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-md text-sm bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed w-48"
+            />
+          </div>
           <Button
             onClick={handleGenerateTimetable}
             disabled={isGenerating || lessons.length === 0}
             variant="outline"
-            className="bg-linear-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 border-0"
+            className="bg-linear-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 border-0 mt-6"
           >
             {isGenerating ? (
               <>

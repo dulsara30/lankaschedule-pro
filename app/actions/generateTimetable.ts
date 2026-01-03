@@ -28,6 +28,14 @@ interface SolverResponse {
     isDoubleStart: boolean;
     isDoubleEnd: boolean;
   }>;
+  unplacedTasks: Array<{
+    lessonId: string;
+    classId: string;
+    lessonName: string;
+    className: string;
+    teacherName: string;
+    taskType: string;
+  }>;
   conflicts: number;
   solvingTime: number;
   stats: {
@@ -60,10 +68,11 @@ export interface GenerateTimetableResult {
   totalSteps?: number;
 }
 
-export async function generateTimetableAction(): Promise<GenerateTimetableResult> {
+export async function generateTimetableAction(versionName: string = 'Draft'): Promise<GenerateTimetableResult> {
   try {
     console.log("\n" + "=".repeat(60));
     console.log("🚀 GENERATING TIMETABLE WITH CP-SAT SOLVER");
+    console.log(`📝 Version: ${versionName}`);
     console.log("=".repeat(60));
 
     await dbConnect();
@@ -260,17 +269,17 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
       console.warn(`⚠️  WARNING: Only ${slotCoverage}% of slots were placed. Some lessons may be missing.`);
     }
 
-    // Step 6: Ensure Draft version exists and clear its slots
-    console.log("\n📋 Step 6: Ensuring Draft version exists...");
+    // Step 6: Ensure version exists and clear its slots
+    console.log(`\n📋 Step 6: Ensuring version '${versionName}' exists...`);
     
     const draftVersion = await TimetableVersion.findOneAndUpdate(
       { 
         schoolId: school._id, 
-        versionName: 'Draft' 
+        versionName: versionName 
       },
       { 
         schoolId: school._id,
-        versionName: 'Draft',
+        versionName: versionName,
         isSaved: false, // Will be set to true after successful save
         isPublished: false,
         updatedAt: new Date()
@@ -328,6 +337,34 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
     console.log(`✅ Inserted ${insertResult.length} slots successfully`);
     console.log(`[DEBUG] Insert result count: ${insertResult.length}`);
     
+    // Step 7b: Save unplaced tasks as unscheduled lessons
+    let unscheduledCount = 0;
+    if (result.unplacedTasks && result.unplacedTasks.length > 0) {
+      console.log(`\n📌 Step 7b: Saving ${result.unplacedTasks.length} unscheduled lessons...`);
+      
+      const unscheduledSlots = result.unplacedTasks.map(task => ({
+        schoolId: school._id,
+        versionId: draftVersion._id,
+        classId: task.classId,
+        lessonId: task.lessonId,
+        day: null, // Unscheduled
+        periodNumber: null, // Unscheduled
+        isUnscheduled: true,
+        isDoubleStart: false,
+        isDoubleEnd: false,
+      }));
+      
+      const unscheduledResult = await TimetableSlot.insertMany(unscheduledSlots, {
+        ordered: false,
+      });
+      
+      unscheduledCount = unscheduledResult.length;
+      console.log(`✅ Saved ${unscheduledCount} unscheduled lessons`);
+      console.log(`[DEBUG] Sample unscheduled:`, unscheduledSlots[0]);
+    } else {
+      console.log(`\n✅ Step 7b: No unscheduled lessons - all tasks placed!`);
+    }
+    
     // Step 8: Update version status to saved
     console.log("\n📝 Step 8: Updating Draft version status...");
     await TimetableVersion.findByIdAndUpdate(draftVersion._id, {
@@ -345,7 +382,9 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
     console.log("✅ TIMETABLE GENERATION COMPLETE");
     console.log("=".repeat(60));
     console.log(`⏱️  Total time: ${apiTime}s`);
-    console.log(`📊 Slots saved: ${insertResult.length}/${expectedSlots}`);
+    console.log(`📊 Scheduled slots: ${insertResult.length}/${expectedSlots}`);
+    console.log(`📌 Unscheduled lessons: ${unscheduledCount}`);
+    console.log(`📦 Total saved: ${insertResult.length + unscheduledCount}`);
     console.log(`⚠️  Conflicts: ${result.conflicts} (CP-SAT guarantees 0)`);
     console.log(`🎯 Coverage: ${slotCoverage}%`);
     console.log(`📁 Version: ${draftVersion.versionName} (${draftVersion._id})`);
@@ -353,15 +392,17 @@ export async function generateTimetableAction(): Promise<GenerateTimetableResult
 
     return {
       success: true,
-      message: `Timetable generated successfully! ${insertResult.length}/${expectedSlots} slots placed in Draft version (${slotCoverage}% coverage).`,
+      message: unscheduledCount > 0 
+        ? `Timetable generated! ${insertResult.length} scheduled + ${unscheduledCount} unscheduled (${slotCoverage}% grid coverage).`
+        : `Timetable generated successfully! ${insertResult.length}/${expectedSlots} slots placed in ${versionName} version (${slotCoverage}% coverage).`,
       slotsPlaced: insertResult.length,
       totalSlots: expectedSlots,
       conflicts: result.conflicts,
       solvingTime: result.solvingTime,
       stats: {
-        totalSlots: insertResult.length,
-        scheduledLessons: result.stats.totalTasks,
-        failedLessons: expectedSlots - insertResult.length,
+        totalSlots: insertResult.length + unscheduledCount,
+        scheduledLessons: insertResult.length,
+        failedLessons: unscheduledCount,
         swapAttempts: 0,
         successfulSwaps: 0,
         iterations: result.stats.constraintsAdded,

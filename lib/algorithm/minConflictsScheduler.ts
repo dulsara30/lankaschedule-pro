@@ -111,8 +111,16 @@ let swapAttempts = 0;
 let successfulSwaps = 0;
 let conflictResolutions = 0;
 const MAX_ITERATIONS = 1000000; // 1 million iterations for stochastic repair
+const RESTART_INTERVAL = 200000; // Restart every 200k iterations to escape stagnation
 const DAILY_PERIOD_LIMIT = 7; // Target: max 7 periods per teacher per day
 const WEEKLY_LOAD_LIMIT = 35; // Max 35 periods per teacher/class per week
+
+// Penalty-Based Scoring Weights (aSc TimeTable style)
+const PENALTY_TEACHER_OVERLAP = 100; // Teacher teaching multiple classes simultaneously
+const PENALTY_CLASS_OVERLAP = 100; // Class in multiple lessons simultaneously
+const PENALTY_INTERVAL_VIOLATION = 50; // Double period spanning interval
+const PENALTY_DAILY_OVERLOAD = 20; // Teacher exceeding daily limit
+const PENALTY_WEEKLY_OVERLOAD = 10; // Teacher exceeding weekly limit
 
 // Simulated annealing parameters
 let temperature = 1.0; // Initial temperature (accept bad swaps)
@@ -184,7 +192,7 @@ export function generateTimetable(
   const slots = gridToSlots(grid);
 
   // Calculate final conflict count
-  const finalConflicts = countTotalConflicts(placedTasks, grid, busyMap);
+  const finalConflicts = countTotalConflicts(placedTasks, grid, busyMap, config, teacherDailyLoads, teacherWeeklyLoads);
   
   console.log(`\n✅ Scheduler Complete - BEST EFFORT RESULT`);
   console.log(`📊 Final Stats:`);
@@ -395,7 +403,7 @@ function findMinimumConflictSlot(
     if (isDouble) {
       // Use valid double starts only
       for (const period of validDoubleStarts) {
-        const conflicts = countSlotConflicts(lesson, day, period, true, grid, busyMap);
+        const conflicts = countSlotConflicts(lesson, day, period, true, grid, busyMap, config, teacherDailyLoads, teacherWeeklyLoads);
         const balanceScore = calculateWorkloadBalanceScore(lesson, day, period, true);
         const totalScore = conflicts - (balanceScore * 0.1); // Slight preference for balanced days
 
@@ -407,7 +415,7 @@ function findMinimumConflictSlot(
     } else {
       // Single period
       for (let period = 1; period <= numberOfPeriods; period++) {
-        const conflicts = countSlotConflicts(lesson, day, period, false, grid, busyMap);
+        const conflicts = countSlotConflicts(lesson, day, period, false, grid, busyMap, config, teacherDailyLoads, teacherWeeklyLoads);
         const balanceScore = calculateWorkloadBalanceScore(lesson, day, period, false);
         const totalScore = conflicts - (balanceScore * 0.1);
 
@@ -464,36 +472,90 @@ function calculateWorkloadBalanceScore(
  * Count conflicts for a slot (RESOURCE BLOCK LOCKING)
  * For multi-teacher lessons, treat all resources as a single atomic block
  */
+/**
+ * Calculate penalty score for a slot placement (Penalty-Based Global Solver)
+ * Lower score = better placement
+ */
+function calculateSlotPenalty(
+  lesson: ScheduleLesson,
+  day: string,
+  period: number,
+  isDouble: boolean,
+  grid: TimetableGrid,
+  busyMap: BusyMap,
+  config: ScheduleConfig,
+  teacherDailyLoads: Map<string, number>,
+  teacherWeeklyLoads: Map<string, number>
+): number {
+  let penalty = 0;
+  const periods = isDouble ? [period, period + 1] : [period];
+
+  // Check for teacher and class overlaps
+  for (const p of periods) {
+    // Teacher overlap penalty
+    for (const teacherId of lesson.teacherIds) {
+      const busyKey = `${teacherId}-${day}-${p}`;
+      if (busyMap.has(busyKey)) {
+        penalty += PENALTY_TEACHER_OVERLAP;
+      }
+    }
+
+    // Class overlap penalty
+    for (const classId of lesson.classIds) {
+      const gridKey = `${classId}-${day}-${p}`;
+      const existingSlots = grid.get(gridKey) || [];
+      if (existingSlots.length > 0) {
+        // Each existing slot at this position adds penalty
+        penalty += PENALTY_CLASS_OVERLAP * existingSlots.length;
+      }
+    }
+  }
+
+  // Interval violation penalty (for double periods)
+  if (isDouble) {
+    const intervalsAfterPeriod = config.intervalSlots || [];
+    if (intervalsAfterPeriod.includes(period)) {
+      penalty += PENALTY_INTERVAL_VIOLATION;
+    }
+  }
+
+  // Daily overload penalty
+  for (const teacherId of lesson.teacherIds) {
+    const dailyKey = `${teacherId}-${day}`;
+    const currentLoad = teacherDailyLoads.get(dailyKey) || 0;
+    if (currentLoad >= DAILY_PERIOD_LIMIT) {
+      penalty += PENALTY_DAILY_OVERLOAD * (currentLoad - DAILY_PERIOD_LIMIT + 1);
+    }
+  }
+
+  // Weekly overload penalty
+  for (const teacherId of lesson.teacherIds) {
+    const weeklyLoad = teacherWeeklyLoads.get(teacherId) || 0;
+    if (weeklyLoad >= WEEKLY_LOAD_LIMIT) {
+      penalty += PENALTY_WEEKLY_OVERLOAD * (weeklyLoad - WEEKLY_LOAD_LIMIT + 1);
+    }
+  }
+
+  return penalty;
+}
+
+/**
+ * Legacy function maintained for compatibility - wraps penalty calculation
+ */
 function countSlotConflicts(
   lesson: ScheduleLesson,
   day: string,
   period: number,
   isDouble: boolean,
   grid: TimetableGrid,
-  busyMap: BusyMap
+  busyMap: BusyMap,
+  config: ScheduleConfig,
+  teacherDailyLoads: Map<string, number>,
+  teacherWeeklyLoads: Map<string, number>
 ): number {
-  let conflicts = 0;
-  const periods = isDouble ? [period, period + 1] : [period];
-
-  // RESOURCE BLOCK LOCKING: Check all teachers atomically
-  for (const p of periods) {
-    for (const teacherId of lesson.teacherIds) {
-      const busyKey = `${teacherId}-${day}-${p}`;
-      if (busyMap.has(busyKey)) {
-        conflicts++;
-      }
-    }
-
-    for (const classId of lesson.classIds) {
-      const gridKey = `${classId}-${day}-${p}`;
-      const busyKey = `${classId}-${day}-${p}`;
-      if (grid.has(gridKey) || busyMap.has(busyKey)) {
-        conflicts++;
-      }
-    }
-  }
-
-  return conflicts;
+  // Convert penalty to conflict count (divide by 100 for rough equivalence)
+  const penalty = calculateSlotPenalty(lesson, day, period, isDouble, grid, busyMap, config, teacherDailyLoads, teacherWeeklyLoads);
+  return Math.ceil(penalty / 100);
 }
 
 /**
@@ -565,15 +627,37 @@ function stochasticRepair(
   dailyLessonMap: DailyLessonMap,
   config: ScheduleConfig
 ): void {
-  let bestConflicts = countTotalConflicts(placedTasks, grid, busyMap);
+  let bestConflicts = countTotalConflicts(placedTasks, grid, busyMap, config, teacherDailyLoads, teacherWeeklyLoads);
   let currentConflicts = bestConflicts;
   let stagnationCounter = 0;
   const STAGNATION_LIMIT = 100000; // Early exit if no improvement for 100K iterations
+  let lastRestart = 0;
 
   console.log(`   🔥 Starting repair: ${currentConflicts} conflicts`);
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     iterationCount++;
+
+    // Restart mechanism every 200k iterations to escape local minima
+    if (i > 0 && i % RESTART_INTERVAL === 0 && i !== lastRestart) {
+      console.log(`   🔄 RESTART at ${i.toLocaleString()} iterations - Re-shuffling to escape stagnation`);
+      temperature = 1.0; // Reset temperature
+      stagnationCounter = 0;
+      lastRestart = i;
+      
+      // Random shuffle some high-conflict tasks
+      const highConflictTasks = placedTasks
+        .filter(t => t.conflictCount > 5)
+        .sort(() => Math.random() - 0.5)
+        .slice(0, Math.min(10, Math.floor(placedTasks.length * 0.1)));
+      
+      for (const task of highConflictTasks) {
+        attemptStochasticSwap(task, placedTasks, grid, busyMap, dailyLessonMap, config);
+      }
+      
+      currentConflicts = countTotalConflicts(placedTasks, grid, busyMap, config, teacherDailyLoads, teacherWeeklyLoads);
+      console.log(`   ↻ After restart: ${currentConflicts} conflicts`);
+    }
 
     // Progress logging every 100K iterations
     if (i > 0 && i % 100000 === 0) {
@@ -609,7 +693,7 @@ function stochasticRepair(
       successfulSwaps++;
       
       // Recalculate conflicts
-      const newConflicts = countTotalConflicts(placedTasks, grid, busyMap);
+      const newConflicts = countTotalConflicts(placedTasks, grid, busyMap, config, teacherDailyLoads, teacherWeeklyLoads);
       
       if (newConflicts < currentConflicts) {
         // Improvement
@@ -755,8 +839,8 @@ function attemptPairwiseSwap(
   );
 
   // Recalculate conflicts
-  task1.conflictCount = countSlotConflicts(task1.lesson, task1.slot.day, task1.slot.period, task1.isDouble, grid, busyMap);
-  task2.conflictCount = countSlotConflicts(task2.lesson, task2.slot.day, task2.slot.period, task2.isDouble, grid, busyMap);
+  task1.conflictCount = countSlotConflicts(task1.lesson, task1.slot.day, task1.slot.period, task1.isDouble, grid, busyMap, config, teacherDailyLoads, teacherWeeklyLoads);
+  task2.conflictCount = countSlotConflicts(task2.lesson, task2.slot.day, task2.slot.period, task2.isDouble, grid, busyMap, config, teacherDailyLoads, teacherWeeklyLoads);
 
   return true;
 }
@@ -820,7 +904,10 @@ function removeTaskFromGrid(
 function countTotalConflicts(
   placedTasks: PlacedTask[],
   grid: TimetableGrid,
-  busyMap: BusyMap
+  busyMap: BusyMap,
+  config: ScheduleConfig,
+  teacherDailyLoads: Map<string, number>,
+  teacherWeeklyLoads: Map<string, number>
 ): number {
   let totalConflicts = 0;
 
@@ -831,7 +918,10 @@ function countTotalConflicts(
       task.slot.period,
       task.isDouble,
       grid,
-      busyMap
+      busyMap,
+      config,
+      teacherDailyLoads,
+      teacherWeeklyLoads
     );
     task.conflictCount = conflicts;
     totalConflicts += conflicts;
@@ -983,7 +1073,7 @@ function generateSwapSuggestions(
       const periodsToCheck = isDouble ? validDoubleStarts : Array.from({ length: config.numberOfPeriods }, (_, i) => i + 1);
 
       for (const period of periodsToCheck) {
-        const conflicts = countSlotConflicts(lesson, day, period, isDouble, grid, busyMap);
+        const conflicts = countSlotConflicts(lesson, day, period, isDouble, grid, busyMap, config, teacherDailyLoads, teacherWeeklyLoads);
         
         if (conflicts < task.conflictCount) {
           // Found a better slot

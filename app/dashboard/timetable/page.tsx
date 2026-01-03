@@ -786,7 +786,65 @@ export default function TimetablePage() {
     }
   };
 
-  const renderSlotContent = (slot: TimetableSlot | undefined, isDoubleStart: boolean = false, periodNumber?: number) => {
+  // Get ALL slots at a given position (for detecting overlaps)
+  const getSlotsAtPosition = (day: string, period: number): TimetableSlot[] => {
+    if (viewMode === 'class') {
+      return slots.filter(
+        slot => slot.day === day && 
+                slot.periodNumber === period && 
+                slot.classId?._id === selectedEntity
+      );
+    } else {
+      // Teacher view: find all slots where this teacher is teaching
+      return slots.filter(
+        slot => slot.day === day && 
+                slot.periodNumber === period && 
+                slot.lessonId?.teacherIds?.some(t => t?._id === selectedEntity)
+      );
+    }
+  };
+
+  const renderSlotContent = (slot: TimetableSlot | undefined, isDoubleStart: boolean = false, periodNumber?: number, allSlotsHere?: TimetableSlot[]) => {
+    // Handle multiple lessons at same position (conflict stack)
+    if (allSlotsHere && allSlotsHere.length > 1) {
+      return (
+        <div className="h-full w-full relative">
+          {/* Show first 2 lessons as stacked cards */}
+          {allSlotsHere.slice(0, 2).map((s, idx) => {
+            const lesson = s.lessonId;
+            if (!lesson || !lesson.subjectIds) return null;
+            
+            const color = lesson.subjectIds?.[0]?.color || '#3B82F6';
+            const offset = idx * 4;
+            
+            return (
+              <div
+                key={s._id}
+                className="absolute rounded-lg shadow-lg border-2 border-white transition-all hover:z-10 hover:scale-105"
+                style={{
+                  top: `${offset}px`,
+                  left: `${offset}px`,
+                  right: `-${offset}px`,
+                  bottom: `-${offset}px`,
+                  background: `linear-gradient(135deg, ${color} 0%, ${color}DD 100%)`,
+                  zIndex: 2 - idx,
+                }}
+              >
+                <div className="text-white text-[10px] font-semibold p-2 truncate">
+                  {lesson.lessonName}
+                </div>
+              </div>
+            );
+          })}
+          
+          {/* Conflict badge showing count */}
+          <div className="absolute top-1 right-1 bg-red-600 text-white text-[10px] px-2 py-0.5 rounded-full font-bold shadow-lg z-20 border-2 border-white">
+            ⚠ {allSlotsHere.length} CONFLICTS
+          </div>
+        </div>
+      );
+    }
+    
     if (!slot) {
       return <div className="text-xs text-zinc-400 dark:text-zinc-500 italic p-3 font-medium">Free</div>;
     }
@@ -870,13 +928,15 @@ export default function TimetablePage() {
     period, 
     slot, 
     isDoubleStart, 
-    rowSpan 
+    rowSpan,
+    allSlotsHere
   }: { 
     day: string; 
     period: number; 
     slot: TimetableSlot | undefined; 
     isDoubleStart: boolean; 
     rowSpan: number;
+    allSlotsHere?: TimetableSlot[];
   }) => {
     // Get the first teacher for this slot (for validation in drag-end)
     const teacherId = viewMode === 'teacher' 
@@ -921,7 +981,7 @@ export default function TimetablePage() {
                 minWidth: '160px',
               }}
             >
-              {renderSlotContent(slot, isDoubleStart, period)}
+              {renderSlotContent(slot, isDoubleStart, period, allSlotsHere)}
             </td>
           </TooltipTrigger>
           {slot && (
@@ -1591,6 +1651,7 @@ export default function TimetablePage() {
                             </td>
                             {DAYS.map((day) => {
                               const slot = getSlotForPeriod(day, period);
+                              const allSlotsHere = getSlotsAtPosition(day, period);
                               
                               // Check if this is part of a double period
                               const isDoubleStart = slot?.isDoubleStart || false;
@@ -1621,6 +1682,7 @@ export default function TimetablePage() {
                                   slot={slot}
                                   isDoubleStart={isDoubleStart}
                                   rowSpan={rowSpan}
+                                  allSlotsHere={allSlotsHere}
                                 />
                               );
                             })}

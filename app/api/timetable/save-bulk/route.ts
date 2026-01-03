@@ -7,7 +7,7 @@ import TimetableVersion from '@/models/TimetableVersion';
 import School from '@/models/School';
 
 /**
- * POST: Bulk save timetable slots from Web Worker
+ * POST: Bulk save timetable slots from Python CP-SAT solver
  * Accepts 813+ slots and saves them efficiently to MongoDB
  */
 export async function POST(request: Request) {
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
       );
     }
 
-    console.log(`📦 BULK SAVE: Received ${slots.length} slots from Web Worker`);
+    console.log(`📦 BULK SAVE: Received ${slots.length} slots from Python CP-SAT solver`);
     console.log(`   Conflicts: ${conflicts}`);
     console.log(`   Version Name: ${versionName || 'Draft'}`);
 

@@ -103,6 +103,7 @@ class TimetableSolver:
         
         # Decision variables
         self.task_vars = {}  # (lesson_idx, class_idx, period_type, day, period) -> BoolVar
+        self.presence_vars = {}  # task_idx -> BoolVar (whether task is placed)
         self.task_info = []  # Metadata for each task
         
         # Statistics
@@ -199,7 +200,7 @@ class TimetableSolver:
         print(f"✅ Added {self.stats['constraintsAdded']} constraints")
     
     def _add_task_assignment_constraints(self):
-        """Each task must be assigned to exactly one time slot"""
+        """Each task CAN be assigned to at most one time slot (soft constraint)"""
         for task in self.task_info:
             task_idx = task['task_idx']
             lesson_idx = task['lesson_idx']
@@ -208,6 +209,10 @@ class TimetableSolver:
             
             # Find class index
             class_idx = next(i for i, cid in enumerate(task['lesson'].classIds) if cid == class_id)
+            
+            # Create presence variable for this task
+            presence_var = self.model.NewBoolVar(f"presence_task_{task_idx}")
+            self.presence_vars[task_idx] = presence_var
             
             # Sum all variables for this task
             task_slot_vars = []
@@ -223,8 +228,9 @@ class TimetableSolver:
                         if key in self.task_vars:
                             task_slot_vars.append(self.task_vars[key])
             
-            # Exactly one slot must be assigned
-            self.model.Add(sum(task_slot_vars) == 1)
+            # Task is placed if and only if exactly one slot is assigned
+            # sum(task_slot_vars) == presence_var
+            self.model.Add(sum(task_slot_vars) == presence_var)
             self.stats['constraintsAdded'] += 1
     
     def _add_teacher_no_overlap_constraints(self):
@@ -328,21 +334,27 @@ class TimetableSolver:
         pass
     
     def _set_objective(self):
-        """Maximize number of placed lessons (minimize unplaced)"""
-        # We want to place as many tasks as possible
-        # Since each task must be assigned to exactly one slot, this is automatically maximized
-        # However, we can add soft constraints for preferences
+        """Maximize number of placed lessons with priority weights"""
+        # OPTIMIZATION MODE: Place as many lessons as possible
+        # Priority: Double periods (100 points) > Single periods (50 points)
         
-        # For now, just maximize total assignments (which is guaranteed by constraints)
-        # In future, can add preferences like:
-        # - Minimize gaps in teacher schedules
-        # - Balance load across days
-        # - Prefer certain time slots
+        objective_terms = []
+        for task in self.task_info:
+            task_idx = task['task_idx']
+            presence_var = self.presence_vars[task_idx]
+            
+            # Weight: doubles are more valuable than singles
+            weight = 100 if task['type'] == 'double' else 50
+            objective_terms.append(weight * presence_var)
         
-        print("🎯 Objective: Maximize placed lessons (guaranteed by constraints)")
+        # Maximize total weighted placements
+        self.model.Maximize(sum(objective_terms))
+        
+        print(f"🎯 Objective: Maximize placed lessons (Doubles=100pts, Singles=50pts)")
+        print(f"   Best case: {len(self.task_info)} tasks placed")
     
-    def solve(self, time_limit_seconds: int = 60) -> SolverResponse:
-        """Run the CP-SAT solver"""
+    def solve(self, time_limit_seconds: int = 120) -> SolverResponse:
+        """Run the CP-SAT solver in optimization mode"""
         start_time = time.time()
         
         print("\n" + "="*60)
@@ -363,23 +375,36 @@ class TimetableSolver:
         self.solver.parameters.num_search_workers = 8  # Parallel search
         self.solver.parameters.log_search_progress = True
         
-        print(f"\n🔍 Solving with {time_limit_seconds}s time limit...")
+        print(f"\n🔍 Solving with {time_limit_seconds}s time limit (OPTIMIZATION MODE)...")
+        print("   Mode: Best-effort placement (may place partial timetable)")
         
         # Step 5: Solve
         status = self.solver.Solve(self.model)
         
         solving_time = time.time() - start_time
         
-        # Step 6: Extract solution
-        if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
+        # Step 6: Extract solution (accept OPTIMAL, FEASIBLE, or UNKNOWN with solution)
+        if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
             slots = self._extract_solution()
             conflicts = 0  # CP-SAT guarantees no conflicts
-            message = "✅ Optimal solution found!" if status == cp_model.OPTIMAL else "✅ Feasible solution found!"
+            
+            placed_count = len(slots)
+            total_tasks = self.stats['totalTasks']
+            coverage = (placed_count / total_tasks * 100) if total_tasks > 0 else 0
+            
+            if status == cp_model.OPTIMAL:
+                message = f"✅ Optimal solution! Placed {placed_count}/{total_tasks} tasks ({coverage:.1f}%)"
+            else:
+                message = f"✅ Feasible solution. Placed {placed_count}/{total_tasks} tasks ({coverage:.1f}%)"
+            
             success = True
             
             print(f"\n{message}")
             print(f"⏱️  Solving time: {solving_time:.2f}s")
-            print(f"📊 Placed {len(slots)}/{self.stats['totalTasks']} tasks")
+            
+            if coverage < 100:
+                print(f"⚠️  WARNING: {total_tasks - placed_count} tasks could not be placed (over-constrained)")
+            
             print("="*60)
             
             return SolverResponse(
@@ -390,10 +415,51 @@ class TimetableSolver:
                 stats=self.stats,
                 message=message
             )
+        elif status == cp_model.UNKNOWN:
+            # Time limit reached but may have found some solution
+            print("\n⚠️  Time limit reached (UNKNOWN status)")
+            try:
+                slots = self._extract_solution()
+                if len(slots) > 0:
+                    placed_count = len(slots)
+                    total_tasks = self.stats['totalTasks']
+                    coverage = (placed_count / total_tasks * 100) if total_tasks > 0 else 0
+                    message = f"⚠️  Partial solution (time limit). Placed {placed_count}/{total_tasks} tasks ({coverage:.1f}%)"
+                    
+                    print(f"{message}")
+                    print(f"⏱️  Solving time: {solving_time:.2f}s")
+                    print("="*60)
+                    
+                    return SolverResponse(
+                        success=True,
+                        slots=slots,
+                        conflicts=0,
+                        solvingTime=solving_time,
+                        stats=self.stats,
+                        message=message
+                    )
+            except:
+                pass
+            
+            # No solution found at all
+            error_msg = "❌ Time limit reached with no valid solution"
+            print(f"{error_msg}")
+            print(f"⏱️  Solving time: {solving_time:.2f}s")
+            print("="*60)
+            
+            return SolverResponse(
+                success=False,
+                slots=[],
+                conflicts=999999,
+                solvingTime=solving_time,
+                stats=self.stats,
+                message=error_msg
+            )
         else:
-            error_msg = "❌ No solution found (constraints may be too tight)"
+            error_msg = f"❌ No solution found (status: {self.solver.StatusName(status)})"
             print(f"\n{error_msg}")
             print(f"⏱️  Solving time: {solving_time:.2f}s")
+            print("   Constraints may be too tight or problem is infeasible")
             print("="*60)
             
             return SolverResponse(
@@ -406,11 +472,17 @@ class TimetableSolver:
             )
     
     def _extract_solution(self) -> List[TimetableSlot]:
-        """Extract assigned slots from the solved model"""
+        """Extract assigned slots from the solved model (only placed tasks)"""
         slots = []
         
         for task in self.task_info:
             task_idx = task['task_idx']
+            
+            # Skip tasks that were not placed (presence_var = 0)
+            if task_idx in self.presence_vars:
+                if not self.solver.Value(self.presence_vars[task_idx]):
+                    continue  # Task not placed, skip it
+            
             lesson_idx = task['lesson_idx']
             lesson = task['lesson']
             class_id = task['class_id']

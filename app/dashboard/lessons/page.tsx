@@ -351,9 +351,10 @@ export default function LessonsPage() {
       // Call the Python CP-SAT solver via server action
       const result = await generateTimetableAction();
 
-      if (result.success) {
+      if (result?.success) {
         setGenerationStep(3);
         
+        // Use optional chaining to safely access nested properties
         const slotsPlaced = result.slotsPlaced || result.stats?.totalSlots || 0;
         const conflicts = result.conflicts || 0;
         
@@ -368,11 +369,12 @@ export default function LessonsPage() {
           router.push('/dashboard/timetable');
         }, 1500);
       } else {
-        throw new Error(result.message || 'Failed to generate timetable');
+        throw new Error(result?.message || 'Failed to generate timetable');
       }
     } catch (error: unknown) {
       console.error('Timetable generation error:', error);
-      toast.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      toast.error(`Generation failed: ${errorMessage}`);
     } finally {
       setIsGenerating(false);
       setGenerationStep(0);

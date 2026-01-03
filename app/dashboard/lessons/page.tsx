@@ -423,11 +423,17 @@ export default function LessonsPage() {
 
       setGenerationStep(2);
 
-      // Spawn 4 Web Workers for parallel search
-      const workers: Worker[] = [];
-      const results: any[] = [];
+      // OPTIMIZE FOR LOW-CORE DEVICES: Check hardware concurrency
+      const maxCores = navigator.hardwareConcurrency || 4;
+      const optimalWorkerCount = maxCores <= 4 ? Math.max(1, maxCores - 1) : 4;
+      console.log(`💻 Hardware: ${maxCores} cores detected, spawning ${optimalWorkerCount} workers`);
 
-      const workerPromises = [0, 1, 2, 3].map((threadId) => {
+      // Spawn Web Workers for parallel search
+      const workers: Worker[] = [];
+      let firstResultReceived = false;
+      let bestResult: any = null;
+
+      const workerPromises = Array.from({ length: optimalWorkerCount }, (_, threadId) => {
         return new Promise((resolve, reject) => {
           // Fix for Next.js 16 Turbopack compatibility
           // Use relative path from public directory
@@ -441,15 +447,37 @@ export default function LessonsPage() {
             const { type, data, iteration, conflicts, temperature, error } = e.data;
 
             if (type === 'PROGRESS') {
-              setWorkerProgress((prev) => ({
-                ...prev!,
-                [`thread${threadId + 1}` as keyof typeof prev]: {
-                  iteration: iteration || 0,
-                  conflicts: conflicts || 0,
-                },
-              }));
+              // Only update progress if not already finished
+              if (!firstResultReceived) {
+                setWorkerProgress((prev) => ({
+                  ...prev!,
+                  [`thread${threadId + 1}` as keyof typeof prev]: {
+                    iteration: iteration || 0,
+                    conflicts: conflicts || 0,
+                  },
+                }));
+              }
             } else if (type === 'COMPLETE') {
               console.log(`✅ Worker ${threadId + 1} completed with ${data.conflicts} conflicts`);
+              
+              // FIRST RESULT WINS: Accept first successful result with lowest conflicts
+              if (!firstResultReceived || (bestResult && data.conflicts < bestResult.conflicts)) {
+                if (!firstResultReceived) {
+                  console.log(`🏆 Worker ${threadId + 1} finished first! Terminating other workers...`);
+                  toast.info('Optimization complete! Stopping other threads and saving...', { duration: 3000 });
+                  firstResultReceived = true;
+                  
+                  // IMMEDIATELY TERMINATE ALL OTHER WORKERS to stop CPU load
+                  workers.forEach((w, idx) => {
+                    if (idx !== threadId) {
+                      console.log(`⏹️ Terminating Worker ${idx + 1}`);
+                      w.terminate();
+                    }
+                  });
+                }
+                bestResult = data;
+              }
+              
               resolve(data);
             } else if (type === 'ERROR') {
               console.error(`🚨 Worker ${threadId + 1} error:`, error);
@@ -502,25 +530,47 @@ export default function LessonsPage() {
         });
       });
 
-      // Wait for all workers to complete
-      const allResults: any[] = await Promise.all(workerPromises);
+      // Wait for all workers to complete (or first to finish with early termination)
+      await Promise.allSettled(workerPromises);
 
-      // Terminate workers
-      workers.forEach((w) => w.terminate());
+      // Ensure all workers are terminated
+      workers.forEach((w, idx) => {
+        try {
+          w.terminate();
+          console.log(`✅ Worker ${idx + 1} terminated`);
+        } catch (e) {
+          // Already terminated
+        }
+      });
 
-      // Find best result (lowest conflicts)
-      const bestResult: any = allResults.reduce((best: any, current: any) => 
-        current.conflicts < best.conflicts ? current : best
-      );
+      if (!bestResult) {
+        throw new Error('No valid result received from workers');
+      }
+
+      console.log(`🏆 Best result: ${bestResult.conflicts} conflicts, ${bestResult.slots.length} slots`);
 
       setGenerationStep(3);
+
+      // DEDUPLICATE SLOTS: Remove any duplicates by classId-day-period
+      const slotMap = new Map<string, any>();
+      bestResult.slots.forEach((slot: any) => {
+        const key = `${slot.classId}-${slot.day}-${slot.periodNumber}`;
+        if (!slotMap.has(key)) {
+          slotMap.set(key, slot);
+        } else {
+          console.warn(`⚠️ Duplicate slot detected and removed: ${key}`);
+        }
+      });
+      
+      const deduplicatedSlots = Array.from(slotMap.values());
+      console.log(`🔍 Deduplication: ${bestResult.slots.length} → ${deduplicatedSlots.length} slots`);
 
       // Save to database
       const saveRes = await fetch('/api/timetable/save-bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          slots: bestResult.slots,
+          slots: deduplicatedSlots,
           versionName: 'Draft',
           conflicts: bestResult.conflicts,
         }),

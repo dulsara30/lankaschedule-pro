@@ -60,6 +60,12 @@ export default function LessonsPage() {
   const [showConflictReport, setShowConflictReport] = useState(false);
   const [generationResult, setGenerationResult] = useState<GenerateTimetableResult | null>(null);
   const [schoolName, setSchoolName] = useState('School');
+  const [workerProgress, setWorkerProgress] = useState<{
+    thread1: { iteration: number; conflicts: number };
+    thread2: { iteration: number; conflicts: number };
+    thread3: { iteration: number; conflicts: number };
+    thread4: { iteration: number; conflicts: number };
+  } | null>(null);
 
   const [formData, setFormData] = useState({
     lessonName: '',
@@ -348,62 +354,124 @@ export default function LessonsPage() {
     }
 
     setIsGenerating(true);
-    setGenerationStep(0);
+    setGenerationStep(1);
+    setWorkerProgress({
+      thread1: { iteration: 0, conflicts: 0 },
+      thread2: { iteration: 0, conflicts: 0 },
+      thread3: { iteration: 0, conflicts: 0 },
+      thread4: { iteration: 0, conflicts: 0 },
+    });
 
     try {
-      // Simulate progress steps
-      const steps = [
-        { delay: 500, message: 'Fetching School Configuration & Lessons...' },
-        { delay: 800, message: 'Initializing Constraint Engine...' },
-        { delay: 1200, message: 'Placing Locked/Double Periods...' },
-        { delay: 1500, message: 'Optimizing Teacher Workloads...' },
-        { delay: 1000, message: 'Finalizing Timetable Grid...' },
-      ];
+      // Fetch config and classes
+      const [configRes, classesRes] = await Promise.all([
+        fetch('/api/school/config'),
+        fetch('/api/classes'),
+      ]);
 
-      // Animate through steps
-      for (let i = 0; i < steps.length; i++) {
-        setGenerationStep(i + 1);
-        await new Promise(resolve => setTimeout(resolve, steps[i].delay));
+      const configData = await configRes.json();
+      const classesData = await classesRes.json();
+
+      if (!configData.success || !classesData.success) {
+        throw new Error('Failed to fetch configuration');
       }
 
-      const result = await generateTimetableAction();
-      setGenerationResult(result);
+      setGenerationStep(2);
 
-      if (result.success) {
-        setGenerationStep(6); // Completion step
+      // Spawn 4 Web Workers for parallel search
+      const workers: Worker[] = [];
+      const results: any[] = [];
+
+      const workerPromises = [0, 1, 2, 3].map((threadId) => {
+        return new Promise((resolve, reject) => {
+          const worker = new Worker('/workers/scheduler.worker.js');
+          workers.push(worker);
+
+          worker.onmessage = (e) => {
+            const { type, data, iteration, conflicts, temperature } = e.data;
+
+            if (type === 'PROGRESS') {
+              setWorkerProgress((prev) => ({
+                ...prev!,
+                [`thread${threadId + 1}` as keyof typeof prev]: {
+                  iteration: iteration || 0,
+                  conflicts: conflicts || 0,
+                },
+              }));
+            } else if (type === 'COMPLETE') {
+              resolve(data);
+            }
+          };
+
+          worker.onerror = (error) => {
+            console.error(`Worker ${threadId} error:`, error);
+            reject(error);
+          };
+
+          // Start worker with different random seed
+          worker.postMessage({
+            type: 'START',
+            data: {
+              threadId: threadId + 1,
+              lessons: lessons,
+              classes: classesData.data,
+              config: configData.data,
+              randomSeed: Date.now() + threadId * 1000,
+            },
+          });
+        });
+      });
+
+      // Wait for all workers to complete
+      const allResults: any[] = await Promise.all(workerPromises);
+
+      // Terminate workers
+      workers.forEach((w) => w.terminate());
+
+      // Find best result (lowest conflicts)
+      const bestResult: any = allResults.reduce((best: any, current: any) => 
+        current.conflicts < best.conflicts ? current : best
+      );
+
+      setGenerationStep(3);
+
+      // Save to database
+      const saveRes = await fetch('/api/timetable/save-bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slots: bestResult.slots,
+          versionName: 'Draft',
+          conflicts: bestResult.conflicts,
+        }),
+      });
+
+      const saveData = await saveRes.json();
+
+      if (saveData.success) {
+        setGenerationStep(4);
+        toast.success(`Generated ${saveData.slotsInserted} slots with ${bestResult.conflicts} conflicts`);
         
-        // Small delay to show success state
-        await new Promise(resolve => setTimeout(resolve, 800));
-        
-        toast.success(result.message);
-        
-        if (result.stats) {
-          const statsMessage = result.stats.swapAttempts !== undefined
-            ? `Stats: ${result.stats.totalSlots} slots, ${result.stats.scheduledLessons} lessons, ${result.stats.successfulSwaps}/${result.stats.swapAttempts} swaps, ${result.stats.iterations} iterations`
-            : `Stats: ${result.stats.totalSlots} slots, ${result.stats.scheduledLessons} lessons`;
-          
-          toast.info(statsMessage, { duration: 5000 });
+        if (bestResult.conflicts === 0) {
+          toast.success('🎉 Perfect timetable - Zero conflicts!', { duration: 5000 });
+        } else if (bestResult.conflicts < 50) {
+          toast.info(`✅ Good result - ${bestResult.conflicts} minor conflicts remaining`);
         }
 
-        if (result.failedLessons && result.failedLessons.length > 0) {
-          toast.warning(
-            `${result.failedLessons.length} lesson(s) could not be scheduled. View Conflict Report for details.`,
-            { duration: 8000 }
-          );
-          setShowConflictReport(true);
-        } else {
+        // Navigate to timetable page
+        setTimeout(() => {
           router.push('/dashboard/timetable');
-        }
+        }, 1000);
       } else {
-        toast.error(result.message);
-        setIsGenerating(false);
-        setGenerationStep(0);
+        throw new Error(saveData.error || 'Failed to save timetable');
       }
     } catch (error: unknown) {
       console.error('Timetable generation error:', error);
       toast.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
       setIsGenerating(false);
       setGenerationStep(0);
+      setWorkerProgress(null);
     }
   };
 
@@ -492,11 +560,9 @@ export default function LessonsPage() {
   }, [searchQuery, filterGrade, filterStream, filterSubjectId, filterTeacherId]);
 
   const generationSteps = [
-    'Fetching School Configuration & Lessons...',
-    'Initializing Constraint Engine...',
-    'Placing Locked/Double Periods...',
-    'Optimizing Teacher Workloads...',
-    'Finalizing Timetable Grid...',
+    'Fetching School Configuration...',
+    'Running Parallel AI Optimization (4 threads)...',
+    'Saving Best Result to Database...',
     'Complete! ✓',
   ];
 
@@ -625,6 +691,46 @@ export default function LessonsPage() {
                 );
               })}
             </div>
+
+            {/* Worker Thread Progress (Live Updates) */}
+            {workerProgress && generationStep === 2 && (
+              <div className="w-full max-w-xl mt-8 space-y-3">
+                <h3 className="text-sm font-semibold text-zinc-300 mb-4 flex items-center gap-2">
+                  <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Live Thread Progress
+                </h3>
+                {(['thread1', 'thread2', 'thread3', 'thread4'] as const).map((threadKey, idx) => {
+                  const thread = workerProgress[threadKey];
+                  const progress = thread.iteration / 250000 * 100;
+                  
+                  return (
+                    <div key={threadKey} className="bg-zinc-800/50 rounded-lg p-3 border border-zinc-700">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-medium text-zinc-400">Thread {idx + 1}</span>
+                        <span className={`text-xs font-bold ${
+                          thread.conflicts === 0 ? 'text-green-400' :
+                          thread.conflicts < 100 ? 'text-yellow-400' : 'text-red-400'
+                        }`}>
+                          {thread.conflicts} conflicts
+                        </span>
+                      </div>
+                      <div className="w-full bg-zinc-700 rounded-full h-2 overflow-hidden">
+                        <div 
+                          className="h-full bg-gradient-to-r from-purple-500 to-blue-500 transition-all duration-300"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                      <div className="text-[10px] text-zinc-500 mt-1">
+                        {thread.iteration.toLocaleString()} / 250,000 iterations
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}

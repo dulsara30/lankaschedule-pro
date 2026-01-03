@@ -12,7 +12,7 @@ This solver handles:
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Dict, Optional
 from ortools.sat.python import cp_model
 import uvicorn
@@ -45,7 +45,9 @@ class SchoolConfig(BaseModel):
     daysOfWeek: List[DayOfWeek]
 
 class Lesson(BaseModel):
-    _id: str
+    model_config = {"populate_by_name": True}
+    
+    lesson_id: str = Field(alias='_id')
     lessonName: str
     subjectIds: List[str]
     teacherIds: List[str]
@@ -55,7 +57,9 @@ class Lesson(BaseModel):
     color: Optional[str] = "#3B82F6"
 
 class Class(BaseModel):
-    _id: str
+    model_config = {"populate_by_name": True}
+    
+    class_id: str = Field(alias='_id')
     name: str
     grade: str  # Changed to str to support Sri Lankan grades like '13-years', 'Grade 11', etc.
 
@@ -499,7 +503,7 @@ class TimetableSolver:
                         if key in self.task_vars and self.solver.Value(self.task_vars[key]):
                             slots.append(TimetableSlot(
                                 classId=class_id,
-                                lessonId=lesson._id,
+                                lessonId=lesson.lesson_id,
                                 day=day,
                                 periodNumber=period,
                                 isDoubleStart=False,
@@ -513,7 +517,7 @@ class TimetableSolver:
                             # Add two slots for double period
                             slots.append(TimetableSlot(
                                 classId=class_id,
-                                lessonId=lesson._id,
+                                lessonId=lesson.lesson_id,
                                 day=day,
                                 periodNumber=period,
                                 isDoubleStart=True,
@@ -521,7 +525,7 @@ class TimetableSolver:
                             ))
                             slots.append(TimetableSlot(
                                 classId=class_id,
-                                lessonId=lesson._id,
+                                lessonId=lesson.lesson_id,
                                 day=day,
                                 periodNumber=period + 1,
                                 isDoubleStart=False,

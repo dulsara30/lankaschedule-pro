@@ -41,6 +41,7 @@ interface Class {
   _id: string;
   name: string;
   grade: number | string;
+  classTeacher?: Teacher;
 }
 
 interface Lesson {
@@ -1991,7 +1992,17 @@ export default function TimetablePage() {
           {/* Timetable Grid */}
           <Card>
             <CardHeader>
-              <CardTitle>{selectedName} - Weekly Timetable</CardTitle>
+              <CardTitle>
+                {selectedName} - Weekly Timetable
+                {viewMode === 'class' && (() => {
+                  const selectedClass = classes.find(c => c._id === selectedEntity);
+                  return selectedClass?.classTeacher ? (
+                    <span className="ml-3 text-sm font-normal text-zinc-600 dark:text-zinc-400">
+                      | Class Teacher: <span className="font-medium text-zinc-900 dark:text-zinc-100">{selectedClass.classTeacher.name}</span>
+                    </span>
+                  ) : null;
+                })()}
+              </CardTitle>
               <CardDescription>
                 {config.numberOfPeriods} periods per day • {config.periodDuration} minutes each
               </CardDescription>

@@ -6,14 +6,23 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2, Info, Search, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Plus, Pencil, Trash2, Info, Search, Filter, ChevronLeft, ChevronRight, Check, ChevronsUpDown } from 'lucide-react';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
+
+interface Teacher {
+  _id: string;
+  name: string;
+}
 
 interface Class {
   _id: string;
   name: string;
   grade: number | string;
   stream?: string;
+  classTeacher?: Teacher;
   lessonCount: number;
   totalWeeklyPeriods: number;
 }
@@ -23,9 +32,11 @@ const ITEMS_PER_PAGE = 10;
 
 export default function ClassesPage() {
   const [classes, setClasses] = useState<Class[]>([]);
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingClass, setEditingClass] = useState<Class | null>(null);
+  const [teacherComboOpen, setTeacherComboOpen] = useState(false);
   
   // Search and filter states
   const [searchQuery, setSearchQuery] = useState('');
@@ -40,6 +51,7 @@ export default function ClassesPage() {
     stream: '',
     numberOfParallelClasses: 1,
     customPrefix: '',
+    classTeacher: '',
   });
 
   // Generate class names in real-time
@@ -122,6 +134,7 @@ export default function ClassesPage() {
 
   useEffect(() => {
     fetchClasses();
+    fetchTeachers();
   }, []);
 
   // Reset to page 1 when filters change
@@ -143,6 +156,18 @@ export default function ClassesPage() {
     }
   };
 
+  const fetchTeachers = async () => {
+    try {
+      const response = await fetch('/api/teachers');
+      const data = await response.json();
+      if (data.success) {
+        setTeachers(data.data);
+      }
+    } catch {
+      toast.error('Failed to load teachers');
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -159,6 +184,7 @@ export default function ClassesPage() {
             name: generatedClassNames[0], // Use first generated name for single edit
             grade: formData.grade,
             stream: formData.stream || '',
+            classTeacher: formData.classTeacher || null,
           }),
         });
 
@@ -180,6 +206,7 @@ export default function ClassesPage() {
         name,
         grade: formData.grade,
         stream: formData.stream || '',
+        classTeacher: formData.classTeacher || null,
       }));
 
       // Create all classes
@@ -218,6 +245,7 @@ export default function ClassesPage() {
       stream: classItem.stream || '',
       numberOfParallelClasses: 1,
       customPrefix: classItem.name.split('-')[0] + '-' + (classItem.stream || ''),
+      classTeacher: classItem.classTeacher?._id || '',
     });
     setDialogOpen(true);
   };
@@ -249,6 +277,7 @@ export default function ClassesPage() {
       stream: '',
       numberOfParallelClasses: 1,
       customPrefix: '',
+      classTeacher: '',
     });
     setEditingClass(null);
   };
@@ -352,6 +381,74 @@ export default function ClassesPage() {
                   </p>
                 </div>
               )}
+
+              {/* Class Teacher Selection */}
+              <div>
+                <label className="mb-2 block text-sm font-medium">
+                  Class Teacher (Optional)
+                </label>
+                <Popover open={teacherComboOpen} onOpenChange={setTeacherComboOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={teacherComboOpen}
+                      className="w-full justify-between"
+                    >
+                      {formData.classTeacher
+                        ? teachers.find((t) => t._id === formData.classTeacher)?.name
+                        : "Select class teacher..."}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-full p-0">
+                    <Command>
+                      <CommandInput placeholder="Search teachers..." />
+                      <CommandList>
+                        <CommandEmpty>No teacher found.</CommandEmpty>
+                        <CommandGroup>
+                          <CommandItem
+                            value=""
+                            onSelect={() => {
+                              setFormData({ ...formData, classTeacher: '' });
+                              setTeacherComboOpen(false);
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                formData.classTeacher === '' ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            No teacher assigned
+                          </CommandItem>
+                          {teachers.map((teacher) => (
+                            <CommandItem
+                              key={teacher._id}
+                              value={teacher.name}
+                              onSelect={() => {
+                                setFormData({ ...formData, classTeacher: teacher._id });
+                                setTeacherComboOpen(false);
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  formData.classTeacher === teacher._id ? "opacity-100" : "opacity-0"
+                                )}
+                              />
+                              {teacher.name}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+                <p className="mt-1 text-xs text-zinc-500">
+                  Assign a teacher responsible for this class
+                </p>
+              </div>
 
               {!editingClass && (
                 <>
@@ -517,6 +614,7 @@ export default function ClassesPage() {
                     <TableHead>Class Name</TableHead>
                     <TableHead>Grade Level</TableHead>
                     <TableHead>Stream</TableHead>
+                    <TableHead>Class Teacher</TableHead>
                     <TableHead>Assigned Lessons</TableHead>
                     <TableHead>Weekly Load</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -538,6 +636,15 @@ export default function ClassesPage() {
                           </span>
                         ) : (
                           <span className="text-sm text-zinc-400">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {classItem.classTeacher ? (
+                          <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                            👤 {classItem.classTeacher.name}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-zinc-400">Not assigned</span>
                         )}
                       </TableCell>
                       <TableCell>

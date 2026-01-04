@@ -69,6 +69,7 @@ class Class(BaseModel):
     class_id: str = Field(alias='_id')
     name: str
     grade: Any  # Accept both numbers and strings (e.g., 10, '13-years', 'Grade 11')
+    classTeacher: Optional[str] = None  # Class teacher name for reporting
 
 class SolverRequest(BaseModel):
     model_config = {"populate_by_name": True}

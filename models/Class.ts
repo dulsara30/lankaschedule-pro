@@ -5,6 +5,7 @@ export interface IClass extends Document {
   name: string; // e.g., "Grade 6", "6-A", "13 Years", "13Y-A"
   grade: number | string; // 1-13 for regular grades, '13-years' for 13 Years program
   stream?: string; // e.g., "Science", "Arts", "Commerce", "Technology" (for higher grades)
+  classTeacher?: mongoose.Types.ObjectId; // Reference to Teacher
   createdAt: Date;
   updatedAt: Date;
 }
@@ -31,6 +32,11 @@ const ClassSchema = new Schema<IClass>(
       trim: true,
       enum: ['Science', 'Arts', 'Commerce', 'Technology', ''],
       default: '',
+    },
+    classTeacher: {
+      type: Schema.Types.ObjectId,
+      ref: 'Teacher',
+      required: false,
     },
   },
   {

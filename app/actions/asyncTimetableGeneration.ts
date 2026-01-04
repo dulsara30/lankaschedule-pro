@@ -46,7 +46,7 @@ export async function startTimetableGeneration(
     // Step 3: Fetch all data
     const [lessonsData, classesData, teachersData, subjectsData] = await Promise.all([
       Lesson.find({ schoolId: school._id }).populate('subjectIds').populate('teacherIds').populate('classIds').lean(),
-      Class.find({ schoolId: school._id }).lean(),
+      Class.find({ schoolId: school._id }).populate('classTeacher').lean(),
       Teacher.find({ schoolId: school._id }).lean(),
       Subject.find({ schoolId: school._id }).lean(),
     ]);
@@ -100,6 +100,7 @@ export async function startTimetableGeneration(
         _id: cls._id.toString(),
         name: cls.name,
         grade: cls.grade,
+        classTeacher: cls.classTeacher?.name || null,
       })),
       teachers: teachersData.map((teacher: any) => ({
         _id: teacher._id.toString(),

@@ -19,6 +19,7 @@ export async function GET() {
     }
 
     const classes = await Class.find({ schoolId: school._id })
+      .populate('classTeacher')
       .sort({ grade: 1, name: 1 })
       .lean();
 
@@ -81,7 +82,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, grade, stream } = body;
+    const { name, grade, stream, classTeacher } = body;
 
     if (!name || !grade) {
       return NextResponse.json(
@@ -98,6 +99,7 @@ export async function POST(request: NextRequest) {
       name,
       grade,
       stream: stream || '',
+      classTeacher: classTeacher || null,
     });
 
     revalidatePath('/dashboard/classes');
@@ -137,7 +139,7 @@ export async function PUT(request: NextRequest) {
     await dbConnect();
 
     const body = await request.json();
-    const { id, name, grade, stream } = body;
+    const { id, name, grade, stream, classTeacher } = body;
 
     if (!id || !name || !grade) {
       return NextResponse.json(
@@ -151,7 +153,7 @@ export async function PUT(request: NextRequest) {
 
     const classData = await Class.findByIdAndUpdate(
       id,
-      { name, grade, stream: stream || '' },
+      { name, grade, stream: stream || '', classTeacher: classTeacher || null },
       { new: true, runValidators: true }
     );
 

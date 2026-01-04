@@ -37,6 +37,7 @@ interface SolverResponse {
     className: string;
     teacherName: string;
     taskType: string;
+    diagnostic?: string;  // Intelligent diagnostic message
   }>;
   conflicts: number;
   solvingTime: number;
@@ -70,7 +71,10 @@ export interface GenerateTimetableResult {
   totalSteps?: number;
 }
 
-export async function generateTimetableAction(versionName?: string): Promise<GenerateTimetableResult> {
+export async function generateTimetableAction(
+  versionName?: string,
+  strictBalancing: boolean = true
+): Promise<GenerateTimetableResult> {
   try {
     await dbConnect();
     
@@ -208,11 +212,13 @@ export async function generateTimetableAction(versionName?: string): Promise<Gen
           abbreviation: day?.abbreviation || (typeof day === "string" ? day.slice(0, 3) : "Mon"),
         })),
       },
+      allowRelaxation: !strictBalancing,  // Invert: strict=true means no relaxation
     };
 
     console.log(`[DEBUG] Payload prepared successfully`);
     console.log(`[DEBUG] Lessons in payload: ${payload.lessons.length}`);
-    console.log(`[DEBUG] Classes in payload: ${payload.classes.length}`);;
+    console.log(`[DEBUG] Classes in payload: ${payload.classes.length}`);
+    console.log(`[DEBUG] Relaxation mode: ${!strictBalancing ? 'ENABLED (two-stage)' : 'DISABLED (strict only)'}`);
     console.log(`[DEBUG] Sample class grades:`, payload.classes.slice(0, 3).map(c => `${c.name}='${c.grade}'`))
     console.log(`[DEBUG] Days in config payload: ${payload.config.daysOfWeek.length}`);
     console.log(`[DEBUG] Periods in config payload: ${payload.config.numberOfPeriods}`);

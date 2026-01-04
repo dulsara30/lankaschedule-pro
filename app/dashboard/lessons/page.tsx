@@ -10,6 +10,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Plus, Pencil, Trash2, Sparkles, MoreVertical, X, Search, Lightbulb, Check, ChevronsUpDown, ChevronLeft, ChevronRight, FilterX } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { generateTimetableAction } from '@/app/actions/generateTimetable';
@@ -59,6 +60,7 @@ export default function LessonsPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStep, setGenerationStep] = useState(0);
   const [generationVersionName, setGenerationVersionName] = useState('');
+  const [strictBalancing, setStrictBalancing] = useState(true);  // Default: strict mode
 
   const [formData, setFormData] = useState({
     lessonName: '',
@@ -394,7 +396,7 @@ export default function LessonsPage() {
       setGenerationStep(3);
       
       // Step 3: Call Python CP-SAT solver (30-120s)
-      const result = await generateTimetableAction(versionToUse);
+      const result = await generateTimetableAction(versionToUse, strictBalancing);
 
       if (result?.success) {
         setGenerationStep(4);
@@ -541,6 +543,20 @@ export default function LessonsPage() {
             className="w-48"
             disabled={isGenerating}
           />
+          <div className="flex items-center space-x-2 border border-zinc-200 dark:border-zinc-700 rounded-md px-3 py-2 bg-white dark:bg-zinc-900">
+            <Checkbox
+              id="strictBalancing"
+              checked={strictBalancing}
+              onCheckedChange={(checked) => setStrictBalancing(checked === true)}
+              disabled={isGenerating}
+            />
+            <label
+              htmlFor="strictBalancing"
+              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer select-none"
+            >
+              🎯 Strict Subject Balancing
+            </label>
+          </div>
           <Button
             onClick={handleGenerateTimetable}
             disabled={isGenerating || lessons.length === 0}
@@ -618,15 +634,30 @@ export default function LessonsPage() {
                   </div>
                 </div>
 
-                {/* Step 3: Subject Balancing */}
+                {/* Step 3: AI Solving with Stage Tracking */}
                 <div className={`flex items-center gap-3 p-4 rounded-lg transition-all ${generationStep >= 3 ? 'bg-white/20 text-white' : 'bg-white/5 text-white/50'}`}>
                   <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${generationStep >= 3 ? 'bg-purple-500 animate-pulse' : 'bg-white/10'}`}>
                     {generationStep > 3 ? <Check className="h-5 w-5" /> : '3'}
                   </div>
                   <div className="flex-1">
-                    <span className="font-medium">⚖️ Elite AI Solving: 8 workers, 180s max, 5% optimal gap...</span>
-                    {generationStep === 3 && (
-                      <p className="text-xs text-white/60 mt-1 animate-pulse">⏱️ Up to 3 minutes solving time - DO NOT REFRESH. Optimizing 500/1000pt rewards with -400pt penalties for perfect distribution.</p>
+                    {strictBalancing ? (
+                      <>
+                        <span className="font-medium">⚖️ Elite AI Solving (Strict Mode): Perfect subject balancing...</span>
+                        {generationStep === 3 && (
+                          <p className="text-xs text-white/60 mt-1 animate-pulse">
+                            ⏱️ Up to 3 minutes - DO NOT REFRESH. Strict penalties (-400pt) enforce perfect distribution.
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-medium">🎯 Two-Stage AI Solving: Attempting strict balance...</span>
+                        {generationStep === 3 && (
+                          <p className="text-xs text-white/60 mt-1 animate-pulse">
+                            ⏱️ Stage 1 (60s): Strict balancing with -400pt penalties. Stage 2 (120s): Relaxed rules (-50pt) for maximum placement if needed.
+                          </p>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>

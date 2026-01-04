@@ -67,6 +67,7 @@ class SolverRequest(BaseModel):
     lessons: List[Lesson]
     classes: List[Class]
     config: SchoolConfig
+    allowRelaxation: bool = True  # Allow two-stage solving with relaxed penalties
 
 class TimetableSlot(BaseModel):
     classId: str
@@ -84,6 +85,7 @@ class UnplacedTask(BaseModel):
     className: str
     teacherName: str
     taskType: str  # 'single' or 'double'
+    diagnostic: str = "Unable to schedule due to constraints"  # Diagnostic reason
 
 class SolverResponse(BaseModel):
     success: bool
@@ -347,12 +349,18 @@ class TimetableSolver:
         # Double at period P automatically occupies P and P+1
         pass
     
-    def _set_objective(self):
-        """Maximize number of placed lessons with priority weights and subject distribution"""
+    def _set_objective(self, penalty_multiplier: float = 1.0):
+        """Maximize number of placed lessons with priority weights and subject distribution
+        
+        Args:
+            penalty_multiplier: Multiplier for distribution penalties (1.0 = -400, 0.125 = -50)
+        """
         # ELITE OPTIMIZATION MODE: Place as many lessons as possible with strict quality
         # Priority: Double periods (1000 points) > Single periods (500 points)
-        # Extreme Penalty: Same subject multiple times per day for a class (-400 points)
-        # Strategy: High rewards + extreme penalties = AI forced to balance perfectly
+        # Extreme Penalty: Same subject multiple times per day for a class (-400 points default)
+        # Strategy: High rewards + penalties = AI forced to balance
+        
+        base_penalty = int(-400 * penalty_multiplier)  # -400 for strict, -50 for relaxed
         
         objective_terms = []
         for task in self.task_info:
@@ -421,28 +429,27 @@ class TimetableSolver:
                     count_var = self.model.NewIntVar(0, len(day_vars), f"count_class_{class_id}_subj_{subject_id}_day_{day}")
                     self.model.Add(count_var == sum(day_vars))
                     
-                    # EXTREME PENALTY: If count > 1, subtract 400 points per extra occurrence
-                    # This forces the AI to spread subjects across days instead of clumping
-                    # Since singles=500pts, clumping loses 400pts → net 100pts vs 500pts balanced
+                    # PENALTY: If count > 1, subtract points per extra occurrence
+                    # Strict: -400pts (forces perfect spreading)
+                    # Relaxed: -50pts (allows some clumping for max placement)
                     overflow_var = self.model.NewIntVar(0, len(day_vars), f"overflow_class_{class_id}_subj_{subject_id}_day_{day}")
                     self.model.AddMaxEquality(overflow_var, [count_var - 1, 0])
-                    objective_terms.append(-400 * overflow_var)
+                    objective_terms.append(base_penalty * overflow_var)
                     penalty_count += 1
         
-        print(f"   ✅ Added {penalty_count} subject distribution penalties")
-        print("   📈 ELITE MODE: Extreme penalties enforce perfect spreading")
+        mode_str = "STRICT" if penalty_multiplier >= 1.0 else "RELAXED"
+        print(f"   ✅ Added {penalty_count} subject distribution penalties ({mode_str} mode: {base_penalty}pts)")
+        print(f"   📈 Strategy: High rewards ({1000}/{500}pts) + penalties ({base_penalty}pts) = balanced placement")
         
         # Maximize total weighted placements with penalties
         self.model.Maximize(sum(objective_terms))
         
-        print(f"\n🎯 ELITE OBJECTIVE: Maximum placement + strict subject distribution")
+        print(f"\n🎯 OBJECTIVE: Maximum placement + subject distribution")
         print(f"   Base weights: Doubles=1000pts, Singles=500pts (× class count for parallel)")
-        print(f"   EXTREME Penalty: Same subject >1/day = -400pts per extra occurrence")
-        print(f"   Strategy: High rewards + extreme penalties = forced balance")
-        print(f"   Best case: {len(self.task_info)} tasks placed with perfect distribution")
+        print(f"   Penalty: Same subject >1/day = {base_penalty}pts per extra occurrence")
     
-    def solve(self, time_limit_seconds: int = 180) -> SolverResponse:
-        """Run the CP-SAT solver in optimization mode"""
+    def solve(self, time_limit_seconds: int = 180, allow_relaxation: bool = True, stage_callback=None) -> SolverResponse:
+        """Run the CP-SAT solver with optional two-stage relaxation"""
         start_time = time.time()
         
         print("\n" + "="*60)
@@ -458,101 +465,145 @@ class TimetableSolver:
         # Step 3: Set objective
         self._set_objective()
         
-        # Step 4: Configure solver - ELITE PERFORMANCE MODE
-        self.solver.parameters.max_time_in_seconds = time_limit_seconds
-        self.solver.parameters.num_search_workers = 8  # Full CPU utilization
-        self.solver.parameters.log_search_progress = True
-        self.solver.parameters.random_seed = 42  # Consistent high-quality results
-        self.solver.parameters.relative_gap_limit = 0  # Stop at 0% of optimal (massive time savings)
+        # Determine if two-stage solving is enabled
+        use_two_stage = allow_relaxation and time_limit_seconds >= 90
         
-        print(f"\n🔍 ELITE SOLVING MODE: {time_limit_seconds}s time limit with 8 parallel workers...")
-        print("   Seed: 42 (consistent results) | Target: 96%+ utilization")
-        print("   Mode: Maximum effort placement with strict subject distribution")
-        print("   Optimization: Stops at 95% optimal (5% gap) for high-speed feasibility")
-        
-        # Step 5: Solve
-        status = self.solver.Solve(self.model)
-        
-        solving_time = time.time() - start_time
-        
-        # Step 6: Extract solution (accept OPTIMAL, FEASIBLE, or UNKNOWN with solution)
-        if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
-            slots, unplaced_tasks = self._extract_solution()
-            conflicts = 0  # CP-SAT guarantees no conflicts
+        if use_two_stage:
+            # TWO-STAGE SOLVING: Stage 1 (strict), Stage 2 (relaxed if needed)
+            stage1_time = min(60, time_limit_seconds // 3)  # 60s or 1/3 of total time
+            stage2_time = time_limit_seconds - stage1_time
             
-            placed_count = len(slots)
-            total_tasks = self.stats['totalTasks']
-            coverage = (placed_count / total_tasks * 100) if total_tasks > 0 else 0
-            
-            if status == cp_model.OPTIMAL:
-                message = f"✅ Optimal solution! Placed {placed_count}/{total_tasks} tasks ({coverage:.1f}%)"
-            else:
-                message = f"✅ Feasible solution. Placed {placed_count}/{total_tasks} tasks ({coverage:.1f}%)"
-            
-            success = True
-            
-            print(f"\n{message}")
-            print(f"⏱️  Solving time: {solving_time:.2f}s")
-            
-            if coverage < 100:
-                print(f"⚠️  WARNING: {total_tasks - placed_count} tasks could not be placed (over-constrained)")
-            
+            print(f"\n🎯 TWO-STAGE SOLVING ENABLED")
+            print(f"   Stage 1: {stage1_time}s with strict penalties (-400pt)")
+            print(f"   Stage 2: {stage2_time}s with relaxed penalties (-50pt) if needed")
             print("="*60)
             
-            return SolverResponse(
-                success=success,
-                slots=slots,
-                unplacedTasks=unplaced_tasks,
-                conflicts=conflicts,
-                solvingTime=solving_time,
-                stats=self.stats,
-                message=message
-            )
+            # STAGE 1: Strict balance
+            print("\n📍 STAGE 1: Attempting Strict Subject Balancing...")
+            if stage_callback:
+                stage_callback("stage1")
+            
+            self.solver.parameters.max_time_in_seconds = stage1_time
+            self.solver.parameters.num_search_workers = 8
+            self.solver.parameters.log_search_progress = True
+            self.solver.parameters.random_seed = 42
+            self.solver.parameters.relative_gap_limit = 0.05  # 5% gap acceptable
+            
+            status = self.solver.Solve(self.model)
+            
+            # Check if Stage 1 produced good solution
+            stage1_success = status in [cp_model.OPTIMAL, cp_model.FEASIBLE]
+            if stage1_success:
+                slots, unplaced = self._extract_solution()
+                placement_rate = len(slots) / self.stats['totalTasks'] if self.stats['totalTasks'] > 0 else 0
+                
+                if placement_rate >= 0.95:  # 95%+ placement
+                    print(f"✅ Stage 1 SUCCESS: {placement_rate*100:.1f}% placement with strict balance")
+                    # Return Stage 1 solution
+                    solving_time = time.time() - start_time
+                    return self._build_response(status, solving_time, slots, unplaced)
+                else:
+                    print(f"⚠️  Stage 1: Only {placement_rate*100:.1f}% placed. Proceeding to Stage 2...")
+            else:
+                print(f"⚠️  Stage 1: No solution (status: {self.solver.StatusName(status)}). Trying Stage 2...")
+            
+            # STAGE 2: Relaxed penalties for maximum placement
+            print(f"\n📍 STAGE 2: Relaxing Rules for Maximum Placement...")
+            if stage_callback:
+                stage_callback("stage2")
+            
+            # Create new solver with relaxed penalties
+            self.model = cp_model.CpModel()
+            self.solver = cp_model.CpSolver()
+            
+            # Recreate everything with relaxed penalties
+            self._create_variables()
+            self._add_constraints()
+            self._set_objective(penalty_multiplier=0.125)  # -50 instead of -400
+            
+            self.solver.parameters.max_time_in_seconds = stage2_time
+            self.solver.parameters.num_search_workers = 8
+            self.solver.parameters.log_search_progress = True
+            self.solver.parameters.random_seed = 42
+            self.solver.parameters.relative_gap_limit = 0.05
+            
+            status = self.solver.Solve(self.model)
+        else:
+            # SINGLE-STAGE SOLVING: Traditional strict mode
+            print(f"\n🔍 SINGLE-STAGE MODE: {time_limit_seconds}s with strict penalties")
+            print("   Seed: 42 | Target: 96%+ placement with strict balance")
+            print("="*60)
+            
+            self.solver.parameters.max_time_in_seconds = time_limit_seconds
+            self.solver.parameters.num_search_workers = 8
+            self.solver.parameters.log_search_progress = True
+            self.solver.parameters.random_seed = 42
+            self.solver.parameters.relative_gap_limit = 0.05
+            
+            status = self.solver.Solve(self.model)
+        
+        solving_time = time.time() - start_time
+        return self._build_response(status, solving_time)
+    
+    def _build_response(self, status, solving_time, slots=None, unplaced_tasks=None) -> SolverResponse:
+        """Build solver response with diagnostics"""
+        # Extract solution if not provided
+        if slots is None or unplaced_tasks is None:
+            if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
+                slots, unplaced_tasks = self._extract_solution()
+            else:
+                slots, unplaced_tasks = [], []
+        
+        # Add diagnostics to unplaced tasks
+        if len(unplaced_tasks) > 0:
+            unplaced_tasks = self._diagnose_unplaced_tasks(unplaced_tasks, slots)
+        
+        conflicts = 0  # CP-SAT guarantees no conflicts
+        placed_count = len(slots)
+        total_tasks = self.stats['totalTasks']
+        coverage = (placed_count / total_tasks * 100) if total_tasks > 0 else 0
+        
+        if status == cp_model.OPTIMAL:
+            message = f"✅ Optimal solution! Placed {placed_count}/{total_tasks} tasks ({coverage:.1f}%)"
+            success = True
+        elif status == cp_model.FEASIBLE:
+            message = f"✅ Feasible solution. Placed {placed_count}/{total_tasks} tasks ({coverage:.1f}%)"
+            success = True
+        else:
+            message = f"❌ No solution found (status: {self.solver.StatusName(status)})"
+            success = False
+        
+        print(f"\n{message}")
+        print(f"⏱️  Solving time: {solving_time:.2f}s")
+        
+        if coverage < 100:
+            print(f"⚠️  WARNING: {total_tasks - placed_count} tasks could not be placed")
+        
+        print("="*60)
+        
+        return SolverResponse(
+            success=success,
+            slots=slots,
+            unplacedTasks=unplaced_tasks,
+            conflicts=conflicts,
+            solvingTime=solving_time,
+            stats=self.stats,
+            message=message
+        )
         elif status == cp_model.UNKNOWN:
             # Time limit reached but may have found some solution
             print("\n⚠️  Time limit reached (UNKNOWN status)")
             try:
                 slots, unplaced_tasks = self._extract_solution()
                 if len(slots) > 0:
-                    placed_count = len(slots)
-                    total_tasks = self.stats['totalTasks']
-                    coverage = (placed_count / total_tasks * 100) if total_tasks > 0 else 0
-                    message = f"⚠️  Partial solution (time limit). Placed {placed_count}/{total_tasks} tasks ({coverage:.1f}%)"
-                    
-                    print(f"{message}")
-                    print(f"⏱️  Solving time: {solving_time:.2f}s")
-                    print("="*60)
-                    
-                    return SolverResponse(
-                        success=True,
-                        slots=slots,
-                        unplacedTasks=unplaced_tasks,
-                        conflicts=0,
-                        solvingTime=solving_time,
-                        stats=self.stats,
-                        message=message
-                    )
+                    return self._build_response(cp_model.FEASIBLE, solving_time, slots, unplaced_tasks)
             except:
                 pass
             
             # No solution found at all
-            error_msg = "❌ Time limit reached with no valid solution"
-            print(f"{error_msg}")
-            print(f"⏱️  Solving time: {solving_time:.2f}s")
-            print("="*60)
-            
-            return SolverResponse(
-                success=False,
-                slots=[],
-                unplacedTasks=[],
-                conflicts=999999,
-                solvingTime=solving_time,
-                stats=self.stats,
-                message=error_msg
-            )
+            return self._build_response(cp_model.INFEASIBLE, solving_time, [], [])
         else:
-            error_msg = f"❌ No solution found (status: {self.solver.StatusName(status)})"
-            print(f"\n{error_msg}")
+            print(f"\n❌ No solution found (status: {self.solver.StatusName(status)})")
             print(f"⏱️  Solving time: {solving_time:.2f}s")
             print("   Constraints may be too tight or problem is infeasible")
             print("="*60)
@@ -566,6 +617,95 @@ class TimetableSolver:
                 stats=self.stats,
                 message=error_msg
             )
+    
+    def _diagnose_unplaced_tasks(self, unplaced_tasks: List[UnplacedTask], scheduled_slots: List[TimetableSlot]) -> List[UnplacedTask]:
+        \"\"\"Analyze why tasks couldn't be placed and add diagnostic information\"\"\"
+        print(f\"\\n🔍 Diagnosing {len(unplaced_tasks)} unplaced tasks...\")
+        
+        # Build teacher and class utilization maps from scheduled slots
+        teacher_schedule = {}  # teacher_id -> {day -> [periods]}
+        class_schedule = {}    # class_id -> {day -> [periods]}
+        
+        for slot in scheduled_slots:
+            # Get lesson info to find teachers
+            lesson = next((l for l in self.lessons if l.lesson_id == slot.lessonId), None)
+            if not lesson:
+                continue
+            
+            # Track class schedule
+            if slot.classId not in class_schedule:
+                class_schedule[slot.classId] = {}
+            if slot.day not in class_schedule[slot.classId]:
+                class_schedule[slot.classId][slot.day] = []
+            class_schedule[slot.classId][slot.day].append(slot.periodNumber)
+            
+            # Track teacher schedule for all teachers in this lesson
+            for teacher_id in lesson.teacherIds:
+                if teacher_id not in teacher_schedule:
+                    teacher_schedule[teacher_id] = {}
+                if slot.day not in teacher_schedule[teacher_id]:
+                    teacher_schedule[teacher_id][slot.day] = []
+                teacher_schedule[teacher_id][slot.day].append(slot.periodNumber)
+        
+        # Calculate total available slots per entity
+        total_slots = len(self.days) * self.num_periods
+        
+        # Diagnose each unplaced task
+        diagnosed_tasks = []
+        for task in unplaced_tasks:
+            # Find the lesson for this task
+            lesson = next((l for l in self.lessons if l.lesson_id == task.lessonId), None)
+            if not lesson:
+                task.diagnostic = \"Lesson not found in system\"
+                diagnosed_tasks.append(task)
+                continue
+            
+            # Calculate teacher utilization
+            teacher_utilization = 0
+            if lesson.teacherIds:
+                teacher_id = lesson.teacherIds[0]  # Use first teacher
+                teacher_busy_count = sum(len(periods) for periods in teacher_schedule.get(teacher_id, {}).values())
+                teacher_utilization = teacher_busy_count / total_slots if total_slots > 0 else 0
+            
+            # Calculate class utilization
+            class_busy_count = sum(len(periods) for periods in class_schedule.get(task.classId, {}).values())
+            class_utilization = class_busy_count / total_slots if total_slots > 0 else 0
+            
+            # Determine diagnostic
+            if teacher_utilization > 0.90:
+                task.diagnostic = f\"Teacher workload is too high ({teacher_utilization*100:.0f}% utilization)\"
+            elif class_utilization > 0.90:
+                task.diagnostic = f\"Class schedule is nearly full ({class_utilization*100:.0f}% utilization)\"
+            elif teacher_utilization > 0.70 and class_utilization > 0.70:
+                # Check if teacher is free when class is busy (resource conflict)
+                teacher_free_slots = set()
+                class_free_slots = set()
+                
+                for day in self.days:
+                    teacher_busy = set(teacher_schedule.get(lesson.teacherIds[0] if lesson.teacherIds else '', {}).get(day, []))
+                    class_busy = set(class_schedule.get(task.classId, {}).get(day, []))
+                    
+                    for period in range(1, self.num_periods + 1):
+                        if period not in teacher_busy:
+                            teacher_free_slots.add((day, period))
+                        if period not in class_busy:
+                            class_free_slots.add((day, period))
+                
+                # Check if there's overlap in free slots
+                overlap = teacher_free_slots & class_free_slots
+                if len(overlap) < (2 if task.taskType == 'double' else 1):
+                    task.diagnostic = \"Resource scheduling conflict: Teacher and class schedules don't align\"
+                else:
+                    task.diagnostic = \"Constraints prevent scheduling despite available slots\"
+            elif teacher_utilization < 0.30:
+                task.diagnostic = \"Insufficient demand or over-constrained problem\"
+            else:
+                task.diagnostic = \"Unable to find valid slot due to constraints (intervals/conflicts)\"
+            
+            diagnosed_tasks.append(task)
+        
+        print(f\"   ✅ Diagnostics completed for {len(diagnosed_tasks)} tasks\")
+        return diagnosed_tasks
     
     def _extract_solution(self) -> tuple[List[TimetableSlot], List[UnplacedTask]]:
         """Extract assigned slots and unplaced tasks from the solved model"""
@@ -678,18 +818,21 @@ async def health():
 @app.post("/solve", response_model=SolverResponse)
 async def solve_timetable(request: SolverRequest):
     """
-    ELITE AI Solver - Solve timetable using CP-SAT with maximum performance
+    AI-Powered Timetable Solver - CP-SAT with intelligent two-stage optimization
     
     - **lessons**: List of lessons with teacher/class assignments
     - **classes**: List of classes
     - **config**: School configuration (periods, days, intervals)
+    - **allowRelaxation**: Enable two-stage solving (strict → relaxed if needed)
     
-    Returns optimized timetable with 0 conflicts and strict subject distribution
-    Elite Mode: 180s solving time, extreme penalties for clumping, 96%+ target
+    Returns optimized timetable with 0 conflicts and intelligent diagnostics
     """
     try:
         solver = TimetableSolver(request)
-        result = solver.solve(time_limit_seconds=180)
+        result = solver.solve(
+            time_limit_seconds=180,
+            allow_relaxation=request.allowRelaxation
+        )
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Solver error: {str(e)}")

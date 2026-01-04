@@ -4,8 +4,9 @@ import React, { useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useDraggable } from '@dnd-kit/core';
-import { GripVertical, AlertCircle, Users, User, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { GripVertical, AlertCircle, Users, User, AlertTriangle, CheckCircle2, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // Draggable wrapper for unplaced lessons
@@ -19,28 +20,50 @@ function DraggableUnplacedLesson({ lesson, unplacedItem }: { lesson: Lesson; unp
     },
   });
 
+  const diagnostic = unplacedItem.diagnostic || 'Unable to schedule due to constraints';
+
   return (
-    <div
-      ref={setNodeRef}
-      {...listeners}
-      {...attributes}
-      className={cn(
-        'bg-red-50 border border-red-200 rounded-md p-2 cursor-grab active:cursor-grabbing transition-opacity',
-        isDragging && 'opacity-50'
-      )}
-    >
-      <div className="flex items-start gap-2">
-        <GripVertical className="h-4 w-4 text-gray-400 shrink-0 mt-0.5" />
-        <div className="flex-1 min-w-0">
-          <div className="text-xs font-medium text-gray-900 truncate">
-            {unplacedItem.lessonName}
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div
+            ref={setNodeRef}
+            {...listeners}
+            {...attributes}
+            className={cn(
+              'bg-red-50 border border-red-200 rounded-md p-2 cursor-grab active:cursor-grabbing transition-opacity',
+              isDragging && 'opacity-50'
+            )}
+          >
+            <div className="flex items-start gap-2">
+              <GripVertical className="h-4 w-4 text-gray-400 shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-medium text-gray-900 truncate">
+                  {unplacedItem.lessonName}
+                </div>
+                <div className="text-[10px] text-gray-600 mt-0.5">
+                  {unplacedItem.className} • {unplacedItem.taskType === 'double' ? '2 periods' : '1 period'}
+                </div>
+                {/* Diagnostic info */}
+                <div className="flex items-center gap-1 mt-1 text-[10px] text-orange-600">
+                  <Info className="h-3 w-3" />
+                  <span className="truncate">{diagnostic}</span>
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="text-[10px] text-gray-600 mt-0.5">
-            {unplacedItem.className} • {unplacedItem.taskType === 'double' ? '2 periods' : '1 period'}
+        </TooltipTrigger>
+        <TooltipContent side="right" className="max-w-xs bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900">
+          <div className="space-y-1">
+            <div className="font-semibold">Why couldn&apos;t this be scheduled?</div>
+            <div className="text-xs">{diagnostic}</div>
+            <div className="text-xs opacity-80 border-t border-zinc-700 dark:border-zinc-300 pt-1 mt-1">
+              💡 Try: Adjust constraints, reduce workload, or enable relaxation mode
+            </div>
           </div>
-        </div>
-      </div>
-    </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 

@@ -63,6 +63,9 @@ export default function LessonsPage() {
   const [generationVersionName, setGenerationVersionName] = useState('');
   const [strictBalancing, setStrictBalancing] = useState(true);  // Default: strict mode
   const [maxSearchTime, setMaxSearchTime] = useState(3);  // Default: 3 minutes
+  const [generationProgress, setGenerationProgress] = useState('');
+  const [pollCount, setPollCount] = useState(0);
+  const [estimatedTime, setEstimatedTime] = useState(0);
 
   const [formData, setFormData] = useState({
     lessonName: '',
@@ -387,31 +390,46 @@ export default function LessonsPage() {
 
     setIsGenerating(true);
     setGenerationStep(1);
+    setGenerationProgress('Preparing to generate timetable...');
+    setPollCount(0);
+    setEstimatedTime(maxSearchTime * 60); // in seconds
 
     try {
       // Step 1: Analyzing capacity (2s)
+      setGenerationProgress('📊 Analyzing lesson capacity and constraints...');
       await new Promise(resolve => setTimeout(resolve, 2000));
       setGenerationStep(2);
       
       // Step 2: Mapping constraints (2s)
+      setGenerationProgress('🗺️ Mapping class schedules and teacher availability...');
       await new Promise(resolve => setTimeout(resolve, 2000));
       setGenerationStep(3);
       
-      // Step 3: Call Python CP-SAT solver with user-defined time limit
+      // Step 3: Call Python CP-SAT solver with real-time progress tracking
+      setGenerationProgress('🚀 AI solver running in background (this may take several minutes)...');
       const timeInSeconds = maxSearchTime * 60;  // Convert minutes to seconds
       const result = await generateTimetableAction(versionToUse, strictBalancing, timeInSeconds);
 
       if (result?.success) {
         setGenerationStep(4);
+        setGenerationProgress('✅ Timetable generation complete!');
         
         // Use optional chaining to safely access nested properties
         const slotsPlaced = result.slotsPlaced || result.stats?.totalSlots || 0;
         const conflicts = result.conflicts || 0;
+        const solvingTime = result.solvingTime || 0;
         
-        toast.success(`Generated ${slotsPlaced} slots with ${conflicts} conflicts`);
-        
+        // Success notification with confetti effect
         if (conflicts === 0) {
-          toast.success('\ud83c\udf89 Perfect timetable - Zero conflicts!', { duration: 5000 });
+          toast.success('🎉 Perfect timetable generated with ZERO conflicts!', { 
+            duration: 6000,
+            description: `${slotsPlaced} slots placed in ${solvingTime.toFixed(1)}s`
+          });
+        } else {
+          toast.success(`✅ Timetable generated: ${slotsPlaced} slots, ${conflicts} conflicts`, {
+            duration: 5000,
+            description: `Completed in ${solvingTime.toFixed(1)}s`
+          });
         }
 
         // Refresh to ensure sidebar picks up unscheduled lessons
@@ -427,10 +445,15 @@ export default function LessonsPage() {
     } catch (error: unknown) {
       console.error('Timetable generation error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      toast.error(`Generation failed: ${errorMessage}`);
+      toast.error(`Generation failed: ${errorMessage}`, {
+        duration: 8000,
+        description: 'Check console for details or try reducing the search time'
+      });
     } finally {
       setIsGenerating(false);
       setGenerationStep(0);
+      setGenerationProgress('');
+      setPollCount(0);
     }
   };
 
@@ -603,10 +626,10 @@ export default function LessonsPage() {
       </div>
     </div>
 
-      {/* Generation Progress Overlay */}
+      {/* Generation Progress Overlay - Beautiful animated UI */}
       {isGenerating && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md">
-          <div className="relative flex flex-col items-center gap-8 p-12 bg-white/10 backdrop-blur-xl rounded-3xl border border-white/20 shadow-2xl">
+          <div className="relative flex flex-col items-center gap-8 p-12 bg-white/10 backdrop-blur-xl rounded-3xl border border-white/20 shadow-2xl max-w-2xl mx-4">
             {/* Animated Icon */}
             <div className="relative">
               <Sparkles className="h-24 w-24 text-purple-400 animate-pulse" />
@@ -616,17 +639,53 @@ export default function LessonsPage() {
             </div>
 
             {/* Progress Steps */}
-            <div className="flex flex-col items-center gap-4 min-w-[500px]">
+            <div className="flex flex-col items-center gap-4 w-full">
               <h2 className="text-3xl font-bold text-white tracking-tight">
                 AI Timetable Generation
               </h2>
               
-              <div className="w-full bg-white/10 rounded-full h-3 overflow-hidden">
+              {/* Animated Progress Bar with Shimmer Effect */}
+              <div className="w-full bg-white/10 rounded-full h-4 overflow-hidden relative shadow-lg">
                 <div 
-                  className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-500 ease-out rounded-full"
-                  style={{ width: `${(generationStep / 4) * 100}%` }}
-                />
+                  className="h-full bg-gradient-to-r from-purple-500 via-pink-500 to-purple-500 transition-all duration-500 ease-out rounded-full relative overflow-hidden"
+                  style={{ 
+                    width: `${(generationStep / 4) * 100}%`,
+                    backgroundSize: '200% 100%',
+                    animation: 'gradient-shift 3s ease infinite'
+                  }}
+                >
+                  {/* Shimmer effect */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer" 
+                       style={{ backgroundSize: '200% 100%' }} />
+                </div>
               </div>
+
+              {/* Progress Percentage and Live Status */}
+              <div className="w-full flex justify-between items-center text-white/80 text-sm">
+                <span className="font-bold text-lg">{Math.round((generationStep / 4) * 100)}% Complete</span>
+                {estimatedTime > 0 && generationStep === 3 && (
+                  <span className="text-xs bg-white/10 px-3 py-1 rounded-full">⏱️ Est. {Math.ceil(estimatedTime / 60)} min</span>
+                )}
+              </div>
+
+              {/* Live Progress Message with Pulse Animation */}
+              {generationProgress && (
+                <div className="w-full p-4 bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-lg border border-white/20 backdrop-blur-sm">
+                  <p className="text-white text-center font-medium animate-pulse">
+                    {generationProgress}
+                  </p>
+                  {generationStep === 3 && (
+                    <div className="mt-3 space-y-2">
+                      <p className="text-white/70 text-center text-xs">
+                        💡 AI is exploring thousands of scheduling possibilities...
+                      </p>
+                      <p className="text-white/60 text-center text-xs italic">
+                        Do not close this tab or navigate away
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="flex flex-col gap-3 w-full">
                 {/* Step 1: Resource Mapping & Filtering */}

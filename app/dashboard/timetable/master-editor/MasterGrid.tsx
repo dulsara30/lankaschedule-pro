@@ -396,10 +396,10 @@ export default function MasterGrid({
         <div className="h-full w-full overflow-auto">
           <div className="min-w-max relative">
             {/* Header Row - Sticky with Enhanced Shadow */}
-            <div className="sticky top-0 bg-white z-20 border-b-2 border-gray-300 shadow-md">
+            <div className="sticky top-0 bg-white z-40 border-b-2 border-gray-300 shadow-md">
               <div className="flex">
                 {/* Sticky Teacher Column Header */}
-                <div className="sticky left-0 z-30 w-56 border-r-4 border-gray-400 bg-gradient-to-br from-gray-100 to-gray-200 p-3 font-bold text-sm shadow-md">
+                <div className="sticky left-0 z-50 w-56 border-r-4 border-gray-400 bg-gradient-to-br from-gray-100 to-gray-200 p-3 font-bold text-sm shadow-md">
                   <div className="flex items-center gap-2">
                     <User className="h-4 w-4 text-gray-700" />
                     <span>Teacher Name</span>
@@ -469,7 +469,7 @@ export default function MasterGrid({
                   >
                     {/* Sticky Teacher Name Column with Enhanced Shadow */}
                     <div className={cn(
-                      "sticky left-0 z-10 w-56 border-r-4 border-gray-400 flex items-center shadow-md transition-all",
+                      "sticky left-0 z-30 w-56 border-r-4 border-gray-400 flex items-center shadow-lg transition-all",
                       compactMode ? "p-2" : "p-3",
                       hoveredRow === teacher._id ? "bg-blue-100" : teacherIndex % 2 === 0 ? "bg-white" : "bg-gray-50"
                     )}>

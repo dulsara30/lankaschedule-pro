@@ -549,11 +549,13 @@ class TimetableSolver:
                 status = self.solver.Solve(self.model)
         else:
             # SINGLE-STAGE SOLVING: Traditional strict mode
-            print(f"\n🔍 SINGLE-STAGE MODE: {time_limit_seconds}s with strict penalties")
+            # Reduced to 360s (6 min) to stay safely under Next.js 600s limit
+            actual_time = min(time_limit_seconds, 360)
+            print(f"\n🔍 SINGLE-STAGE MODE: {actual_time}s with strict penalties (safe buffer: {time_limit_seconds - actual_time}s)")
             print("   Seed: 42 | Target: 96%+ placement with strict balance")
             print("="*60)
             
-            self.solver.parameters.max_time_in_seconds = time_limit_seconds
+            self.solver.parameters.max_time_in_seconds = actual_time
             self.solver.parameters.num_search_workers = 8  # Maximum CPU power
             self.solver.parameters.log_search_progress = True
             self.solver.parameters.random_seed = 42
@@ -580,27 +582,42 @@ class TimetableSolver:
             
             # Trigger deep search if we have 50 or fewer unplaced periods (typically 95%+)
             # Extended polishing: +180s (3 minutes) for maximum placement potential
-            if unplaced_count > 0 and unplaced_count <= 50 and solving_time < time_limit_seconds + 180:
+            if unplaced_count > 0 and unplaced_count <= 50 and solving_time < 540:
                 print(f"\n🔍 DEEP SEARCH ACTIVATED: {unplaced_count} tasks remaining (Threshold: 50). Polishing for 180s...")
                 print(f"   🚀 FINAL PUSH: Extending time by +180s (3 minutes) for 100% placement!")
                 print(f"   Placement rate: {placement_rate*100:.1f}% - Targeting 100%")
-                print("   🔍 DEEP SEARCH: Enhancing quality and filling remaining gaps using solution hints...")
+                print("   🔍 DEEP SEARCH: Prioritizing 100% placement with reduced penalties...")
                 
                 # Memory cleanup before extended search
                 gc.collect()
                 
-                # Apply current solution as hints to EXISTING model (no rebuild)
-                hint_count = 0
+                # Capture current solution for hinting
+                current_assignments = {}  # Store current state
                 for key, var in self.task_vars.items():
                     try:
                         current_value = self.solver.Value(var)
-                        self.model.AddHint(var, current_value)
-                        hint_count += 1
+                        if current_value == 1:
+                            current_assignments[key] = 1
                     except:
-                        pass  # Skip variables that don't have values yet
+                        pass
                 
-                print(f"   💡 SOLUTION PERSISTENCE: Applied {hint_count} hints from base solution (no duplication)")
-                print(f"   📈 Strategy: Reusing existing model, only extending search time for remaining {unplaced_count} tasks")
+                # Rebuild objective with REDUCED penalty (-100 instead of -10,000)
+                # This forces 100% placement by making clumping acceptable
+                print(f"   💡 STRATEGY: Rebuilding objective with -100pt penalty (was -10,000pt)")
+                print(f"   📈 Logic: At 98% capacity, force AI to fill remaining gaps above quality")
+                
+                # Clear and rebuild objective only (keep constraints)
+                self._set_objective(penalty_multiplier=0.01)  # -100 instead of -10,000
+                
+                # Apply solution hints to variables
+                hint_count = 0
+                for key, value in current_assignments.items():
+                    if key in self.task_vars:
+                        self.model.AddHint(self.task_vars[key], value)
+                        hint_count += 1
+                
+                print(f"   💡 SOLUTION PERSISTENCE: Applied {hint_count} hints from base solution")
+                print(f"   📈 Same {len(self.task_info)} tasks, relaxed quality for 100% placement")
                 
                 # Create NEW solver instance with extended time (model stays the same)
                 self.solver = cp_model.CpSolver()

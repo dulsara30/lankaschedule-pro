@@ -288,8 +288,8 @@ export async function generateTimetableAction(
           "Content-Type": "application/json",
         },
         body: JSON.stringify(payload),
-        // 600 second timeout (10 minutes: 7min base + 3min deep search polishing)
-        signal: AbortSignal.timeout(600000),
+        // 630 second timeout (10.5 minutes: 6min base + 3min deep search + 1.5min buffer)
+        signal: AbortSignal.timeout(630000),
       });
     } catch (fetchError: any) {
       console.error("❌ Solver error:", fetchError);
@@ -299,7 +299,7 @@ export async function generateTimetableAction(
       if (fetchError.name === "TimeoutError") {
         return {
           success: false,
-          message: "⏱️ Server timed out (600s): Problem extremely complex. Try disabling heavy lessons (Aesthetic/IT) or reducing time limit.",
+          message: "⏱️ Server timed out (630s): Problem extremely complex. Try disabling heavy lessons (Aesthetic/IT) or reducing time limit.",
         };
       }
       

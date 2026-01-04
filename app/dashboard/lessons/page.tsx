@@ -15,6 +15,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { generateTimetableAction } from '@/app/actions/generateTimetable';
+import { startTimetableGeneration } from '@/app/actions/asyncTimetableGeneration';
 import { updateLessonStatus } from '@/app/actions/updateLessonStatus';
 import { cn } from '@/lib/utils';
 
@@ -395,61 +396,46 @@ export default function LessonsPage() {
     setEstimatedTime(maxSearchTime * 60); // in seconds
 
     try {
-      // Step 1: Analyzing capacity (2s)
+      // Step 1: Analyzing capacity (1s)
       setGenerationProgress('📊 Analyzing lesson capacity and constraints...');
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 1000));
       setGenerationStep(2);
       
-      // Step 2: Mapping constraints (2s)
-      setGenerationProgress('🗺️ Mapping class schedules and teacher availability...');
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      setGenerationStep(3);
-      
-      // Step 3: Call Python CP-SAT solver with real-time progress tracking
-      setGenerationProgress('🚀 AI solver running in background (this may take several minutes)...');
+      // Step 2: Starting async job
+      setGenerationProgress('🚀 Starting AI solver in background...');
       const timeInSeconds = maxSearchTime * 60;  // Convert minutes to seconds
-      const result = await generateTimetableAction(versionToUse, strictBalancing, timeInSeconds);
+      const startResult = await startTimetableGeneration(versionToUse, strictBalancing, timeInSeconds);
 
-      if (result?.success) {
-        setGenerationStep(4);
-        setGenerationProgress('✅ Timetable generation complete!');
-        
-        // Use optional chaining to safely access nested properties
-        const slotsPlaced = result.slotsPlaced || result.stats?.totalSlots || 0;
-        const conflicts = result.conflicts || 0;
-        const solvingTime = result.solvingTime || 0;
-        
-        // Success notification with confetti effect
-        if (conflicts === 0) {
-          toast.success('🎉 Perfect timetable generated with ZERO conflicts!', { 
-            duration: 6000,
-            description: `${slotsPlaced} slots placed in ${solvingTime.toFixed(1)}s`
-          });
-        } else {
-          toast.success(`✅ Timetable generated: ${slotsPlaced} slots, ${conflicts} conflicts`, {
-            duration: 5000,
-            description: `Completed in ${solvingTime.toFixed(1)}s`
-          });
-        }
-
-        // Refresh to ensure sidebar picks up unscheduled lessons
-        router.refresh();
-        
-        // Navigate to timetable page
-        setTimeout(() => {
-          router.push('/dashboard/timetable');
-        }, 1500);
-      } else {
-        throw new Error(result?.message || 'Failed to generate timetable');
+      if (!startResult.success || !startResult.jobId) {
+        throw new Error(startResult.message || 'Failed to start generation');
       }
+
+      // Store job ID in localStorage for persistent tracking
+      localStorage.setItem('activeGenerationJobId', startResult.jobId);
+      
+      setGenerationStep(3);
+      setGenerationProgress('✅ Generation started! You can navigate away - check the floating status bar');
+
+      // Show success toast
+      toast.success('🚀 Timetable generation started in background!', { 
+        duration: 5000,
+        description: 'Check the floating status bar at bottom-right for progress. You can navigate away.'
+      });
+
+      // Close the modal after 2 seconds
+      setTimeout(() => {
+        setIsGenerating(false);
+        setGenerationStep(0);
+        setGenerationProgress('');
+      }, 2000);
+
     } catch (error: unknown) {
       console.error('Timetable generation error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      toast.error(`Generation failed: ${errorMessage}`, {
+      toast.error(`Failed to start generation: ${errorMessage}`, {
         duration: 8000,
         description: 'Check console for details or try reducing the search time'
       });
-    } finally {
       setIsGenerating(false);
       setGenerationStep(0);
       setGenerationProgress('');

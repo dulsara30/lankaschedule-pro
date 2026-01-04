@@ -1,0 +1,230 @@
+'use server';
+
+import { revalidatePath } from 'next/cache';
+import dbConnect from '@/lib/dbConnect';
+import School from '@/models/School';
+import Subject from '@/models/Subject';
+import Teacher from '@/models/Teacher';
+import Lesson from '@/models/Lesson';
+import Class from '@/models/Class';
+import TimetableSlot from '@/models/TimetableSlot';
+import TimetableVersion from '@/models/TimetableVersion';
+
+interface SolverPayload {
+  lessons: any[];
+  classes: any[];
+  teachers: any[];
+  subjects: any[];
+  schoolConfig: any;
+  versionName: string;
+  maxTimeLimit: number;
+  allowRelaxation: boolean;
+}
+
+/**
+ * Start async timetable generation - returns job ID immediately
+ */
+export async function startTimetableGeneration(
+  versionName: string,
+  strictBalancing: boolean = true,
+  maxTimeLimit: number = 300
+): Promise<{ success: boolean; jobId?: string; message?: string }> {
+  try {
+    console.log('\n' + '='.repeat(60));
+    console.log('🚀 STARTING ASYNC TIMETABLE GENERATION');
+    console.log('='.repeat(60));
+
+    // Step 1: Connect to database
+    await dbConnect();
+
+    // Step 2: Fetch school data
+    const school = await School.findOne().lean();
+    if (!school) {
+      return { success: false, message: 'School not found' };
+    }
+
+    // Step 3: Fetch all data
+    const [lessonsData, classesData, teachersData, subjectsData] = await Promise.all([
+      Lesson.find({ schoolId: school._id }).populate('subjectIds').populate('teacherIds').populate('classIds').lean(),
+      Class.find({ schoolId: school._id }).lean(),
+      Teacher.find({ schoolId: school._id }).lean(),
+      Subject.find({ schoolId: school._id }).lean(),
+    ]);
+
+    // Step 4: Filter enabled lessons only
+    const enabledLessons = lessonsData.filter((lesson: any) => lesson.status === 'enabled');
+    const disabledLessons = lessonsData.filter((lesson: any) => lesson.status === 'disabled');
+
+    console.log(`📊 Total lessons: ${lessonsData.length}`);
+    console.log(`✅ Enabled lessons: ${enabledLessons.length}`);
+    console.log(`❌ Disabled lessons: ${disabledLessons.length}`);
+
+    if (enabledLessons.length === 0) {
+      return {
+        success: false,
+        message: 'No enabled lessons found. Please enable at least one lesson before generating.'
+      };
+    }
+
+    // Step 5: Prepare payload
+    const payload: SolverPayload = {
+      lessons: enabledLessons.map((lesson: any) => ({
+        _id: lesson._id.toString(),
+        lessonName: lesson.lessonName,
+        subjectIds: lesson.subjectIds.map((s: any) => s._id.toString()),
+        teacherIds: lesson.teacherIds.map((t: any) => t._id.toString()),
+        classIds: lesson.classIds.map((c: any) => c._id.toString()),
+        numberOfSingles: lesson.numberOfSingles,
+        numberOfDoubles: lesson.numberOfDoubles,
+      })),
+      classes: classesData.map((cls: any) => ({
+        _id: cls._id.toString(),
+        name: cls.name,
+        grade: cls.grade,
+      })),
+      teachers: teachersData.map((teacher: any) => ({
+        _id: teacher._id.toString(),
+        name: teacher.name,
+      })),
+      subjects: subjectsData.map((subject: any) => ({
+        _id: subject._id.toString(),
+        name: subject.name,
+      })),
+      schoolConfig: {
+        daysOfWeek: school.daysOfWeek || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+        periodsPerDay: school.periodsPerDay || 8,
+      },
+      versionName,
+      maxTimeLimit,
+      allowRelaxation: !strictBalancing,
+    };
+
+    console.log(`✅ Payload prepared: ${payload.lessons.length} enabled lessons`);
+
+    // Step 6: Call Python solver to START job
+    const solverUrl = process.env.SOLVER_URL || 'http://127.0.0.1:8000';
+    
+    const startResponse = await fetch(`${solverUrl}/start-solve`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10000), // 10s timeout just for starting
+    });
+
+    if (!startResponse.ok) {
+      const errorText = await startResponse.text();
+      return {
+        success: false,
+        message: `Failed to start solver: ${errorText}`,
+      };
+    }
+
+    const startResult = await startResponse.json();
+    console.log(`✅ Job started! Job ID: ${startResult.jobId}`);
+
+    return {
+      success: true,
+      jobId: startResult.jobId,
+      message: 'Timetable generation started in background',
+    };
+  } catch (error: any) {
+    console.error('Failed to start generation:', error);
+    return {
+      success: false,
+      message: `Failed to start: ${error.message}`,
+    };
+  }
+}
+
+/**
+ * Check job status
+ */
+export async function checkJobStatus(jobId: string) {
+  try {
+    const solverUrl = process.env.SOLVER_URL || 'http://127.0.0.1:8000';
+    const response = await fetch(`${solverUrl}/job-status/${jobId}`, {
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!response.ok) {
+      return { success: false, message: 'Job not found' };
+    }
+
+    const status = await response.json();
+    return { success: true, status };
+  } catch (error: any) {
+    return { success: false, message: error.message };
+  }
+}
+
+/**
+ * Save completed timetable to database
+ */
+export async function saveTimetableResults(jobId: string, versionName: string) {
+  try {
+    // Get job result
+    const statusCheck = await checkJobStatus(jobId);
+    if (!statusCheck.success || statusCheck.status.status !== 'completed') {
+      return { success: false, message: 'Job not completed' };
+    }
+
+    const result = statusCheck.status.result;
+
+    // Connect to database
+    await dbConnect();
+    const school = await School.findOne().lean();
+    if (!school) {
+      return { success: false, message: 'School not found' };
+    }
+
+    // Create/update version
+    const draftVersion = await TimetableVersion.findOneAndUpdate(
+      { schoolId: school._id, versionName },
+      {
+        schoolId: school._id,
+        versionName,
+        isSaved: true,
+        unplacedLessons: result.unplacedTasks || [],
+        updatedAt: new Date(),
+      },
+      { upsert: true, new: true }
+    );
+
+    // Delete existing slots for this version
+    await TimetableSlot.deleteMany({
+      schoolId: school._id,
+      versionId: draftVersion._id,
+    });
+
+    // Save new slots
+    const slots = result.slots.map((slot: any) => ({
+      schoolId: school._id,
+      versionId: draftVersion._id,
+      classId: slot.classId,
+      lessonId: slot.lessonId,
+      day: slot.day,
+      periodNumber: slot.periodNumber,
+      isDoubleStart: slot.isDoubleStart,
+      isDoubleEnd: slot.isDoubleEnd,
+    }));
+
+    await TimetableSlot.insertMany(slots);
+
+    // Revalidate paths
+    revalidatePath('/dashboard/timetable');
+    revalidatePath('/dashboard/lessons');
+
+    return {
+      success: true,
+      message: `Saved ${slots.length} slots`,
+      slotsPlaced: slots.length,
+      conflicts: result.conflicts || 0,
+      solvingTime: result.solvingTime || 0,
+    };
+  } catch (error: any) {
+    console.error('Failed to save results:', error);
+    return { success: false, message: error.message };
+  }
+}

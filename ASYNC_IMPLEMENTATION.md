@@ -6,6 +6,7 @@
 ## Problem Statement
 
 The original synchronous architecture had a **critical timeout limitation**:
+
 - 10-minute solver execution exceeded browser/network timeout limits
 - Fetch requests failed midway through solving
 - No visibility into solver progress
@@ -62,17 +63,17 @@ def run_solver_background(job_id: str, request: SolverRequest):
     try:
         active_jobs[job_id]['status'] = 'processing'
         active_jobs[job_id]['progress'] = 'Initializing AI solver...'
-        
+
         solver = TimetableSolver(request)
         result = solver.solve(
             time_limit_seconds=request.maxTimeLimit,
             allow_relaxation=request.allowRelaxation
         )
-        
+
         active_jobs[job_id]['status'] = 'completed'
         active_jobs[job_id]['result'] = result.model_dump()
         active_jobs[job_id]['completedAt'] = datetime.now().isoformat()
-        
+
     except Exception as e:
         active_jobs[job_id]['status'] = 'failed'
         active_jobs[job_id]['error'] = str(e)
@@ -81,12 +82,13 @@ def run_solver_background(job_id: str, request: SolverRequest):
 ### 3. Async Endpoints
 
 #### Start Job (POST /start-solve)
+
 ```python
 @app.post("/start-solve")
 async def start_solve(request: SolverRequest):
     """Start async timetable generation (NO TIMEOUT RISK!)"""
     job_id = str(uuid.uuid4())
-    
+
     active_jobs[job_id] = {
         'status': 'starting',
         'progress': 'Job queued...',
@@ -94,12 +96,12 @@ async def start_solve(request: SolverRequest):
         'result': None,
         'error': None
     }
-    
+
     # Start solver in background thread
     thread = threading.Thread(target=run_solver_background, args=(job_id, request))
     thread.daemon = True
     thread.start()
-    
+
     return {
         "jobId": job_id,
         "status": "started",
@@ -108,15 +110,16 @@ async def start_solve(request: SolverRequest):
 ```
 
 #### Check Status (GET /job-status/{job_id})
+
 ```python
 @app.get("/job-status/{job_id}")
 async def get_job_status(job_id: str):
     """Check status of asynchronous job"""
     if job_id not in active_jobs:
         raise HTTPException(status_code=404, detail="Job not found")
-    
+
     job = active_jobs[job_id]
-    
+
     return {
         "jobId": job_id,
         "status": job['status'],           # starting | processing | completed | failed
@@ -148,9 +151,9 @@ console.log(`✅ Job started! Job ID: ${jobId}`);
 let pollCount = 0;
 while (true) {
   pollCount++;
-  
+
   if (pollCount > 1) {
-    await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5s
+    await new Promise((resolve) => setTimeout(resolve, 5000)); // Wait 5s
   }
 
   const statusResponse = await fetch(`${solverUrl}/job-status/${jobId}`, {
@@ -158,12 +161,14 @@ while (true) {
   });
 
   const jobStatus = await statusResponse.json();
-  console.log(`📊 Poll #${pollCount}: ${jobStatus.status} - ${jobStatus.progress}`);
+  console.log(
+    `📊 Poll #${pollCount}: ${jobStatus.status} - ${jobStatus.progress}`
+  );
 
-  if (jobStatus.status === 'completed') {
+  if (jobStatus.status === "completed") {
     result = jobStatus.result;
     break;
-  } else if (jobStatus.status === 'failed') {
+  } else if (jobStatus.status === "failed") {
     throw new Error(`Job failed: ${jobStatus.error}`);
   }
   // else continue polling (status is 'starting' or 'processing')
@@ -172,11 +177,11 @@ while (true) {
 
 ## 7+3 Timing Rule
 
-| Phase | Duration | Purpose |
-|-------|----------|---------|
-| **Base Solve** | 420s (7 min) | High-quality initial solution with -10,000pt penalties |
-| **Deep Search** | 180s (3 min) | Fill remaining gaps with -10pt FORCE MODE penalties |
-| **Total** | **600s (10 min)** | Complete placement without ANY timeout risk |
+| Phase           | Duration          | Purpose                                                |
+| --------------- | ----------------- | ------------------------------------------------------ |
+| **Base Solve**  | 420s (7 min)      | High-quality initial solution with -10,000pt penalties |
+| **Deep Search** | 180s (3 min)      | Fill remaining gaps with -10pt FORCE MODE penalties    |
+| **Total**       | **600s (10 min)** | Complete placement without ANY timeout risk            |
 
 ### FORCE MODE Penalty Strategy
 
@@ -203,12 +208,14 @@ while (true) {
 ## Production Deployment
 
 ### Immediate Production Readiness
+
 ✅ In-memory job storage (sufficient for single-server deployments)  
 ✅ Thread-safe dictionary operations  
 ✅ Daemon threads clean up automatically  
 ✅ No external dependencies (Redis not required)
 
 ### Optional Enhancements
+
 - **Job Cleanup**: Remove completed jobs after 1 hour (prevent memory growth)
 - **Progress Percentage**: Calculate based on solver iteration count
 - **Cancel Endpoint**: `DELETE /job/{job_id}` to stop running jobs
@@ -219,11 +226,14 @@ while (true) {
 ## Migration Notes
 
 ### Breaking Changes
+
 - `/solve` endpoint deprecated (still works for backward compatibility)
 - New clients MUST use `/start-solve` → poll `/job-status/{job_id}` pattern
 
 ### Rollback Plan
+
 If issues arise, revert to synchronous `/solve` endpoint:
+
 ```bash
 git revert HEAD~2  # Revert both async commits
 npm run build
@@ -231,17 +241,18 @@ npm run build
 
 ## Performance Metrics
 
-| Metric | Before (Sync) | After (Async) |
-|--------|---------------|---------------|
-| **Timeout Risk** | 100% (guaranteed failure at 10min) | 0% (NO HTTP timeout) |
-| **Max Runtime** | 11 minutes (Next.js limit) | Unlimited (background thread) |
-| **Network Resilience** | Fragile (one hiccup = failure) | Resilient (polling survives glitches) |
-| **User Experience** | Black box (no progress) | Real-time updates every 5s |
-| **Placement Rate** | 97.3% (896/914) | 100% (914/914 with FORCE MODE) |
+| Metric                 | Before (Sync)                      | After (Async)                         |
+| ---------------------- | ---------------------------------- | ------------------------------------- |
+| **Timeout Risk**       | 100% (guaranteed failure at 10min) | 0% (NO HTTP timeout)                  |
+| **Max Runtime**        | 11 minutes (Next.js limit)         | Unlimited (background thread)         |
+| **Network Resilience** | Fragile (one hiccup = failure)     | Resilient (polling survives glitches) |
+| **User Experience**    | Black box (no progress)            | Real-time updates every 5s            |
+| **Placement Rate**     | 97.3% (896/914)                    | 100% (914/914 with FORCE MODE)        |
 
 ## Commits
 
 1. **Backend**: `feat: implemented asynchronous job processing and resolved data duplication bug`
+
    - Added threading, uuid, datetime imports
    - Created global `active_jobs` dictionary
    - Implemented background worker function
@@ -258,6 +269,7 @@ npm run build
 ## Conclusion
 
 The asynchronous job system **eliminates ALL timeout risks forever** by:
+
 1. Breaking 10-minute operation into lightweight 5-second polls
 2. Running solver in background thread (no HTTP connection held open)
 3. Providing real-time progress visibility

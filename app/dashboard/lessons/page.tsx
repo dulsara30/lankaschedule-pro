@@ -666,7 +666,7 @@ export default function LessonsPage() {
                         <span className="font-medium">⚖️ Elite AI Solving (Strict Mode): Perfect subject balancing...</span>
                         {generationStep === 3 && (
                           <p className="text-xs text-white/60 mt-1 animate-pulse">
-                            ⏱️ Up to 10 minutes - DO NOT REFRESH. Elite mode: 0.0% gap, portfolio search, 8 workers. 🔍 Deep Search Polishing (+3 mins) auto-triggers at 97%+ for 100% placement.
+                            ⏱️ Up to 10 minutes - DO NOT REFRESH. Elite mode: 0.0% gap, portfolio search, 8 workers. 🔍 Deep Search (+3 mins) triggers at ≤50 unplaced for 100% push.
                           </p>
                         )}
                       </>
@@ -675,7 +675,7 @@ export default function LessonsPage() {
                         <span className="font-medium">🎯 Two-Stage AI Solving: Attempting strict balance...</span>
                         {generationStep === 3 && (
                           <p className="text-xs text-white/60 mt-1 animate-pulse">
-                            ⏱️ Stage 1 (60s): Strict balancing. Stage 2 (120s): Relaxed rules if needed. 🔍 Deep Searching for 100% placement (Final 3 mins) triggers at 97%+.
+                            ⏱️ Stage 1 (60s): Strict balancing. Stage 2 (120s): Relaxed rules if needed. 🔍 Deep Search (Final 3 mins) triggers at ≤50 unplaced for 100%.
                           </p>
                         )}
                       </>

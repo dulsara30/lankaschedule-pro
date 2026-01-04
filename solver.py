@@ -557,7 +557,7 @@ class TimetableSolver:
         solving_time = time.time() - start_time
         
         # 🔍 DEEP SEARCH POLISHING PHASE: Dynamic time extension for near-perfect solutions
-        # If we're very close to 100% (≤25 unplaced), extend time to push to perfection
+        # If we're very close to 100% (≤50 unplaced), extend time to push to perfection
         if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
             slots, unplaced_tasks = self._extract_solution()
             unplaced_count = len(unplaced_tasks)
@@ -569,19 +569,25 @@ class TimetableSolver:
             )
             placement_rate = len(slots) / total_required_slots if total_required_slots > 0 else 0
             
-            # Trigger deep search if we have 25 or fewer unplaced periods (typically 97%+)
+            # Trigger deep search if we have 50 or fewer unplaced periods (typically 95%+)
             # Extended polishing: +180s (3 minutes) for maximum placement potential
-            if unplaced_count > 0 and unplaced_count <= 25 and solving_time < time_limit_seconds + 180:
-                print(f"\n🔍 DEEP SEARCH POLISHING: {unplaced_count} periods remaining ({placement_rate*100:.1f}%)")
+            if unplaced_count > 0 and unplaced_count <= 50 and solving_time < time_limit_seconds + 180:
+                print(f"\n🔍 DEEP SEARCH ACTIVATED: {unplaced_count} tasks remaining (Threshold: 50). Polishing for 180s...")
                 print(f"   🚀 FINAL PUSH: Extending time by +180s (3 minutes) for 100% placement!")
-                print("   Multi-strategy portfolio search with interleaved exploration")
+                print(f"   Placement rate: {placement_rate*100:.1f}% - Targeting 100%")
+                print("   Ultra-aggressive multi-strategy portfolio search with 8 workers")
                 
                 # Extend the time limit to 180 seconds (3 minutes)
                 extended_time = 180
                 self.solver.parameters.max_time_in_seconds = extended_time
                 
-                # Already have elite parameters set, just re-solve
-                print(f"   ⚡ ELITE MODE: 8 workers, 0.0% gap, portfolio branching")
+                # Ultra-aggressive elite parameters for final push
+                self.solver.parameters.num_search_workers = 8
+                self.solver.parameters.relative_gap_limit = 0.0
+                self.solver.parameters.search_branching = cp_model.PORTFOLIO_SEARCH
+                self.solver.parameters.interleave_search = True
+                
+                print(f"   ⚡ ELITE MODE: 8 workers, 0.0% gap, portfolio branching, interleaved search")
                 status = self.solver.Solve(self.model)
                 solving_time = time.time() - start_time
                 

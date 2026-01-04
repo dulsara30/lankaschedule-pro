@@ -80,6 +80,8 @@ export default function LessonsPage() {
   const [filterStream, setFilterStream] = useState<string | null>(null);
   const [filterSubjectId, setFilterSubjectId] = useState<string | null>(null);
   const [filterTeacherId, setFilterTeacherId] = useState<string | null>(null);
+  const [filterStatus, setFilterStatus] = useState<'all' | 'enabled' | 'disabled'>('all');
+  const [togglingLessons, setTogglingLessons] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const [subjectComboOpen, setSubjectComboOpen] = useState(false);
   const [teacherComboOpen, setTeacherComboOpen] = useState(false);
@@ -295,6 +297,9 @@ export default function LessonsPage() {
   const handleToggleStatus = async (lessonId: string, currentStatus: 'enabled' | 'disabled') => {
     const newStatus = currentStatus === 'enabled' ? 'disabled' : 'enabled';
     
+    // Add to loading set
+    setTogglingLessons(prev => new Set(prev).add(lessonId));
+    
     try {
       const result = await updateLessonStatus(lessonId, newStatus);
       
@@ -312,6 +317,13 @@ export default function LessonsPage() {
     } catch (error) {
       console.error('Error toggling lesson status:', error);
       toast.error('An error occurred while updating status');
+    } finally {
+      // Remove from loading set
+      setTogglingLessons(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(lessonId);
+        return newSet;
+      });
     }
   };
 
@@ -460,6 +472,13 @@ export default function LessonsPage() {
       );
     }
 
+    // Filter by status
+    if (filterStatus !== 'all') {
+      filtered = filtered.filter(lesson => 
+        (lesson.status || 'enabled') === filterStatus
+      );
+    }
+
     // Calculate pagination
     const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -472,7 +491,7 @@ export default function LessonsPage() {
       totalPages,
       currentPage,
     };
-  }, [lessons, searchQuery, filterGrade, filterStream, filterSubjectId, filterTeacherId, currentPage]);
+  }, [lessons, searchQuery, filterGrade, filterStream, filterSubjectId, filterTeacherId, filterStatus, currentPage]);
 
   // Calculate total periods for filtered lessons
   const filteredStats = useMemo(() => {
@@ -490,16 +509,17 @@ export default function LessonsPage() {
     setFilterStream(null);
     setFilterSubjectId(null);
     setFilterTeacherId(null);
+    setFilterStatus('all');
     setCurrentPage(1);
   };
 
   // Check if any filters are active
-  const hasActiveFilters = searchQuery || filterGrade !== null || filterStream || filterSubjectId || filterTeacherId;
+  const hasActiveFilters = searchQuery || filterGrade !== null || filterStream || filterSubjectId || filterTeacherId || filterStatus !== 'all';
 
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, filterGrade, filterStream, filterSubjectId, filterTeacherId]);
+  }, [searchQuery, filterGrade, filterStream, filterSubjectId, filterTeacherId, filterStatus]);
 
   return (
     <div className="space-y-6">
@@ -1153,6 +1173,22 @@ export default function LessonsPage() {
                 </PopoverContent>
               </Popover>
             </div>
+
+            {/* Status Filter - Simple Select */}
+            <div>
+              <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2 block">
+                Status
+              </label>
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value as 'all' | 'enabled' | 'disabled')}
+                className="w-full h-10 px-3 rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+              >
+                <option value="all">All Statuses</option>
+                <option value="enabled">✅ Enabled Only</option>
+                <option value="disabled">⏸️ Disabled Only</option>
+              </select>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -1267,23 +1303,35 @@ export default function LessonsPage() {
                         <TableCell className="text-center">
                           <button
                             onClick={() => handleToggleStatus(lesson._id, lesson.status || 'enabled')}
+                            disabled={togglingLessons.has(lesson._id)}
                             className={cn(
-                              "relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2",
-                              (lesson.status || 'enabled') === 'enabled' 
-                                ? 'bg-green-600 focus:ring-green-500' 
-                                : 'bg-gray-300 dark:bg-gray-600 focus:ring-gray-400'
+                              "relative inline-flex h-6 w-11 items-center rounded-full transition-all focus:outline-none focus:ring-2 focus:ring-offset-2",
+                              togglingLessons.has(lesson._id) 
+                                ? 'opacity-50 cursor-not-allowed bg-gray-400' 
+                                : (lesson.status || 'enabled') === 'enabled' 
+                                  ? 'bg-green-600 focus:ring-green-500 hover:bg-green-700' 
+                                  : 'bg-gray-300 dark:bg-gray-600 focus:ring-gray-400 hover:bg-gray-400 dark:hover:bg-gray-500'
                             )}
-                            title={(lesson.status || 'enabled') === 'enabled' ? 'Click to disable (manual placement)' : 'Click to enable (AI placement)'}
+                            title={
+                              togglingLessons.has(lesson._id) 
+                                ? 'Updating status...' 
+                                : (lesson.status || 'enabled') === 'enabled' 
+                                  ? 'Click to disable (manual placement)' 
+                                  : 'Click to enable (AI placement)'
+                            }
                           >
                             <span
                               className={cn(
                                 "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                                togglingLessons.has(lesson._id) && "animate-pulse",
                                 (lesson.status || 'enabled') === 'enabled' ? 'translate-x-6' : 'translate-x-1'
                               )}
                             />
                           </button>
                           <div className="text-xs mt-1 font-medium">
-                            {(lesson.status || 'enabled') === 'enabled' ? (
+                            {togglingLessons.has(lesson._id) ? (
+                              <span className="text-gray-400 animate-pulse">...</span>
+                            ) : (lesson.status || 'enabled') === 'enabled' ? (
                               <span className="text-green-600 dark:text-green-400">✅ AI</span>
                             ) : (
                               <span className="text-gray-500 dark:text-gray-400">⏸️ Manual</span>

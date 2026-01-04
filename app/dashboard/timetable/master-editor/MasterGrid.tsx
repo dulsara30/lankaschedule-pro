@@ -240,7 +240,8 @@ export default function MasterGrid({
     return map;
   }, [slots, lessons]);
 
-  // Detect conflicts (teacher teaching multiple classes at same time)
+  // Detect conflicts (teacher teaching multiple DIFFERENT classes at same time)
+  // CRITICAL: Parallel lessons (same lesson, multiple classes) are NOT conflicts
   const conflicts = useMemo(() => {
     const conflictMap = new Map<string, { slot: TimetableSlot; reason: string }>();
 
@@ -262,20 +263,32 @@ export default function MasterGrid({
           });
 
           if (slotsAtThisTime.length > 1) {
-            slotsAtThisTime.forEach((slot) => {
-              const lesson = typeof slot.lessonId === 'string' 
-                ? lessons.find(l => l._id === slot.lessonId)
-                : slot.lessonId;
+            // Check if all slots are for the SAME lesson (parallel lesson)
+            const uniqueLessonIds = new Set(
+              slotsAtThisTime.map(slot => {
+                const lesson = typeof slot.lessonId === 'string' ? slot.lessonId : slot.lessonId._id;
+                return lesson;
+              })
+            );
 
-              const classes = lesson?.classIds?.map(c => c.name || `Grade ${c.grade}`).join(', ') || 'Unknown';
-              conflictMap.set(
-                slot._id,
-                {
-                  slot,
-                  reason: `Teacher teaching multiple classes: ${classes}`,
-                }
-              );
-            });
+            // CONFLICT only if teacher has DIFFERENT lessons at same time
+            if (uniqueLessonIds.size > 1) {
+              slotsAtThisTime.forEach((slot) => {
+                const lesson = typeof slot.lessonId === 'string' 
+                  ? lessons.find(l => l._id === slot.lessonId)
+                  : slot.lessonId;
+
+                const classes = lesson?.classIds?.map(c => c.name || `Grade ${c.grade}`).join(', ') || 'Unknown';
+                conflictMap.set(
+                  slot._id,
+                  {
+                    slot,
+                    reason: `Teacher teaching multiple different lessons: ${classes}`,
+                  }
+                );
+              });
+            }
+            // If uniqueLessonIds.size === 1, it's a parallel lesson (intentional, not a conflict)
           }
         }
       }

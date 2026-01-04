@@ -319,6 +319,7 @@ export default function TimetablePage() {
   };
 
   // Detect conflicts: Check for overlapping teacher/class assignments
+  // CRITICAL: Parallel lessons (same lessonId at same time) are NOT conflicts
   const detectConflicts = (slotsData: TimetableSlot[]): Set<string> => {
     const conflicts = new Set<string>();
     const occupiedSlots = new Map<string, TimetableSlot[]>(); // key: day-period-entityId
@@ -329,14 +330,14 @@ export default function TimetablePage() {
       
       if (!lessonId || !classId) continue;
 
-      // Check class conflicts
+      // Check class conflicts (same class, different lessons at same time)
       const classKey = `${day}-${periodNumber}-class-${classId._id}`;
       if (!occupiedSlots.has(classKey)) {
         occupiedSlots.set(classKey, []);
       }
       occupiedSlots.get(classKey)!.push(slot);
 
-      // Check teacher conflicts
+      // Check teacher conflicts (same teacher, different lessons at same time)
       if (lessonId.teacherIds) {
         for (const teacher of lessonId.teacherIds) {
           const teacherKey = `${day}-${periodNumber}-teacher-${teacher._id}`;
@@ -348,13 +349,22 @@ export default function TimetablePage() {
       }
     }
 
-    // Find conflicts (more than one slot per resource per time)
+    // Find conflicts: Multiple DIFFERENT lessons for same resource at same time
+    // NOTE: Same lesson for multiple classes (parallel lesson) is NOT a conflict
     for (const [key, slotList] of occupiedSlots.entries()) {
       if (slotList.length > 1) {
-        // Mark all conflicting slots
-        for (const slot of slotList) {
-          conflicts.add(slot._id);
+        // Get unique lesson IDs in this slot list
+        const uniqueLessonIds = new Set(slotList.map(slot => slot.lessonId._id));
+        
+        // CONFLICT only if there are DIFFERENT lessons at the same time
+        if (uniqueLessonIds.size > 1) {
+          // Mark all conflicting slots
+          for (const slot of slotList) {
+            conflicts.add(slot._id);
+          }
         }
+        // If uniqueLessonIds.size === 1, it's a parallel lesson (e.g., 6A/6B/6C Aesthetic)
+        // This is INTENTIONAL and should NOT be marked as conflict
       }
     }
 
@@ -847,8 +857,39 @@ export default function TimetablePage() {
   };
 
   const renderSlotContent = (slot: TimetableSlot | undefined, isDoubleStart: boolean = false, periodNumber?: number, allSlotsHere?: TimetableSlot[]) => {
-    // Handle multiple lessons at same position (conflict stack)
+    // Handle multiple lessons at same position
     if (allSlotsHere && allSlotsHere.length > 1) {
+      // Check if this is a parallel lesson (same lessonId) or genuine conflict (different lessonIds)
+      const uniqueLessonIds = new Set(allSlotsHere.map(s => s.lessonId?._id));
+      const isParallelLesson = uniqueLessonIds.size === 1;
+      
+      // If parallel lesson (6A/6B/6C Aesthetic at same time), render normally without conflict badge
+      if (isParallelLesson) {
+        // Just render the first slot normally (they're all the same lesson)
+        const firstSlot = allSlotsHere[0];
+        const lesson = firstSlot.lessonId;
+        if (!lesson || !lesson.subjectIds) return null;
+        
+        const color = lesson.subjectIds?.[0]?.color || '#3B82F6';
+        const classNames = allSlotsHere.map(s => s.classId?.name).filter(Boolean).join(', ');
+        
+        return (
+          <div
+            className="h-full w-full rounded-lg shadow-md border-2 border-white transition-all hover:scale-105"
+            style={{
+              background: `linear-gradient(135deg, ${color} 0%, ${color}DD 100%)`,
+            }}
+          >
+            <div className="text-white p-2 h-full flex flex-col">
+              <div className="text-[11px] font-bold truncate">{lesson.lessonName}</div>
+              <div className="text-[9px] opacity-90 truncate">{classNames}</div>
+              <div className="text-[8px] opacity-75 mt-auto">📚 Parallel Lesson</div>
+            </div>
+          </div>
+        );
+      }
+      
+      // GENUINE CONFLICT: Different lessons at same time - show conflict UI
       return (
         <div className="h-full w-full relative">
           {/* Show first 2 lessons as stacked cards */}

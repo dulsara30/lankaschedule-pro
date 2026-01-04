@@ -10,12 +10,14 @@ Implemented a beautiful, animated progress bar that provides real-time visual fe
 ## Features Implemented
 
 ### 1. **Animated Progress Bar**
+
 - **Gradient shimmer effect** - Smooth flowing animation
 - **Dynamic width transition** - Grows from 0% to 100% based on generation step
 - **Dual gradient** - Purple-to-pink gradient with animated shift
 - **Glassmorphism design** - Blurred background with transparency
 
 ### 2. **Real-Time Progress Updates**
+
 - **Live status messages** showing current operation:
   - "📊 Analyzing lesson capacity and constraints..."
   - "🗺️ Mapping class schedules and teacher availability..."
@@ -25,22 +27,27 @@ Implemented a beautiful, animated progress bar that provides real-time visual fe
 - **Progress percentage** - Large, bold percentage display (0-100%)
 
 ### 3. **Step-by-Step Visualization**
+
 Four distinct steps with visual indicators:
+
 1. ⚙️ **Smart Filtering** - Separating enabled/disabled lessons
-2. 🧠 **Preparing AI Payload** - Building constraint matrices  
+2. 🧠 **Preparing AI Payload** - Building constraint matrices
 3. 🤖 **Google OR-Tools CP-SAT** - Running advanced AI solver
 4. ✅ **Finalization** - Saving timetable to database
 
 Each step shows:
+
 - Checkmark when complete
 - Active state with purple background
 - Inactive state with dimmed appearance
 - Context-specific sub-text
 
 ### 4. **Toast Notifications**
+
 Enhanced notification system with rich information:
 
 **Success (Zero Conflicts)**:
+
 ```
 🎉 Perfect timetable generated with ZERO conflicts!
 914 slots placed in 545.7s
@@ -48,6 +55,7 @@ Duration: 6 seconds
 ```
 
 **Success (With Conflicts)**:
+
 ```
 ✅ Timetable generated: 889 slots, 25 conflicts
 Completed in 545.7s
@@ -55,6 +63,7 @@ Duration: 5 seconds
 ```
 
 **Error**:
+
 ```
 ❌ Generation failed: {error message}
 Check console for details or try reducing the search time
@@ -62,6 +71,7 @@ Duration: 8 seconds
 ```
 
 ### 5. **User Experience Enhancements**
+
 - **"Do not close this tab"** warning during AI processing
 - **Background blur** with glassmorphism for modern look
 - **Pulse animations** on active messages
@@ -71,26 +81,27 @@ Duration: 8 seconds
 ## UI Components
 
 ### Progress Overlay Structure
+
 ```tsx
 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md">
   <div className="bg-white/10 backdrop-blur-xl rounded-3xl border border-white/20">
     {/* Animated Sparkles Icon */}
     <Sparkles className="animate-pulse" />
-    
+
     {/* Progress Bar with Shimmer */}
     <div className="bg-gradient-to-r from-purple-500 via-pink-500 to-purple-500">
       <div className="animate-shimmer" /> {/* Shimmer effect */}
     </div>
-    
+
     {/* Progress Percentage */}
     <span className="font-bold text-lg">75% Complete</span>
-    
+
     {/* Live Status Message */}
     <p className="animate-pulse">{generationProgress}</p>
-    
+
     {/* Step-by-Step Cards */}
-    {steps.map(step => (
-      <div className={step.isActive ? 'bg-white/20' : 'bg-white/5'}>
+    {steps.map((step) => (
+      <div className={step.isActive ? "bg-white/20" : "bg-white/5"}>
         <Check /> or {stepNumber}
         {step.description}
       </div>
@@ -100,48 +111,61 @@ Duration: 8 seconds
 ```
 
 ### CSS Animations
+
 ```css
 @keyframes shimmer {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 @keyframes gradient-shift {
-  0%, 100% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
 }
 ```
 
 ## State Management
 
 ### New State Variables
+
 ```typescript
-const [generationProgress, setGenerationProgress] = useState('');
+const [generationProgress, setGenerationProgress] = useState("");
 const [pollCount, setPollCount] = useState(0);
 const [estimatedTime, setEstimatedTime] = useState(0);
 ```
 
 ### Progress Flow
+
 ```typescript
 setGenerationStep(1);
-setGenerationProgress('📊 Analyzing lesson capacity...');
+setGenerationProgress("📊 Analyzing lesson capacity...");
 await delay(2000);
 
 setGenerationStep(2);
-setGenerationProgress('🗺️ Mapping class schedules...');
+setGenerationProgress("🗺️ Mapping class schedules...");
 await delay(2000);
 
 setGenerationStep(3);
-setGenerationProgress('🚀 AI solver running...');
+setGenerationProgress("🚀 AI solver running...");
 const result = await generateTimetableAction();
 
 setGenerationStep(4);
-setGenerationProgress('✅ Complete!');
+setGenerationProgress("✅ Complete!");
 ```
 
 ## Visual Design
 
 ### Color Scheme
+
 - **Primary Gradient**: Purple (#a855f7) → Pink (#ec4899)
 - **Background**: Black with 80% opacity + blur
 - **Cards**: White with 10-20% opacity + blur
@@ -149,6 +173,7 @@ setGenerationProgress('✅ Complete!');
 - **Accent**: Purple (#8b5cf6) for active states
 
 ### Typography
+
 - **Title**: 3xl, bold, white
 - **Percentage**: lg, bold, white/80
 - **Status**: medium, white, animated pulse
@@ -156,6 +181,7 @@ setGenerationProgress('✅ Complete!');
 - **Sub-text**: xs, white/60
 
 ### Spacing & Layout
+
 - **Overlay padding**: 3rem (p-12)
 - **Gap between sections**: 2rem (gap-8)
 - **Card padding**: 1rem (p-4)
@@ -215,6 +241,7 @@ Uses standard CSS animations and Tailwind classes - no vendor prefixes needed.
 ## Future Enhancements
 
 ### Optional Improvements
+
 1. **Sound effects** - Subtle "whoosh" on progress updates
 2. **Confetti animation** - On successful completion
 3. **Progress sub-steps** - Break down Step 3 into finer phases
@@ -224,6 +251,7 @@ Uses standard CSS animations and Tailwind classes - no vendor prefixes needed.
 7. **WebSocket progress** - Real-time solver updates without polling
 
 ### Advanced Features
+
 - **Multi-job progress** - Generate multiple timetables simultaneously
 - **Background generation** - Continue working while generating
 - **Progressive enhancement** - Save partial results during generation
@@ -247,7 +275,7 @@ The progress bar implementation provides a **delightful user experience** during
 ✅ **Visual feedback** - Always know what's happening  
 ✅ **Time awareness** - Estimated completion time  
 ✅ **Confidence** - Professional, polished UI  
-✅ **Notifications** - Clear success/error messages  
+✅ **Notifications** - Clear success/error messages
 
 This transforms a potentially frustrating "black box" wait into an engaging, transparent process.
 

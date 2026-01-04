@@ -378,9 +378,9 @@ export default function TimetablePage() {
           const lessonId = slot.lessonId;
           if (!lessonId) return null;
           if (typeof lessonId === 'object') {
-            return lessonId._id?.toString() || lessonId.toString();
+            return lessonId._id?.toString() || String(lessonId);
           }
-          return lessonId.toString();
+          return String(lessonId);
         }).filter(Boolean));
         
         // CONFLICT only if there are DIFFERENT lessons at the same time
@@ -396,15 +396,15 @@ export default function TimetablePage() {
             
             // Normalize current lesson ID
             const currentLessonId = typeof currentLesson === 'object' 
-              ? (currentLesson._id?.toString() || currentLesson.toString())
-              : currentLesson?.toString();
+              ? (currentLesson._id?.toString() || String(currentLesson))
+              : String(currentLesson || '');
             
             // Find all OTHER conflicting lessons at this time
             const otherSlots = slotList.filter(s => {
               if (s._id === slot._id) return false;
               const otherLessonId = typeof s.lessonId === 'object'
-                ? (s.lessonId._id?.toString() || s.lessonId.toString())
-                : s.lessonId?.toString();
+                ? (s.lessonId._id?.toString() || String(s.lessonId))
+                : String(s.lessonId || '');
               return otherLessonId !== currentLessonId;
             });
             
@@ -498,14 +498,14 @@ export default function TimetablePage() {
           
           // Normalize classId comparison
           const slotClassId = typeof s.classId === 'object' 
-            ? (s.classId._id?.toString() || s.classId.toString())
-            : s.classId?.toString();
+            ? (s.classId._id?.toString() || String(s.classId))
+            : String(s.classId || '');
           
           // Normalize lessonId comparison
           const slotLessonId = typeof s.lessonId === 'object'
-            ? (s.lessonId._id?.toString() || s.lessonId.toString())
-            : s.lessonId?.toString();
-          const draggedLessonId = draggedLesson._id?.toString();
+            ? (s.lessonId._id?.toString() || String(s.lessonId))
+            : String(s.lessonId || '');
+          const draggedLessonId = draggedLesson._id?.toString() || '';
           
           return slotClassId === targetClassId.toString() && slotLessonId !== draggedLessonId;
         }
@@ -539,9 +539,9 @@ export default function TimetablePage() {
             
             // Normalize lessonId comparison to exclude same lesson (parallel)
             const slotLessonId = typeof s.lessonId === 'object'
-              ? (s.lessonId._id?.toString() || s.lessonId.toString())
-              : s.lessonId?.toString();
-            const draggedLessonId = draggedLesson._id?.toString();
+              ? (s.lessonId._id?.toString() || String(s.lessonId))
+              : String(s.lessonId || '');
+            const draggedLessonId = draggedLesson._id?.toString() || '';
             
             return slotLessonId !== draggedLessonId;
           }
@@ -1013,7 +1013,7 @@ export default function TimetablePage() {
           if (slot.day !== day || slot.periodNumber !== period) return false;
           
           // Normalize classId to handle both string IDs and populated objects
-          const slotClassId = typeof slot.classId === 'object' ? slot.classId._id.toString() : slot.classId.toString();
+          const slotClassId = typeof slot.classId === 'object' ? slot.classId._id?.toString() : String(slot.classId || '');
           const targetClassId = selectedEntity.toString();
           
           return slotClassId === targetClassId;
@@ -1039,7 +1039,7 @@ export default function TimetablePage() {
           if (slot.day !== day || slot.periodNumber !== period) return false;
           
           // Normalize classId to handle both string IDs and populated objects
-          const slotClassId = typeof slot.classId === 'object' ? slot.classId._id.toString() : slot.classId.toString();
+          const slotClassId = typeof slot.classId === 'object' ? slot.classId._id?.toString() : String(slot.classId || '');
           const targetClassId = selectedEntity.toString();
           
           return slotClassId === targetClassId;
@@ -1063,7 +1063,7 @@ export default function TimetablePage() {
       const uniqueLessonIds = new Set(allSlotsHere.map(s => {
         const lessonId = s.lessonId;
         if (!lessonId) return null;
-        return typeof lessonId === 'object' ? (lessonId._id?.toString() || lessonId.toString()) : lessonId.toString();
+        return typeof lessonId === 'object' ? (lessonId._id?.toString() || String(lessonId)) : String(lessonId);
       }).filter(Boolean));
       const isParallelLesson = uniqueLessonIds.size === 1;
       
@@ -1409,7 +1409,7 @@ export default function TimetablePage() {
   const relevantSlots = slots.filter(slot => {
     if (viewMode === 'class') {
       // Normalize classId to handle both string IDs and populated objects
-      const slotClassId = typeof slot.classId === 'object' ? slot.classId._id?.toString() : slot.classId?.toString();
+      const slotClassId = typeof slot.classId === 'object' ? slot.classId._id?.toString() : String(slot.classId || '');
       const targetClassId = selectedEntity.toString();
       return slotClassId === targetClassId;
     } else {

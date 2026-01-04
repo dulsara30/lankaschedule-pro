@@ -2018,7 +2018,7 @@ export default function TimetablePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {/* CRITICAL: Render ALL periods from config (should be 8 for full grid) */}
+                    {/* CRITICAL: Render exactly the number of periods from DB config (typically 7) */}
                     {(() => {
                       console.log('🔢 Grid rendering with numberOfPeriods:', config.numberOfPeriods);
                       return Array.from({ length: config.numberOfPeriods }, (_, i) => i + 1);

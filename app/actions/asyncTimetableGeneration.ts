@@ -110,8 +110,9 @@ export async function startTimetableGeneration(
         name: subject.name,
       })),
       schoolConfig: {
-        numberOfPeriods: school.periodsPerDay || 8,
-        intervalSlots: school.intervalSlots || [],
+        // CRITICAL: Read from DB config, NOT hardcoded defaults
+        numberOfPeriods: school.config?.numberOfPeriods || 7,
+        intervalSlots: school.config?.intervalSlots || [],
         daysOfWeek: (school.daysOfWeek || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']).map((day: string) => ({
           name: day,
           abbreviation: day.substring(0, 3),
@@ -122,6 +123,12 @@ export async function startTimetableGeneration(
       allowRelaxation: !strictBalancing,
     };
 
+    // CRITICAL: Validate period count before sending to solver
+    console.log(`🔢 CRITICAL: numberOfPeriods from DB: ${school.config?.numberOfPeriods}`);
+    console.log(`🔢 Sending to solver: ${payload.schoolConfig.numberOfPeriods} periods`);
+    if (payload.schoolConfig.numberOfPeriods !== 7) {
+      console.warn(`⚠️  WARNING: Expected 7 periods but got ${payload.schoolConfig.numberOfPeriods}`);
+    }
     console.log(`✅ Payload prepared: ${payload.lessons.length} enabled lessons`);
     console.log(`📦 Payload structure:`);
     console.log(`   - Lessons: ${payload.lessons.length}`);

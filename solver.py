@@ -127,6 +127,10 @@ class TimetableSolver:
         self.num_days = len(self.days)
         self.num_periods = self.config.numberOfPeriods
         
+        # CRITICAL: Validate period boundaries
+        print(f"🔢 CRITICAL: Solver initialized with {self.num_periods} periods per day")
+        print(f"   📊 Total capacity: {len(self.classes)} classes × {self.num_periods} periods × {self.num_days} days = {len(self.classes) * self.num_periods * self.num_days} slots")
+        
         # Decision variables
         self.task_vars = {}  # (lesson_idx, class_idx, period_type, day, period) -> BoolVar
         self.presence_vars = {}  # task_idx -> BoolVar (whether task is placed)

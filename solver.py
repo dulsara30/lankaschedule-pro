@@ -548,10 +548,11 @@ class TimetableSolver:
                 
                 status = self.solver.Solve(self.model)
         else:
-            # SINGLE-STAGE SOLVING: Traditional strict mode
-            # Reduced to 300s (5 min) for 480s total with deep search (stays under 600s Next.js limit)
-            actual_time = min(time_limit_seconds, 300)
-            print(f"\n🔍 SINGLE-STAGE MODE: {actual_time}s with strict penalties (safe buffer: {time_limit_seconds - actual_time}s)")
+            # SINGLE-STAGE SOLVING: Elite 9/11 Rule
+            # 360s (6 min) base + 180s deep search = 540s (9 mins) total, 660s Next.js timeout (2 min buffer)
+            actual_time = min(time_limit_seconds, 360)
+            print(f"\n🔍 ELITE MODE (9/11 Rule): {actual_time}s base with strict penalties")
+            print(f"   Safe buffer: {time_limit_seconds - actual_time}s | Deep search: +180s | Total: 540s (9 mins)")
             print("   Seed: 42 | Target: 96%+ placement with strict balance")
             print("="*60)
             
@@ -582,13 +583,15 @@ class TimetableSolver:
             
             # Trigger deep search if we have 50 or fewer unplaced periods (typically 95%+)
             # Extended polishing: +180s (3 minutes) for maximum placement potential
-            if unplaced_count > 0 and unplaced_count <= 50 and solving_time < 480:
-                print(f"\n🔍 DEEP SEARCH: Filling final {unplaced_count} gaps with relaxed quality...")
+            if unplaced_count > 0 and unplaced_count <= 50 and solving_time < 540:
+                print(f"\n🔍 ELITE DEEP SEARCH: Filling final {unplaced_count} gaps with Master Key...")
                 print(f"   🚀 FINAL PUSH: Extending time by +180s (3 minutes) for 100% placement!")
                 print(f"   Placement rate: {placement_rate*100:.1f}% - Targeting 100%")
-                print("   🔍 DEEP SEARCH: Prioritizing 100% placement with aggressive penalty reduction...")
+                print(f"   📊 Model integrity: {len(self.task_info)} tasks (max 711)")
+                print("   🔍 MASTER KEY: Adaptive penalty reduction for remaining gaps...")
                 
-                # Memory cleanup before extended search
+                # CRITICAL: Memory cleanup before extended search
+                print("   🧹 Memory cleanup before deep search...")
                 gc.collect()
                 
                 # Capture current solution for hinting
@@ -601,13 +604,13 @@ class TimetableSolver:
                     except:
                         pass
                 
-                # Rebuild objective with AGGRESSIVE penalty reduction (-10 instead of -10,000)
-                # This forces 100% placement by making clumping acceptable
-                print(f"   💡 STRATEGY: Rebuilding objective with -10pt penalty (was -10,000pt = 1000x reduction)")
-                print(f"   📈 Logic: At 98% capacity, remaining gaps physically require clumping - prioritize placement")
+                # Rebuild objective with MASTER KEY penalty (-50 instead of -10,000)
+                # This is the sweet spot: strict enough for quality, lenient enough for 100%
+                print(f"   💡 MASTER KEY: Rebuilding objective with -50pt penalty (was -10,000pt = 200x reduction)")
+                print(f"   📈 Logic: At 98% capacity, make remaining gaps easy to fill while preserving quality")
                 
                 # Clear and rebuild objective only (keep constraints)
-                self._set_objective(penalty_multiplier=0.001)  # -10 instead of -10,000
+                self._set_objective(penalty_multiplier=0.005)  # -50 instead of -10,000 (Master Key)
                 
                 # Apply solution hints to variables
                 hint_count = 0

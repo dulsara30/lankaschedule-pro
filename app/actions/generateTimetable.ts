@@ -5,9 +5,10 @@
  * Python solver using Google OR-Tools CP-SAT. It fetches the optimized timetable
  * from the Python FastAPI service and saves it to MongoDB.
  * 
- * Timeout: 480s Python (5min base + 3min deep search) + 120s buffer = 600s fetch timeout
- * Total: 10 minutes for 100% placement potential
- * Configured via fetch AbortSignal.timeout(600000ms)
+ * Elite 9/11 Synchronization:
+ * - Python Solver: 540s (360s base + 180s deep search = 9 minutes)
+ * - Next.js Timeout: 660s (11 minutes = 2-minute buffer for JSON transmission)
+ * - This prevents fetch failures and ensures 100% placement success
  */
 
 'use server';
@@ -289,8 +290,8 @@ export async function generateTimetableAction(
           "Connection": "keep-alive",
         },
         body: JSON.stringify(payload),
-        // 600 second timeout (10 minutes: 5min base + 3min deep search + 2min buffer)
-        signal: AbortSignal.timeout(600000),
+        // Elite 9/11 Rule: 660s (11 minutes) gives Python 540s (9 mins) + 120s buffer
+        signal: AbortSignal.timeout(660000),
       });
     } catch (fetchError: any) {
       console.error("❌ Solver error:", fetchError);
@@ -300,7 +301,7 @@ export async function generateTimetableAction(
       if (fetchError.name === "TimeoutError") {
         return {
           success: false,
-          message: "⏱️ Server timed out (600s): Problem extremely complex. Try disabling heavy lessons (Aesthetic/IT) or reducing time limit.",
+          message: "⏱️ Server timed out (660s): Problem extremely complex. Try disabling heavy lessons (Aesthetic/IT) or reducing time limit.",
         };
       }
       

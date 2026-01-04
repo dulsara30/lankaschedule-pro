@@ -248,6 +248,38 @@ export async function generateTimetableAction(
     const solverUrl = process.env.SOLVER_URL || "http://127.0.0.1:8000";
     const startTime = Date.now();
 
+    // Pre-solve health check
+    console.log("🏥 Health check: Testing connection to solver...");
+    try {
+      const healthResponse = await fetch(`${solverUrl}/health`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!healthResponse.ok) {
+        console.error("❌ Health check failed:", healthResponse.status);
+        return {
+          success: false,
+          message: `Python Solver health check failed (HTTP ${healthResponse.status}). Server may be starting up. Wait 10 seconds and try again.`,
+        };
+      }
+      console.log("✅ Health check passed. Proceeding with solve...");
+    } catch (healthError: any) {
+      console.error("❌ Health check error:", healthError);
+      console.error("   Error code:", healthError.cause?.code || 'UNKNOWN');
+      console.error("   Error message:", healthError.message);
+      
+      if (healthError.cause?.code === "ECONNREFUSED" || healthError.message?.includes("ECONNREFUSED")) {
+        return {
+          success: false,
+          message: '🔴 Server not found: Python solver is not running on port 8000. Start it with "python solver.py".',
+        };
+      }
+      
+      return {
+        success: false,
+        message: `Connection error: ${healthError.message}. Ensure solver.py is running on 127.0.0.1:8000`,
+      };
+    }
+
     let response: Response;
     try {
       response = await fetch(`${solverUrl}/solve`, {
@@ -256,28 +288,39 @@ export async function generateTimetableAction(
           "Content-Type": "application/json",
         },
         body: JSON.stringify(payload),
-        // 605 second timeout (10 minutes: 7min base + 3min deep search polishing)
-        signal: AbortSignal.timeout(605000),
+        // 600 second timeout (10 minutes: 7min base + 3min deep search polishing)
+        signal: AbortSignal.timeout(600000),
       });
     } catch (fetchError: any) {
+      console.error("❌ Solver error:", fetchError);
+      console.error("   Error name:", fetchError.name);
+      console.error("   Error code:", fetchError.cause?.code || 'UNKNOWN');
+      
       if (fetchError.name === "TimeoutError") {
         return {
           success: false,
-          message: "Solver connection lost or timed out (600s). The problem may be extremely complex. Try disabling heavy lessons (Aesthetic/IT) or reducing the time limit.",
+          message: "⏱️ Server timed out (600s): Problem extremely complex. Try disabling heavy lessons (Aesthetic/IT) or reducing time limit.",
         };
       }
       
-      // Check for connection refused errors
-      if (fetchError.cause?.code === "ECONNREFUSED" || fetchError.message?.includes("ECONNREFUSED") || fetchError.message?.includes("fetch failed")) {
+      // Check for connection refused errors (should not happen after health check)
+      if (fetchError.cause?.code === "ECONNREFUSED" || fetchError.message?.includes("ECONNREFUSED")) {
         return {
           success: false,
-          message: '🔴 Python Solver is offline. Check if solver.py is running on port 8000.',
+          message: '🔴 Server not found: Solver stopped mid-execution. Check terminal for Python errors.',
+        };
+      }
+      
+      if (fetchError.message?.includes("fetch failed")) {
+        return {
+          success: false,
+          message: `Network error: ${fetchError.message}. Check if solver.py is still running.`,
         };
       }
       
       return {
         success: false,
-        message: `Failed to connect to Python solver at ${solverUrl}. Ensure solver.py is running on port 8000. Error: ${fetchError.message}`,
+        message: `Unexpected error connecting to solver: ${fetchError.message}`,
       };
     }
 

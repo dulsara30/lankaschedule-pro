@@ -20,15 +20,10 @@ import time
 
 app = FastAPI(title="Timetable Solver API", version="1.0.0")
 
-# CORS middleware for Next.js integration
+# CORS middleware for Next.js integration (Universal for debugging)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000", 
-        "http://localhost:3001",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:3001"
-    ],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -916,17 +911,16 @@ if __name__ == "__main__":
     print("\n" + "="*60)
     print("🚀 TIMETABLE SOLVER API")
     print("="*60)
-    print("📍 Endpoints:")
-    print("   - http://127.0.0.1:8000")
-    print("   - http://localhost:8000")
+    print("📍 Endpoint: http://127.0.0.1:8000")
     print("📖 Docs: http://127.0.0.1:8000/docs")
     print("🔧 Solver: Google OR-Tools CP-SAT")
-    print("🌐 Binding: 0.0.0.0:8000 (all interfaces)")
+    print("🌐 Binding: 127.0.0.1:8000 (IPv4 loopback - forced)")
+    print("🔓 CORS: Universal (debugging mode)")
     print("="*60 + "\n")
     
     uvicorn.run(
         app,
-        host="0.0.0.0",
+        host="127.0.0.1",
         port=8000,
         log_level="info"
     )

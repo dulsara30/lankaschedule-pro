@@ -17,6 +17,7 @@ from typing import List, Dict, Optional
 from ortools.sat.python import cp_model
 import uvicorn
 import time
+import gc
 
 app = FastAPI(title="Timetable Solver API", version="1.0.0")
 
@@ -497,6 +498,9 @@ class TimetableSolver:
             # STAGE 2: Relaxed penalties if stage 1 didn't place everything
             slots_stage1, unplaced_stage1 = self._extract_solution()
             if len(unplaced_stage1) > 0:
+                # Memory cleanup before Stage 2
+                gc.collect()
+                
                 stage2_time = 60  # Additional 60 seconds for relaxed solving
                 print(f"\n🎯 STAGE 2 (Relaxed): {stage2_time}s with reduced penalties (-1,250pts)")
                 print(f"   Stage 1 placed {len(slots_stage1)} slots. Attempting {len(unplaced_stage1)} remaining with relaxed constraints...")
@@ -554,7 +558,7 @@ class TimetableSolver:
         
         solving_time = time.time() - start_time
         
-        # 🔍 DEEP SEARCH POLISHING PHASE: Dynamic time extension for near-perfect solutions
+        # 🔍 DEEP SEARCH POLISHING PHASE: Continue solving with extended time
         # If we're very close to 100% (≤50 unplaced), extend time to push to perfection
         if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
             slots, unplaced_tasks = self._extract_solution()
@@ -575,34 +579,24 @@ class TimetableSolver:
                 print(f"   Placement rate: {placement_rate*100:.1f}% - Targeting 100%")
                 print("   🔍 DEEP SEARCH: Enhancing quality and filling remaining gaps using solution hints...")
                 
-                # Capture current solution for hinting
-                current_assignments = {}  # Store current state to build upon
-                for key, var in self.task_vars.items():
-                    if self.solver.Value(var) == 1:
-                        current_assignments[key] = 1
+                # Memory cleanup before extended search
+                gc.collect()
                 
-                # Rebuild model while preserving constraints
-                old_model = self.model
-                self.model = cp_model.CpModel()
-                old_solver = self.solver
-                self.solver = cp_model.CpSolver()
-                
-                # Recreate with same objective (keep strict penalties to maintain quality)
-                self._create_variables()
-                self._add_constraints()
-                self._set_objective(penalty_multiplier=1.0)  # Keep -10,000 penalty for quality
-                
-                # Apply current solution as hints - prevents reset, builds incrementally
+                # Apply current solution as hints to EXISTING model (no rebuild)
                 hint_count = 0
-                for key, value in current_assignments.items():
-                    if key in self.task_vars:
-                        self.model.AddHint(self.task_vars[key], value)
+                for key, var in self.task_vars.items():
+                    try:
+                        current_value = self.solver.Value(var)
+                        self.model.AddHint(var, current_value)
                         hint_count += 1
+                    except:
+                        pass  # Skip variables that don't have values yet
                 
-                print(f"   💡 SOLUTION PERSISTENCE: Applied {hint_count} hints from base solution (no reset)")
-                print(f"   📈 Strategy: Keep quality high, explore penalized slots only if mathematically required")
+                print(f"   💡 SOLUTION PERSISTENCE: Applied {hint_count} hints from base solution (no duplication)")
+                print(f"   📈 Strategy: Reusing existing model, only extending search time for remaining {unplaced_count} tasks")
                 
-                # Extend the time limit to 180 seconds (3 minutes)
+                # Create NEW solver instance with extended time (model stays the same)
+                self.solver = cp_model.CpSolver()
                 extended_time = 180
                 self.solver.parameters.max_time_in_seconds = extended_time
                 
@@ -611,8 +605,11 @@ class TimetableSolver:
                 self.solver.parameters.relative_gap_limit = 0.0
                 self.solver.parameters.search_branching = cp_model.PORTFOLIO_SEARCH
                 self.solver.parameters.interleave_search = True
+                self.solver.parameters.random_seed = 42
+                self.solver.parameters.log_search_progress = True
                 
                 print(f"   ⚡ ELITE MODE: 8 workers, 0.0% gap, portfolio branching, interleaved search")
+                print(f"   🎯 Continuing with same {len(self.task_info)} tasks (NO model rebuild)")
                 status = self.solver.Solve(self.model)
                 solving_time = time.time() - start_time
                 

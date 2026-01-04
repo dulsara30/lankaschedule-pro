@@ -482,97 +482,27 @@ class TimetableSolver:
         # Step 3: Set objective
         self._set_objective()
         
-        # Determine if two-stage solving is enabled
-        use_two_stage = allow_relaxation and time_limit_seconds >= 90
+        # SINGLE-STAGE SOLVING: Full user time for quality, then 3min forced placement
+        # Strategy: (time_limit - 180)s for high-quality solving + 180s deep search if needed
+        # Example: 20min = 17min quality + 3min forced placement = 100% success
+        stage1_time = max(60, time_limit_seconds - 180)  # Reserve 180s for deep search
         
-        if use_two_stage:
-            # TWO-STAGE SOLVING: Stage 1 (strict), Stage 2 (relaxed if needed)
-            stage1_time = min(60, time_limit_seconds // 3)  # 60s or 1/3 of total time
-            stage2_time = time_limit_seconds - stage1_time
-            
-            print(f"\n🎯 TWO-STAGE SOLVING ENABLED")
-            print(f"   Stage 1: {stage1_time}s with strict penalties (-400pt)")
-            print(f"   Stage 2: {stage2_time}s with relaxed penalties (-50pt) if needed")
-            print("="*60)
-            
-            # STAGE 1: Strict balance
-            print("\n📍 STAGE 1: Attempting Strict Subject Balancing...")
-            if stage_callback:
-                stage_callback("stage1")
-            
-            self.solver.parameters.max_time_in_seconds = stage1_time
-            self.solver.parameters.num_search_workers = 8  # Maximum CPU power
-            self.solver.parameters.log_search_progress = True
-            self.solver.parameters.random_seed = 42
-            self.solver.parameters.relative_gap_limit = 0.0  # ELITE: Absolute best solution only
-            self.solver.parameters.search_branching = cp_model.PORTFOLIO_SEARCH  # Multi-strategy
-            self.solver.parameters.interleave_search = True  # Parallel path exploration
-            
-            status = self.solver.Solve(self.model)
-            
-            # STAGE 2: Relaxed penalties if stage 1 didn't place everything
-            slots_stage1, unplaced_stage1 = self._extract_solution()
-            if len(unplaced_stage1) > 0:
-                # Memory cleanup before Stage 2
-                gc.collect()
-                
-                stage2_time = 60  # Additional 60 seconds for relaxed solving
-                print(f"\n🎯 STAGE 2 (Relaxed): {stage2_time}s with reduced penalties (-1,250pts)")
-                print(f"   Stage 1 placed {len(slots_stage1)} slots. Attempting {len(unplaced_stage1)} remaining with relaxed constraints...")
-                print("="*60)
-                
-                # Capture Stage 1 solution for hinting
-                stage1_assignments = {}  # (lesson_idx, task_type, task_idx, day, period) -> value
-                for key, var in self.task_vars.items():
-                    if self.solver.Value(var) == 1:
-                        stage1_assignments[key] = 1
-                
-                # Reset and rebuild model with relaxed penalties
-                self.model = cp_model.CpModel()
-                self.solver = cp_model.CpSolver()
-                
-                # Recreate everything with relaxed penalties
-                self._create_variables()
-                self._add_constraints()
-                self._set_objective(penalty_multiplier=0.125)  # -1,250 instead of -10,000
-                
-                # Apply Stage 1 solution as hints to Stage 2
-                hint_count = 0
-                for key, value in stage1_assignments.items():
-                    if key in self.task_vars:
-                        self.model.AddHint(self.task_vars[key], value)
-                        hint_count += 1
-                
-                print(f"   🔍 SOLUTION HINTING: Applied {hint_count} assignments from Stage 1 to prevent reset")
-                print(f"   📈 Strategy: Build upon existing {len(slots_stage1)} placements, explore penalized slots for remaining tasks")
-                
-                self.solver.parameters.max_time_in_seconds = stage2_time
-                self.solver.parameters.num_search_workers = 8  # Maximum CPU power
-                self.solver.parameters.log_search_progress = True
-                self.solver.parameters.random_seed = 42
-                self.solver.parameters.relative_gap_limit = 0.0  # ELITE: Absolute best solution only
-                self.solver.parameters.search_branching = cp_model.PORTFOLIO_SEARCH  # Multi-strategy
-                self.solver.parameters.interleave_search = True  # Parallel path exploration
-                
-                status = self.solver.Solve(self.model)
-        else:
-            # SINGLE-STAGE SOLVING: Async Job System (7+3 rule)
-            # 420s (7 min) base + 180s deep search = 600s (10 mins) total, NO timeout risk (async!)
-            actual_time = min(time_limit_seconds, 420)
-            print(f"\n🔍 ASYNC MODE (7+3 Rule): {actual_time}s base with strict penalties")
-            print(f"   Safe buffer: {time_limit_seconds - actual_time}s | Deep search: +180s | Total: 600s (10 mins)")
-            print(f"   Seed: 42 | Target: 96%+ placement | Background processing: NO timeout risk!")
-            print("="*60)
-            
-            self.solver.parameters.max_time_in_seconds = actual_time
-            self.solver.parameters.num_search_workers = 8  # Maximum CPU power
-            self.solver.parameters.log_search_progress = True
-            self.solver.parameters.random_seed = 42
-            self.solver.parameters.relative_gap_limit = 0.0  # ELITE: Absolute best solution only
-            self.solver.parameters.search_branching = cp_model.PORTFOLIO_SEARCH  # Multi-strategy
-            self.solver.parameters.interleave_search = True  # Parallel path exploration
-            
-            status = self.solver.Solve(self.model)
+        print(f"\n🎯 ASYNC MODE (Quality + Force Strategy)")
+        print(f"   Stage 1: {stage1_time}s ({stage1_time/60:.1f}min) high-quality solving with strict penalties")
+        print(f"   Deep Search: Reserved 180s (3min) for forced placement if needed")
+        print(f"   Total time budget: {time_limit_seconds}s ({time_limit_seconds/60:.1f}min)")
+        print(f"   Strategy: Quality first, then force 100% placement in final 3 minutes")
+        print("="*60)
+        
+        self.solver.parameters.max_time_in_seconds = stage1_time
+        self.solver.parameters.num_search_workers = 8  # Maximum CPU power
+        self.solver.parameters.log_search_progress = True
+        self.solver.parameters.random_seed = 42
+        self.solver.parameters.relative_gap_limit = 0.0  # ELITE: Absolute best solution only
+        self.solver.parameters.search_branching = cp_model.PORTFOLIO_SEARCH  # Multi-strategy
+        self.solver.parameters.interleave_search = True  # Parallel path exploration
+        
+        status = self.solver.Solve(self.model)
         
         solving_time = time.time() - start_time
         
@@ -589,9 +519,9 @@ class TimetableSolver:
             )
             placement_rate = len(slots) / total_required_slots if total_required_slots > 0 else 0
             
-            # Trigger deep search if we have 50 or fewer unplaced periods (typically 95%+)
-            # Extended polishing: +180s (3 minutes) for maximum placement potential
-            if unplaced_count > 0 and unplaced_count <= 50 and solving_time < 600:
+            # Trigger deep search if ANY unplaced periods remain
+            # Extended polishing: 180s (3 minutes) with -10 penalty for forced 100% placement
+            if unplaced_count > 0:
                 print(f"\n🔍 ASYNC DEEP SEARCH: Filling final {unplaced_count} gaps with maximum force...")
                 print(f"   🚀 FINAL PUSH: Extending time by +180s (3 minutes) for 100% placement!")
                 print(f"   Placement rate: {placement_rate*100:.1f}% - Targeting 100%")

@@ -900,7 +900,7 @@ export default function TimetablePage() {
         entities = [{ 
           id: classEntity._id, 
           name: classEntity.name,
-          classTeacher: (classEntity as any).classTeacher?.name || 'Not Assigned'
+          classTeacher: (classEntity as any).classTeacher?.name || ''
         }];
         pdfType = 'class';
       } else if (exportType === 'teacher') {
@@ -916,7 +916,7 @@ export default function TimetablePage() {
         entities = classes.map(c => ({ 
           id: c._id, 
           name: c.name,
-          classTeacher: (c as any).classTeacher?.name || 'Not Assigned'
+          classTeacher: (c as any).classTeacher?.name || ''
         }));
         pdfType = 'class';
       } else if (exportType === 'bulk-teachers') {
@@ -2475,7 +2475,7 @@ export default function TimetablePage() {
                     type={exportType === 'bulk-classes' ? 'class' : 'teacher'}
                     entities={
                       exportType === 'bulk-classes'
-                        ? classes.map(c => ({ id: c._id, name: c.name }))
+                        ? classes.map(c => ({ id: c._id, name: c.name, classTeacher: (c as any).classTeacher?.name || '' }))
                         : teachers.map(t => ({ id: t._id, name: t.name }))
                     }
                     versionName={versions.find(v => v._id === currentVersionId)?.versionName || 'Current Version'}
@@ -2487,6 +2487,7 @@ export default function TimetablePage() {
                     showTimeColumn={showTimeColumn}
                     showPrincipalSignature={showPrincipalSignature}
                     showClassTeacherSignature={showClassTeacherSignature}
+                    showSchoolHeader={showSchoolHeader}
                   />
                 </PDFViewer>
               ) : exportEntityId ? (
@@ -2498,7 +2499,10 @@ export default function TimetablePage() {
                         id: exportEntityId,
                         name: exportType === 'single'
                           ? classes.find(c => c._id === exportEntityId)?.name || 'Unknown'
-                          : teachers.find(t => t._id === exportEntityId)?.name || 'Unknown'
+                          : teachers.find(t => t._id === exportEntityId)?.name || 'Unknown',
+                        classTeacher: exportType === 'single'
+                          ? (classes.find(c => c._id === exportEntityId) as any)?.classTeacher?.name || ''
+                          : undefined
                       }
                     ]}
                     versionName={versions.find(v => v._id === currentVersionId)?.versionName || 'Current Version'}
@@ -2510,6 +2514,7 @@ export default function TimetablePage() {
                     showTimeColumn={showTimeColumn}
                     showPrincipalSignature={showPrincipalSignature}
                     showClassTeacherSignature={showClassTeacherSignature}
+                    showSchoolHeader={showSchoolHeader}
                   />
                 </PDFViewer>
               ) : (

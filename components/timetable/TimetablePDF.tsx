@@ -405,7 +405,7 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
         <View style={styles.subHeader}>
           <Text style={styles.subHeaderText}>
             {type === 'class' 
-              ? `Class: ${entity.name} | Class Teacher: ${entity.classTeacher || 'Not Assigned'}`
+              ? `Class: ${entity.name} | Class Teacher: ${entity.classTeacher || '________________________'}`
               : `Teacher: ${entity.name}`
             }
           </Text>

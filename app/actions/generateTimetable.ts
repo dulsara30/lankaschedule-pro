@@ -5,9 +5,9 @@
  * Python solver using Google OR-Tools CP-SAT. It fetches the optimized timetable
  * from the Python FastAPI service and saves it to MongoDB.
  * 
- * Timeout: 480s Python (5min base + 3min deep search) + 120s buffer = 600s Next.js
+ * Timeout: 480s Python (5min base + 3min deep search) + 120s buffer = 600s fetch timeout
  * Total: 10 minutes for 100% placement potential
- * Configured via maxDuration and fetch AbortSignal.timeout(600000ms)
+ * Configured via fetch AbortSignal.timeout(600000ms)
  */
 
 'use server';
@@ -21,8 +21,6 @@ import Lesson from '@/models/Lesson';
 import Class from '@/models/Class';
 import TimetableSlot from '@/models/TimetableSlot';
 import TimetableVersion from '@/models/TimetableVersion';
-
-export const maxDuration = 600; // 10 minutes for solver + safety buffer
 
 interface SolverResponse {
   success: boolean;

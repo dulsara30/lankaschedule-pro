@@ -968,9 +968,15 @@ export default function TimetablePage() {
   const getSlotForPeriod = (day: string, period: number): TimetableSlot | undefined => {
     if (viewMode === 'class') {
       const slot = slots.find(
-        slot => slot.day === day && 
-                slot.periodNumber === period && 
-                slot.classId?._id === selectedEntity
+        slot => {
+          if (slot.day !== day || slot.periodNumber !== period) return false;
+          
+          // Normalize classId to handle both string IDs and populated objects
+          const slotClassId = typeof slot.classId === 'object' ? slot.classId._id.toString() : slot.classId.toString();
+          const targetClassId = selectedEntity.toString();
+          
+          return slotClassId === targetClassId;
+        }
       );
       return slot;
     } else {
@@ -988,9 +994,15 @@ export default function TimetablePage() {
   const getSlotsAtPosition = (day: string, period: number): TimetableSlot[] => {
     if (viewMode === 'class') {
       return slots.filter(
-        slot => slot.day === day && 
-                slot.periodNumber === period && 
-                slot.classId?._id === selectedEntity
+        slot => {
+          if (slot.day !== day || slot.periodNumber !== period) return false;
+          
+          // Normalize classId to handle both string IDs and populated objects
+          const slotClassId = typeof slot.classId === 'object' ? slot.classId._id.toString() : slot.classId.toString();
+          const targetClassId = selectedEntity.toString();
+          
+          return slotClassId === targetClassId;
+        }
       );
     } else {
       // Teacher view: find all slots where this teacher is teaching
@@ -1348,11 +1360,16 @@ export default function TimetablePage() {
   console.log('🎯 Filtering for:', { viewMode, selectedEntity, selectedName, totalSlots: slots.length });
   
   // Count slots for selected entity
-  const relevantSlots = slots.filter(slot => 
-    viewMode === 'class' 
-      ? slot.classId?._id === selectedEntity
-      : slot.lessonId?.teacherIds?.some(t => t?._id === selectedEntity)
-  );
+  const relevantSlots = slots.filter(slot => {
+    if (viewMode === 'class') {
+      // Normalize classId to handle both string IDs and populated objects
+      const slotClassId = typeof slot.classId === 'object' ? slot.classId._id?.toString() : slot.classId?.toString();
+      const targetClassId = selectedEntity.toString();
+      return slotClassId === targetClassId;
+    } else {
+      return slot.lessonId?.teacherIds?.some(t => t?._id === selectedEntity);
+    }
+  });
   console.log('✅ Relevant slots found:', relevantSlots.length);
   if (relevantSlots.length > 0) {
     console.log('📌 Sample relevant slot:', relevantSlots[0]);

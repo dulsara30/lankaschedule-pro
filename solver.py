@@ -215,14 +215,17 @@ class TimetableSolver:
         
         self.stats['totalTasks'] = len(self.task_info)
         
-        # Calculate total period slots (single = 1 slot, double = 2 slots per class)
+        # Calculate TRUE total period slots (914 expected)
+        # Formula: sum of (periods per task * number of classes)
+        # Single lessons = 1 period per class, Double lessons = 2 periods per class
         total_period_slots = sum(
             (1 if t['type'] == 'single' else 2) * len(t['classIds']) 
             for t in self.task_info
         )
         
         print(f"✅ Created {self.stats['totalTasks']} unified tasks ({self.stats['singlesCreated']} singles, {self.stats['doublesCreated']} doubles)")
-        print(f"   📍 Total period slots to fill: {total_period_slots} (across {sum(len(t['classIds']) for t in self.task_info)} class instances)")
+        print(f"   📍 Total period slots to fill: {total_period_slots} (TRUE count: each task × classes × periods)")
+        print(f"   🎯 Breakdown: {sum(len(t['classIds']) for t in self.task_info)} class instances across all tasks")
         print(f"   🎯 Goal: Place all {total_period_slots} slots for 100% success")
     
     def _add_constraints(self):

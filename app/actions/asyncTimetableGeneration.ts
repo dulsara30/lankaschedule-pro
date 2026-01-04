@@ -237,8 +237,8 @@ export async function saveTimetableResults(jobId: string, versionName: string) {
     const slots = result.slots.map((slot: any) => ({
       schoolId: school._id,
       versionId: draftVersion._id,
-      classId: slot.classId,  // Store as String ID only (not nested object)
-      lessonId: slot.lessonId,  // Store as String ID only (not nested object)
+      classId: String(slot.classId),  // CRITICAL: Explicitly convert to String ID
+      lessonId: String(slot.lessonId),  // CRITICAL: Explicitly convert to String ID
       day: slot.day,
       periodNumber: slot.periodNumber,
       isDoubleStart: slot.isDoubleStart,
@@ -248,10 +248,12 @@ export async function saveTimetableResults(jobId: string, versionName: string) {
     console.log(`💾 Inserting ${slots.length} new slots for 100% placement`);
     await TimetableSlot.insertMany(slots);
     console.log(`   ✅ Successfully saved ${slots.length} slots to database`);
+    console.log(`   🔄 Triggering UI refresh for immediate visibility`);
 
-    // Revalidate paths
+    // Revalidate paths to force immediate refresh
     revalidatePath('/dashboard/timetable');
     revalidatePath('/dashboard/lessons');
+    revalidatePath('/');
 
     return {
       success: true,

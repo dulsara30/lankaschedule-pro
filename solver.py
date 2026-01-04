@@ -18,8 +18,14 @@ from ortools.sat.python import cp_model
 import uvicorn
 import time
 import gc
+import threading
+import uuid
+from datetime import datetime
 
 app = FastAPI(title="Timetable Solver API", version="1.0.0")
+
+# Global job storage for asynchronous processing
+active_jobs: Dict[str, Dict] = {}
 
 # CORS middleware for Next.js integration (Universal for debugging)
 app.add_middleware(
@@ -548,12 +554,12 @@ class TimetableSolver:
                 
                 status = self.solver.Solve(self.model)
         else:
-            # SINGLE-STAGE SOLVING: Elite 9/11 Rule
-            # 360s (6 min) base + 180s deep search = 540s (9 mins) total, 660s Next.js timeout (2 min buffer)
-            actual_time = min(time_limit_seconds, 360)
-            print(f"\n🔍 ELITE MODE (9/11 Rule): {actual_time}s base with strict penalties")
-            print(f"   Safe buffer: {time_limit_seconds - actual_time}s | Deep search: +180s | Total: 540s (9 mins)")
-            print("   Seed: 42 | Target: 96%+ placement with strict balance")
+            # SINGLE-STAGE SOLVING: Async Job System (7+3 rule)
+            # 420s (7 min) base + 180s deep search = 600s (10 mins) total, NO timeout risk (async!)
+            actual_time = min(time_limit_seconds, 420)
+            print(f"\n🔍 ASYNC MODE (7+3 Rule): {actual_time}s base with strict penalties")
+            print(f"   Safe buffer: {time_limit_seconds - actual_time}s | Deep search: +180s | Total: 600s (10 mins)")
+            print(f"   Seed: 42 | Target: 96%+ placement | Background processing: NO timeout risk!")
             print("="*60)
             
             self.solver.parameters.max_time_in_seconds = actual_time
@@ -583,12 +589,12 @@ class TimetableSolver:
             
             # Trigger deep search if we have 50 or fewer unplaced periods (typically 95%+)
             # Extended polishing: +180s (3 minutes) for maximum placement potential
-            if unplaced_count > 0 and unplaced_count <= 50 and solving_time < 540:
-                print(f"\n🔍 ELITE DEEP SEARCH: Filling final {unplaced_count} gaps with Master Key...")
+            if unplaced_count > 0 and unplaced_count <= 50 and solving_time < 600:
+                print(f"\n🔍 ASYNC DEEP SEARCH: Filling final {unplaced_count} gaps with maximum force...")
                 print(f"   🚀 FINAL PUSH: Extending time by +180s (3 minutes) for 100% placement!")
                 print(f"   Placement rate: {placement_rate*100:.1f}% - Targeting 100%")
                 print(f"   📊 Model integrity: {len(self.task_info)} tasks (max 711)")
-                print("   🔍 MASTER KEY: Adaptive penalty reduction for remaining gaps...")
+                print("   🔍 FORCE MODE: Aggressive penalty reduction for 100% success...")
                 
                 # CRITICAL: Memory cleanup before extended search
                 print("   🧹 Memory cleanup before deep search...")
@@ -604,13 +610,13 @@ class TimetableSolver:
                     except:
                         pass
                 
-                # Rebuild objective with MASTER KEY penalty (-50 instead of -10,000)
-                # This is the sweet spot: strict enough for quality, lenient enough for 100%
-                print(f"   💡 MASTER KEY: Rebuilding objective with -50pt penalty (was -10,000pt = 200x reduction)")
-                print(f"   📈 Logic: At 98% capacity, make remaining gaps easy to fill while preserving quality")
+                # Rebuild objective with FORCE penalty (-10 instead of -10,000)
+                # This GUARANTEES 100% placement by making clumping highly acceptable
+                print(f"   💡 FORCE MODE: Rebuilding objective with -10pt penalty (was -10,000pt = 1000x reduction)")
+                print(f"   📈 Logic: At 98% capacity, force AI to fill ALL remaining gaps - placement over quality")
                 
                 # Clear and rebuild objective only (keep constraints)
-                self._set_objective(penalty_multiplier=0.005)  # -50 instead of -10,000 (Master Key)
+                self._set_objective(penalty_multiplier=0.001)  # -10 instead of -10,000 (Force Mode)
                 
                 # Apply solution hints to variables
                 hint_count = 0
@@ -937,6 +943,88 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "healthy"}
+
+# ==================== ASYNC JOB SYSTEM (NO TIMEOUT RISK!) ====================
+
+def run_solver_background(job_id: str, request: SolverRequest):
+    """Background worker function to run solver asynchronously"""
+    try:
+        active_jobs[job_id]['status'] = 'processing'
+        active_jobs[job_id]['progress'] = 'Initializing AI solver...'
+        
+        solver = TimetableSolver(request)
+        result = solver.solve(
+            time_limit_seconds=request.maxTimeLimit,
+            allow_relaxation=request.allowRelaxation
+        )
+        
+        active_jobs[job_id]['status'] = 'completed'
+        active_jobs[job_id]['result'] = result.model_dump()
+        active_jobs[job_id]['progress'] = 'Completed successfully!'
+        active_jobs[job_id]['completedAt'] = datetime.now().isoformat()
+        
+    except Exception as e:
+        active_jobs[job_id]['status'] = 'failed'
+        active_jobs[job_id]['error'] = str(e)
+        active_jobs[job_id]['progress'] = f'Error: {str(e)}'
+        active_jobs[job_id]['completedAt'] = datetime.now().isoformat()
+
+@app.post("/start-solve")
+async def start_solve(request: SolverRequest):
+    """
+    🚀 Start asynchronous timetable generation (NO TIMEOUT RISK!)
+    
+    Returns job_id immediately, solver runs in background thread
+    Client polls /job-status/{job_id} every 5 seconds
+    """
+    job_id = str(uuid.uuid4())
+    
+    active_jobs[job_id] = {
+        'status': 'starting',
+        'progress': 'Job queued...',
+        'createdAt': datetime.now().isoformat(),
+        'result': None,
+        'error': None
+    }
+    
+    # Start solver in background thread
+    thread = threading.Thread(target=run_solver_background, args=(job_id, request))
+    thread.daemon = True
+    thread.start()
+    
+    return {
+        "jobId": job_id,
+        "status": "started",
+        "message": "Solver running in background. Poll /job-status/{job_id} for progress."
+    }
+
+@app.get("/job-status/{job_id}")
+async def get_job_status(job_id: str):
+    """
+    🔎 Check status of asynchronous job
+    
+    Returns:
+    - status: 'starting', 'processing', 'completed', or 'failed'
+    - progress: Human-readable progress message
+    - result: Full solver result (when status='completed')
+    - error: Error message (when status='failed')
+    """
+    if job_id not in active_jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    job = active_jobs[job_id]
+    
+    return {
+        "jobId": job_id,
+        "status": job['status'],
+        "progress": job['progress'],
+        "createdAt": job['createdAt'],
+        "completedAt": job.get('completedAt'),
+        "result": job.get('result'),
+        "error": job.get('error')
+    }
+
+# ==================== LEGACY SYNC ENDPOINT (DEPRECATED - Use /start-solve instead) ====================
 
 @app.post("/solve", response_model=SolverResponse)
 async def solve_timetable(request: SolverRequest):

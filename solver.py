@@ -463,10 +463,12 @@ class TimetableSolver:
         self.solver.parameters.num_search_workers = 8  # Full CPU utilization
         self.solver.parameters.log_search_progress = True
         self.solver.parameters.random_seed = 42  # Consistent high-quality results
+        self.solver.parameters.relative_gap_limit = 0.05  # Stop at 5% of optimal (massive time savings)
         
         print(f"\n🔍 ELITE SOLVING MODE: {time_limit_seconds}s time limit with 8 parallel workers...")
         print("   Seed: 42 (consistent results) | Target: 96%+ utilization")
         print("   Mode: Maximum effort placement with strict subject distribution")
+        print("   Optimization: Stops at 95% optimal (5% gap) for high-speed feasibility")
         
         # Step 5: Solve
         status = self.solver.Solve(self.model)

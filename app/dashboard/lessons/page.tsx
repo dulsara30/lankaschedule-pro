@@ -611,9 +611,9 @@ export default function LessonsPage() {
                     {generationStep > 2 ? <Check className="h-5 w-5" /> : '2'}
                   </div>
                   <div className="flex-1">
-                    <span className="font-medium">🧠 Elite AI Optimization: 8 parallel workers solving 5,000+ constraints...</span>
+                    <span className="font-medium">🧠 Preparing AI Payload: Building constraint matrices...</span>
                     {generationStep === 2 && (
-                      <p className="text-xs text-white/60 mt-1">Extreme penalties enforcing perfect subject distribution (180s max time)</p>
+                      <p className="text-xs text-white/60 mt-1">Mapping lessons, classes, and constraints for CP-SAT solver</p>
                     )}
                   </div>
                 </div>
@@ -624,9 +624,9 @@ export default function LessonsPage() {
                     {generationStep > 3 ? <Check className="h-5 w-5" /> : '3'}
                   </div>
                   <div className="flex-1">
-                    <span className="font-medium">⚖️ Elite Subject Balancing: -400pt penalty per clumping violation...</span>
+                    <span className="font-medium">⚖️ Elite AI Solving: 8 workers, 180s max, 5% optimal gap...</span>
                     {generationStep === 3 && (
-                      <p className="text-xs text-white/60 mt-1 animate-pulse">Singles=500pts, Doubles=1000pts, forcing perfect spread (CP-SAT solver: 180s)</p>
+                      <p className="text-xs text-white/60 mt-1 animate-pulse">⏱️ Up to 3 minutes solving time - DO NOT REFRESH. Optimizing 500/1000pt rewards with -400pt penalties for perfect distribution.</p>
                     )}
                   </div>
                 </div>

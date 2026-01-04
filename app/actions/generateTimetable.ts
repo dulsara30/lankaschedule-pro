@@ -8,6 +8,9 @@
 
 'use server';
 
+// Increase server action timeout to 240 seconds for elite AI solver (180s + buffer)
+export const maxDuration = 240;
+
 import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/dbConnect';
 import School from '@/models/School';
@@ -243,14 +246,14 @@ export async function generateTimetableAction(versionName?: string): Promise<Gen
           "Content-Type": "application/json",
         },
         body: JSON.stringify(payload),
-        // 90 second timeout (solver has 60s limit + buffer)
-        signal: AbortSignal.timeout(90000),
+        // 240 second timeout (solver has 180s limit + 60s buffer)
+        signal: AbortSignal.timeout(240000),
       });
     } catch (fetchError: any) {
       if (fetchError.name === "TimeoutError") {
         return {
           success: false,
-          message: "Solver timeout (90s). The problem may be too complex. Try reducing the number of lessons or constraints.",
+          message: "Solver timeout (240s). The problem may be too complex. Try disabling some heavy lessons (Aesthetic/IT) and regenerate.",
         };
       }
       return {

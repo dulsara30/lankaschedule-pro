@@ -240,11 +240,12 @@ export async function generateTimetableAction(
     console.log(`✅ Payload prepared: ${payload.lessons.length} enabled lessons, ${payload.classes.length} classes`);
     console.log(`🎯 Target: ${expectedSlots} slots from enabled lessons`);
 
-    // Step 4: Call Python solver
-    console.log("\n🔧 Step 4: Calling Python CP-SAT solver...");
+    // Step 4: Call Python solver (ASYNC JOB SYSTEM - NO TIMEOUT RISK!)
+    console.log("\n🔧 Step 4: Starting asynchronous AI solver...");
     console.log("[DEBUG] Solver URL:", process.env.SOLVER_URL || "http://127.0.0.1:8000");
     console.log("[DEBUG] Payload size:", JSON.stringify(payload).length, "bytes");
-    console.log("📍 Endpoint: http://127.0.0.1:8000/solve");
+    console.log("📍 Endpoint: /start-solve (async) → /job-status (polling)");
+    console.log("⏰ ASYNC MODE: 7+3 Rule (420s base + 180s deep = 600s total, NO timeout!)");
     
     const solverUrl = process.env.SOLVER_URL || "http://127.0.0.1:8000";
     const startTime = Date.now();
@@ -262,7 +263,7 @@ export async function generateTimetableAction(
           message: `Python Solver health check failed (HTTP ${healthResponse.status}). Server may be starting up. Wait 10 seconds and try again.`,
         };
       }
-      console.log("✅ Health check passed. Proceeding with solve...");
+      console.log("✅ Health check passed. Starting async job...");
     } catch (healthError: any) {
       console.error("❌ Health check error:", healthError);
       console.error("   Error code:", healthError.cause?.code || 'UNKNOWN');
@@ -281,60 +282,102 @@ export async function generateTimetableAction(
       };
     }
 
-    let response: Response;
+    // STEP 4A: Start async job
+    console.log("🚀 Starting async job (returns immediately)...");
+    let jobId: string;
     try {
-      response = await fetch(`${solverUrl}/solve`, {
+      const startResponse = await fetch(`${solverUrl}/start-solve`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Connection": "keep-alive",
         },
         body: JSON.stringify(payload),
-        // Elite 9/11 Rule: 660s (11 minutes) gives Python 540s (9 mins) + 120s buffer
-        signal: AbortSignal.timeout(660000),
+        signal: AbortSignal.timeout(10000), // Only 10s timeout for starting job
       });
-    } catch (fetchError: any) {
-      console.error("❌ Solver error:", fetchError);
-      console.error("   Error name:", fetchError.name);
-      console.error("   Error code:", fetchError.cause?.code || 'UNKNOWN');
-      
-      if (fetchError.name === "TimeoutError") {
+
+      if (!startResponse.ok) {
+        const errorText = await startResponse.text();
         return {
           success: false,
-          message: "⏱️ Server timed out (660s): Problem extremely complex. Try disabling heavy lessons (Aesthetic/IT) or reducing time limit.",
+          message: `Failed to start solver job (${startResponse.status}): ${errorText}`,
         };
       }
-      
-      // Check for connection refused errors (should not happen after health check)
-      if (fetchError.cause?.code === "ECONNREFUSED" || fetchError.message?.includes("ECONNREFUSED")) {
-        return {
-          success: false,
-          message: '🔴 Server not found: Solver stopped mid-execution. Check terminal for Python errors.',
-        };
-      }
-      
-      if (fetchError.message?.includes("fetch failed")) {
-        return {
-          success: false,
-          message: `Network error: ${fetchError.message}. Check if solver.py is still running.`,
-        };
-      }
-      
+
+      const startResult = await startResponse.json();
+      jobId = startResult.jobId;
+      console.log(`✅ Job started! Job ID: ${jobId}`);
+      console.log(`📊 Status: ${startResult.status} - ${startResult.message}`);
+    } catch (startError: any) {
+      console.error("❌ Failed to start job:", startError);
       return {
         success: false,
-        message: `Unexpected error connecting to solver: ${fetchError.message}`,
+        message: `Failed to start async job: ${startError.message}`,
       };
     }
 
-    if (!response.ok) {
-      const errorText = await response.text();
+    // STEP 4B: Poll for job status every 5 seconds
+    console.log("⏳ Polling job status every 5 seconds...");
+    let pollCount = 0;
+    let result: SolverResponse | null = null;
+    
+    while (true) {
+      pollCount++;
+      
+      // Wait 5 seconds between polls (except first poll)
+      if (pollCount > 1) {
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      } else {
+        // First poll immediate
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
+      try {
+        const statusResponse = await fetch(`${solverUrl}/job-status/${jobId}`, {
+          signal: AbortSignal.timeout(10000), // Only 10s timeout per poll
+        });
+
+        if (!statusResponse.ok) {
+          console.error(`❌ Status check failed (${statusResponse.status})`);
+          continue; // Retry next poll
+        }
+
+        const jobStatus = await statusResponse.json();
+        console.log(`📊 Poll #${pollCount}: ${jobStatus.status} - ${jobStatus.progress}`);
+
+        if (jobStatus.status === 'completed') {
+          console.log(`✅ Job completed successfully!`);
+          result = jobStatus.result;
+          break;
+        } else if (jobStatus.status === 'failed') {
+          console.error(`❌ Job failed: ${jobStatus.error}`);
+          return {
+            success: false,
+            message: `Solver job failed: ${jobStatus.error}`,
+          };
+        }
+        // else continue polling (status is 'starting' or 'processing')
+
+      } catch (pollError: any) {
+        console.error(`⚠️  Poll #${pollCount} error:`, pollError.message);
+        // Continue polling - temporary network glitch
+      }
+
+      // Safety: max 150 polls (150 * 5s = 750s = 12.5 minutes)
+      if (pollCount > 150) {
+        return {
+          success: false,
+          message: `Job timeout: No response after ${pollCount} polls (12.5 minutes). Job may still be running.`,
+        };
+      }
+    }
+
+    if (!result) {
       return {
         success: false,
-        message: `Solver API error (${response.status}): ${errorText}`,
+        message: `Job completed but no result received. Check server logs.`,
       };
     }
 
-    const result: SolverResponse = await response.json();
     const apiTime = ((Date.now() - startTime) / 1000).toFixed(2);
 
     console.log(`✅ Solver completed in ${apiTime}s`);

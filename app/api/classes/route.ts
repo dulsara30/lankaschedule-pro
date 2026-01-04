@@ -94,12 +94,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Convert empty string to null for proper MongoDB reference
+    const teacherRef = classTeacher && classTeacher.trim() !== '' ? classTeacher : null;
+
     const classData = await Class.create({
       schoolId: school._id,
       name,
       grade,
       stream: stream || '',
-      classTeacher: classTeacher || null,
+      classTeacher: teacherRef,
     });
 
     // CRITICAL: Populate classTeacher before returning
@@ -156,9 +159,12 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    // Convert empty string to null for proper MongoDB reference
+    const teacherRef = classTeacher && classTeacher.trim() !== '' ? classTeacher : null;
+
     const classData = await Class.findByIdAndUpdate(
       id,
-      { name, grade, stream: stream || '', classTeacher: classTeacher || null },
+      { name, grade, stream: stream || '', classTeacher: teacherRef },
       { new: true, runValidators: true }
     );
 

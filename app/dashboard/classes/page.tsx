@@ -184,7 +184,7 @@ export default function ClassesPage() {
             name: generatedClassNames[0], // Use first generated name for single edit
             grade: formData.grade,
             stream: formData.stream || '',
-            classTeacher: formData.classTeacher || null,
+            classTeacher: formData.classTeacher && formData.classTeacher.trim() !== '' ? formData.classTeacher : null,
           }),
         });
 
@@ -192,6 +192,10 @@ export default function ClassesPage() {
 
         if (data.success) {
           toast.success(data.message);
+          // Update local state with populated class from API
+          if (data.data) {
+            setClasses(prev => prev.map(c => c._id === data.data._id ? data.data : c));
+          }
           setDialogOpen(false);
           resetForm();
           fetchClasses();
@@ -206,7 +210,7 @@ export default function ClassesPage() {
         name,
         grade: formData.grade,
         stream: formData.stream || '',
-        classTeacher: formData.classTeacher || null,
+        classTeacher: formData.classTeacher && formData.classTeacher.trim() !== '' ? formData.classTeacher : null,
       }));
 
       // Create all classes

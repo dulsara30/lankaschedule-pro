@@ -19,7 +19,7 @@ export async function GET() {
     }
 
     const classes = await Class.find({ schoolId: school._id })
-      .populate('classTeacher')
+      .populate({ path: 'classTeacher', strictPopulate: false })
       .sort({ grade: 1, name: 1 })
       .lean();
 

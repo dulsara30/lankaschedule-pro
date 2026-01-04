@@ -549,8 +549,8 @@ class TimetableSolver:
                 status = self.solver.Solve(self.model)
         else:
             # SINGLE-STAGE SOLVING: Traditional strict mode
-            # Reduced to 360s (6 min) to stay safely under Next.js 600s limit
-            actual_time = min(time_limit_seconds, 360)
+            # Reduced to 300s (5 min) for 480s total with deep search (stays under 600s Next.js limit)
+            actual_time = min(time_limit_seconds, 300)
             print(f"\n🔍 SINGLE-STAGE MODE: {actual_time}s with strict penalties (safe buffer: {time_limit_seconds - actual_time}s)")
             print("   Seed: 42 | Target: 96%+ placement with strict balance")
             print("="*60)
@@ -582,11 +582,11 @@ class TimetableSolver:
             
             # Trigger deep search if we have 50 or fewer unplaced periods (typically 95%+)
             # Extended polishing: +180s (3 minutes) for maximum placement potential
-            if unplaced_count > 0 and unplaced_count <= 50 and solving_time < 540:
-                print(f"\n🔍 DEEP SEARCH ACTIVATED: {unplaced_count} tasks remaining (Threshold: 50). Polishing for 180s...")
+            if unplaced_count > 0 and unplaced_count <= 50 and solving_time < 480:
+                print(f"\n🔍 DEEP SEARCH: Filling final {unplaced_count} gaps with relaxed quality...")
                 print(f"   🚀 FINAL PUSH: Extending time by +180s (3 minutes) for 100% placement!")
                 print(f"   Placement rate: {placement_rate*100:.1f}% - Targeting 100%")
-                print("   🔍 DEEP SEARCH: Prioritizing 100% placement with reduced penalties...")
+                print("   🔍 DEEP SEARCH: Prioritizing 100% placement with aggressive penalty reduction...")
                 
                 # Memory cleanup before extended search
                 gc.collect()
@@ -601,13 +601,13 @@ class TimetableSolver:
                     except:
                         pass
                 
-                # Rebuild objective with REDUCED penalty (-100 instead of -10,000)
+                # Rebuild objective with AGGRESSIVE penalty reduction (-10 instead of -10,000)
                 # This forces 100% placement by making clumping acceptable
-                print(f"   💡 STRATEGY: Rebuilding objective with -100pt penalty (was -10,000pt)")
-                print(f"   📈 Logic: At 98% capacity, force AI to fill remaining gaps above quality")
+                print(f"   💡 STRATEGY: Rebuilding objective with -10pt penalty (was -10,000pt = 1000x reduction)")
+                print(f"   📈 Logic: At 98% capacity, remaining gaps physically require clumping - prioritize placement")
                 
                 # Clear and rebuild objective only (keep constraints)
-                self._set_objective(penalty_multiplier=0.01)  # -100 instead of -10,000
+                self._set_objective(penalty_multiplier=0.001)  # -10 instead of -10,000
                 
                 # Apply solution hints to variables
                 hint_count = 0

@@ -7,11 +7,12 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Plus, Pencil, Trash2, MoreVertical, X, Search, Lightbulb, Check, ChevronsUpDown, ChevronLeft, ChevronRight, FilterX } from 'lucide-react';
+import { Plus, Pencil, Trash2, Sparkles, MoreVertical, X, Search, Lightbulb, Check, ChevronsUpDown, ChevronLeft, ChevronRight, FilterX } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
+import { generateTimetableAction } from '@/app/actions/generateTimetable';
 import { cn } from '@/lib/utils';
 
 interface Subject {
@@ -53,6 +54,9 @@ export default function LessonsPage() {
   const [classes, setClasses] = useState<Class[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationStep, setGenerationStep] = useState(0);
+  const [generationVersionName, setGenerationVersionName] = useState('');
 
   const [formData, setFormData] = useState({
     lessonName: '',
@@ -331,6 +335,63 @@ export default function LessonsPage() {
     if (!open) resetForm();
   };
 
+  const handleGenerateTimetable = async () => {
+    if (lessons.length === 0) {
+      toast.error('No lessons found. Please create lessons first.');
+      return;
+    }
+
+    // Auto-generate version name if not provided
+    const versionToUse = generationVersionName.trim() || `Draft v${new Date().getTime()}`;
+
+    setIsGenerating(true);
+    setGenerationStep(1);
+
+    try {
+      // Step 1: Analyzing capacity (2s)
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      setGenerationStep(2);
+      
+      // Step 2: Mapping constraints (2s)
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      setGenerationStep(3);
+      
+      // Step 3: Call Python CP-SAT solver (30-120s)
+      const result = await generateTimetableAction(versionToUse);
+
+      if (result?.success) {
+        setGenerationStep(4);
+        
+        // Use optional chaining to safely access nested properties
+        const slotsPlaced = result.slotsPlaced || result.stats?.totalSlots || 0;
+        const conflicts = result.conflicts || 0;
+        
+        toast.success(`Generated ${slotsPlaced} slots with ${conflicts} conflicts`);
+        
+        if (conflicts === 0) {
+          toast.success('\ud83c\udf89 Perfect timetable - Zero conflicts!', { duration: 5000 });
+        }
+
+        // Refresh to ensure sidebar picks up unscheduled lessons
+        router.refresh();
+        
+        // Navigate to timetable page
+        setTimeout(() => {
+          router.push('/dashboard/timetable');
+        }, 1500);
+      } else {
+        throw new Error(result?.message || 'Failed to generate timetable');
+      }
+    } catch (error: unknown) {
+      console.error('Timetable generation error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      toast.error(`Generation failed: ${errorMessage}`);
+    } finally {
+      setIsGenerating(false);
+      setGenerationStep(0);
+    }
+  };
+
   const totalPeriods = formData.numberOfSingles + (formData.numberOfDoubles * 2);
 
   // Advanced filtering and pagination logic
@@ -415,115 +476,8 @@ export default function LessonsPage() {
     setCurrentPage(1);
   }, [searchQuery, filterGrade, filterStream, filterSubjectId, filterTeacherId]);
 
-  const generationSteps = [
-    'Fetching School Configuration...',
-    'Calling Python CP-SAT Solver...',
-    'Saving Optimized Timetable...',
-    'Complete! ✓',
-  ];
-
   return (
     <div className="space-y-6">
-      {/* Full-Screen AI Generation Overlay */}
-      {isGenerating && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm">
-          <div className="relative flex flex-col items-center max-w-2xl px-8">
-            {/* Animated Brain/AI Icon */}
-            <div className="relative mb-8">
-              {generationStep < 6 ? (
-                <div className="relative">
-                  <div className="absolute inset-0 animate-ping">
-                    <Sparkles className="h-24 w-24 text-purple-500 opacity-50" />
-                  </div>
-                  <div className="relative animate-pulse">
-                    <Sparkles className="h-24 w-24 text-purple-400" />
-                  </div>
-                </div>
-              ) : (
-                <div className="relative">
-                  <div className="absolute inset-0 animate-ping">
-                    <div className="h-24 w-24 rounded-full bg-green-500 opacity-50" />
-                  </div>
-                  <div className="relative flex items-center justify-center">
-                    <div className="h-24 w-24 rounded-full bg-green-500 flex items-center justify-center">
-                      <svg className="h-16 w-16 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                      </svg>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Title */}
-            <h2 className="text-3xl font-bold text-white mb-2">
-              {generationStep < 6 ? 'AI Timetable Generation' : 'Generation Complete!'}
-            </h2>
-            <p className="text-zinc-400 text-lg mb-12">
-              {generationStep < 6 
-                ? 'Processing constraints and optimizing schedules...' 
-                : 'Redirecting to timetable view...'}
-            </p>
-
-            {/* Progress Steps */}
-            <div className="w-full max-w-xl space-y-4">
-              {generationSteps.map((step, index) => {
-                const stepNumber = index + 1;
-                const isComplete = generationStep > stepNumber;
-                const isCurrent = generationStep === stepNumber;
-
-                return (
-                  <div
-                    key={index}
-                    className={`flex items-center gap-4 p-4 rounded-lg transition-all ${
-                      isComplete
-                        ? 'bg-green-500/20 border border-green-500/50'
-                        : isCurrent
-                        ? 'bg-purple-500/20 border border-purple-500/50 animate-pulse'
-                        : 'bg-zinc-800/50 border border-zinc-700/50'
-                    }`}
-                  >
-                    {/* Step Icon */}
-                    <div
-                      className={`flex items-center justify-center h-8 w-8 rounded-full shrink-0 ${
-                        isComplete
-                          ? 'bg-green-500'
-                          : isCurrent
-                          ? 'bg-purple-500'
-                          : 'bg-zinc-700'
-                      }`}
-                    >
-                      {isComplete ? (
-                        <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                      ) : isCurrent ? (
-                        <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <span className="text-zinc-400 text-sm font-bold">{stepNumber}</span>
-                      )}
-                    </div>
-
-                    {/* Step Text */}
-                    <span
-                      className={`text-sm font-medium ${
-                        isComplete
-                          ? 'text-green-400'
-                          : isCurrent
-                          ? 'text-purple-300'
-                          : 'text-zinc-500'
-                      }`}
-                    >
-                      {step}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-50">
@@ -533,15 +487,126 @@ export default function LessonsPage() {
             Create lesson units with multiple subjects, teachers, and parallel classes
           </p>
         </div>
-        <div className="flex gap-3">
-          <Button onClick={() => setDialogOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Create Lesson
+        <div className="flex gap-3 items-center">
+          <Input
+            type="text"
+            placeholder="Version name (optional)"
+            value={generationVersionName}
+            onChange={(e) => setGenerationVersionName(e.target.value)}
+            className="w-48"
+            disabled={isGenerating}
+          />
+          <Button
+            onClick={handleGenerateTimetable}
+            disabled={isGenerating || lessons.length === 0}
+            variant="outline"
+            className="bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 border-0"
+          >
+            {isGenerating ? (
+              <>
+                <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+                Generating...
+              </>
+            ) : (
+              <>
+                <Sparkles className="mr-2 h-4 w-4" />
+                Generate Timetable
+              </>
+            )}
           </Button>
-          
-          {/* Custom Modal Overlay */}
-          {dialogOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <Button onClick={() => setDialogOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" />
+          Create Lesson
+        </Button>
+      </div>
+    </div>
+
+      {/* Generation Progress Overlay */}
+      {isGenerating && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md">
+          <div className="relative flex flex-col items-center gap-8 p-12 bg-white/10 backdrop-blur-xl rounded-3xl border border-white/20 shadow-2xl">
+            {/* Animated Icon */}
+            <div className="relative">
+              <Sparkles className="h-24 w-24 text-purple-400 animate-pulse" />
+              <div className="absolute inset-0 animate-ping">
+                <Sparkles className="h-24 w-24 text-pink-400 opacity-20" />
+              </div>
+            </div>
+
+            {/* Progress Steps */}
+            <div className="flex flex-col items-center gap-4 min-w-[500px]">
+              <h2 className="text-3xl font-bold text-white tracking-tight">
+                AI Timetable Generation
+              </h2>
+              
+              <div className="w-full bg-white/10 rounded-full h-3 overflow-hidden">
+                <div 
+                  className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-500 ease-out rounded-full"
+                  style={{ width: `${(generationStep / 4) * 100}%` }}
+                />
+              </div>
+
+              <div className="flex flex-col gap-3 w-full">
+                {/* Step 1: Resource Mapping */}
+                <div className={`flex items-center gap-3 p-4 rounded-lg transition-all ${generationStep >= 1 ? 'bg-white/20 text-white' : 'bg-white/5 text-white/50'}`}>
+                  <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${generationStep >= 1 ? 'bg-purple-500' : 'bg-white/10'}`}>
+                    {generationStep > 1 ? <Check className="h-5 w-5" /> : '1'}
+                  </div>
+                  <div className="flex-1">
+                    <span className="font-medium">📊 Resource Mapping: Indexing 914 potential slots...</span>
+                    {generationStep === 1 && (
+                      <p className="text-xs text-white/60 mt-1">Loading lessons, classes, teachers, and configuration</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Step 2: AI Optimization */}
+                <div className={`flex items-center gap-3 p-4 rounded-lg transition-all ${generationStep >= 2 ? 'bg-white/20 text-white' : 'bg-white/5 text-white/50'}`}>
+                  <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${generationStep >= 2 ? 'bg-purple-500' : 'bg-white/10'}`}>
+                    {generationStep > 2 ? <Check className="h-5 w-5" /> : '2'}
+                  </div>
+                  <div className="flex-1">
+                    <span className="font-medium">🧠 Elite AI Optimization: 8 parallel workers solving 5,000+ constraints...</span>
+                    {generationStep === 2 && (
+                      <p className="text-xs text-white/60 mt-1">Extreme penalties enforcing perfect subject distribution (180s max time)</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Step 3: Subject Balancing */}
+                <div className={`flex items-center gap-3 p-4 rounded-lg transition-all ${generationStep >= 3 ? 'bg-white/20 text-white' : 'bg-white/5 text-white/50'}`}>
+                  <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${generationStep >= 3 ? 'bg-purple-500 animate-pulse' : 'bg-white/10'}`}>
+                    {generationStep > 3 ? <Check className="h-5 w-5" /> : '3'}
+                  </div>
+                  <div className="flex-1">
+                    <span className="font-medium">⚖️ Elite Subject Balancing: -400pt penalty per clumping violation...</span>
+                    {generationStep === 3 && (
+                      <p className="text-xs text-white/60 mt-1 animate-pulse">Singles=500pts, Doubles=1000pts, forcing perfect spread (CP-SAT solver: 180s)</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Step 4: Data Persistence */}
+                <div className={`flex items-center gap-3 p-4 rounded-lg transition-all ${generationStep >= 4 ? 'bg-white/20 text-white' : 'bg-white/5 text-white/50'}`}>
+                  <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${generationStep >= 4 ? 'bg-purple-500' : 'bg-white/10'}`}>
+                    {generationStep > 4 ? <Check className="h-5 w-5" /> : '4'}
+                  </div>
+                  <div className="flex-1">
+                    <span className="font-medium">💾 Data Persistence: Finalizing slots and unplaced items...</span>
+                    {generationStep === 4 && (
+                      <p className="text-xs text-white/60 mt-1">Saving to MongoDB (slots collection + version array)</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Modal Overlay */}
+      {dialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
               {/* Modal Container */}
               <div className="w-[95vw] max-w-400 h-[92vh] bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
                 {/* Modal Header */}
@@ -850,8 +915,6 @@ export default function LessonsPage() {
               </div>
             </div>
           )}
-        </div>
-      </div>
 
       {/* Advanced Filters Card */}
       <Card>

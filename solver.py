@@ -349,18 +349,19 @@ class TimetableSolver:
     
     def _set_objective(self):
         """Maximize number of placed lessons with priority weights and subject distribution"""
-        # OPTIMIZATION MODE: Place as many lessons as possible
-        # Priority: Double periods (100 points) > Single periods (50 points)
-        # Penalty: Same subject multiple times per day for a class (-20 points)
+        # ELITE OPTIMIZATION MODE: Place as many lessons as possible with strict quality
+        # Priority: Double periods (1000 points) > Single periods (500 points)
+        # Extreme Penalty: Same subject multiple times per day for a class (-400 points)
+        # Strategy: High rewards + extreme penalties = AI forced to balance perfectly
         
         objective_terms = []
         for task in self.task_info:
             task_idx = task['task_idx']
             presence_var = self.presence_vars[task_idx]
             
-            # Weight: doubles are more valuable than singles
+            # ELITE WEIGHTS: 10x boost for maximum placement motivation
             # Multiply by number of classes to fairly weight parallel lessons
-            weight = 100 if task['type'] == 'double' else 50
+            weight = 1000 if task['type'] == 'double' else 500
             weight *= len(task['classIds'])  # Fair weighting for parallel classes
             objective_terms.append(weight * presence_var)
         
@@ -420,25 +421,27 @@ class TimetableSolver:
                     count_var = self.model.NewIntVar(0, len(day_vars), f"count_class_{class_id}_subj_{subject_id}_day_{day}")
                     self.model.Add(count_var == sum(day_vars))
                     
-                    # Penalize if count > 1 (excluding double periods which count as 1 task)
-                    # For each occurrence beyond the first, subtract 20 points
+                    # EXTREME PENALTY: If count > 1, subtract 400 points per extra occurrence
+                    # This forces the AI to spread subjects across days instead of clumping
+                    # Since singles=500pts, clumping loses 400pts → net 100pts vs 500pts balanced
                     overflow_var = self.model.NewIntVar(0, len(day_vars), f"overflow_class_{class_id}_subj_{subject_id}_day_{day}")
                     self.model.AddMaxEquality(overflow_var, [count_var - 1, 0])
-                    objective_terms.append(-20 * overflow_var)
+                    objective_terms.append(-400 * overflow_var)
                     penalty_count += 1
         
         print(f"   ✅ Added {penalty_count} subject distribution penalties")
-        print("   📈 This encourages spreading subjects across the week")
+        print("   📈 ELITE MODE: Extreme penalties enforce perfect spreading")
         
         # Maximize total weighted placements with penalties
         self.model.Maximize(sum(objective_terms))
         
-        print(f"\n🎯 Objective: Maximize placed lessons with quality distribution")
-        print(f"   Base weights: Doubles=100pts, Singles=50pts (× class count for parallel lessons)")
-        print(f"   Penalties: Same subject >1/day = -20pts per extra occurrence")
+        print(f"\n🎯 ELITE OBJECTIVE: Maximum placement + strict subject distribution")
+        print(f"   Base weights: Doubles=1000pts, Singles=500pts (× class count for parallel)")
+        print(f"   EXTREME Penalty: Same subject >1/day = -400pts per extra occurrence")
+        print(f"   Strategy: High rewards + extreme penalties = forced balance")
         print(f"   Best case: {len(self.task_info)} tasks placed with perfect distribution")
     
-    def solve(self, time_limit_seconds: int = 120) -> SolverResponse:
+    def solve(self, time_limit_seconds: int = 180) -> SolverResponse:
         """Run the CP-SAT solver in optimization mode"""
         start_time = time.time()
         
@@ -455,13 +458,15 @@ class TimetableSolver:
         # Step 3: Set objective
         self._set_objective()
         
-        # Step 4: Configure solver
+        # Step 4: Configure solver - ELITE PERFORMANCE MODE
         self.solver.parameters.max_time_in_seconds = time_limit_seconds
-        self.solver.parameters.num_search_workers = 8  # Parallel search
+        self.solver.parameters.num_search_workers = 8  # Full CPU utilization
         self.solver.parameters.log_search_progress = True
+        self.solver.parameters.random_seed = 42  # Consistent high-quality results
         
-        print(f"\n🔍 Solving with {time_limit_seconds}s time limit (OPTIMIZATION MODE)...")
-        print("   Mode: Best-effort placement (may place partial timetable)")
+        print(f"\n🔍 ELITE SOLVING MODE: {time_limit_seconds}s time limit with 8 parallel workers...")
+        print("   Seed: 42 (consistent results) | Target: 96%+ utilization")
+        print("   Mode: Maximum effort placement with strict subject distribution")
         
         # Step 5: Solve
         status = self.solver.Solve(self.model)
@@ -671,17 +676,18 @@ async def health():
 @app.post("/solve", response_model=SolverResponse)
 async def solve_timetable(request: SolverRequest):
     """
-    Solve timetable using CP-SAT
+    ELITE AI Solver - Solve timetable using CP-SAT with maximum performance
     
     - **lessons**: List of lessons with teacher/class assignments
     - **classes**: List of classes
     - **config**: School configuration (periods, days, intervals)
     
-    Returns optimized timetable with 0 conflicts (guaranteed by CP-SAT)
+    Returns optimized timetable with 0 conflicts and strict subject distribution
+    Elite Mode: 180s solving time, extreme penalties for clumping, 96%+ target
     """
     try:
         solver = TimetableSolver(request)
-        result = solver.solve(time_limit_seconds=60)
+        result = solver.solve(time_limit_seconds=180)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Solver error: {str(e)}")

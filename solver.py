@@ -487,11 +487,11 @@ class TimetableSolver:
         # Example: 20min = 17min quality + 3min forced placement = 100% success
         stage1_time = max(60, time_limit_seconds - 180)  # Reserve 180s for deep search
         
-        print(f"\n🎯 ASYNC MODE (Quality + Force Strategy)")
-        print(f"   Stage 1: {stage1_time}s ({stage1_time/60:.1f}min) high-quality solving with strict penalties")
-        print(f"   Deep Search: Reserved 180s (3min) for forced placement if needed")
-        print(f"   Total time budget: {time_limit_seconds}s ({time_limit_seconds/60:.1f}min)")
-        print(f"   Strategy: Quality first, then force 100% placement in final 3 minutes")
+        print(f"\n🔍 PHASE 1: Quality ({stage1_time/60:.1f}m) - High-Quality Solving")
+        print(f"   Time: {stage1_time}s ({stage1_time/60:.1f} minutes)")
+        print(f"   Strategy: Strict penalties (-10,000pt) for balanced subject distribution")
+        print(f"   Goal: Maximize quality and placement (typically 95-99%)")
+        print(f"   Reserved for Phase 2: 180s (3min) forced placement if needed")
         print("="*60)
         
         self.solver.parameters.max_time_in_seconds = stage1_time
@@ -522,11 +522,13 @@ class TimetableSolver:
             # Trigger deep search if ANY unplaced periods remain
             # Extended polishing: 180s (3 minutes) with -10 penalty for forced 100% placement
             if unplaced_count > 0:
-                print(f"\n🔍 ASYNC DEEP SEARCH: Filling final {unplaced_count} gaps with maximum force...")
-                print(f"   🚀 FINAL PUSH: Extending time by +180s (3 minutes) for 100% placement!")
-                print(f"   Placement rate: {placement_rate*100:.1f}% - Targeting 100%")
-                print(f"   📊 Model integrity: {len(self.task_info)} tasks (max 711)")
-                print("   🔍 FORCE MODE: Aggressive penalty reduction for 100% success...")
+                print(f"\n🔍 PHASE 2: Force Placement (3m) - Aggressive Gap Filling")
+                print(f"   Unplaced slots from Phase 1: {unplaced_count} ({(1-placement_rate)*100:.1f}% remaining)")
+                print(f"   Time: 180s (3 minutes) dedicated forced placement")
+                print(f"   Strategy: FORCE MODE with -10pt penalty (was -10,000pt)")
+                print(f"   Goal: 100% placement by accepting minor quality trade-offs")
+                print(f"   Model integrity: {len(self.task_info)} tasks (max 711)")
+                print("="*60)
                 
                 # CRITICAL: Memory cleanup before extended search
                 print("   🧹 Memory cleanup before deep search...")

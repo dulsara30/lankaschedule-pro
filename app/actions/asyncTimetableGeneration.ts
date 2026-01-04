@@ -51,16 +51,14 @@ export async function startTimetableGeneration(
       Subject.find({ schoolId: school._id }).lean(),
     ]);
 
-    // Step 4: Filter enabled lessons only
-    // NOTE: Lessons without a status field default to 'enabled'
-    const enabledLessons = lessonsData.filter((lesson: any) => 
-      lesson.status === 'enabled' || lesson.status === undefined || lesson.status === null
-    );
+    // Step 4: Filter lessons - include ALL except explicitly disabled
+    // This captures: enabled, undefined, null, and any other status
+    const enabledLessons = lessonsData.filter((lesson: any) => lesson.status !== 'disabled');
     const disabledLessons = lessonsData.filter((lesson: any) => lesson.status === 'disabled');
 
     console.log(`📊 Total lessons in database: ${lessonsData.length}`);
-    console.log(`✅ Enabled lessons (including undefined): ${enabledLessons.length}`);
-    console.log(`❌ Disabled lessons: ${disabledLessons.length}`);
+    console.log(`✅ Lessons to schedule (status !== 'disabled'): ${enabledLessons.length}`);
+    console.log(`❌ Disabled lessons (excluded): ${disabledLessons.length}`);
     
     // Log status distribution for debugging
     const statusCounts: any = {};

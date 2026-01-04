@@ -5,8 +5,9 @@
  * Python solver using Google OR-Tools CP-SAT. It fetches the optimized timetable
  * from the Python FastAPI service and saves it to MongoDB.
  * 
- * Timeout: 420s allows full elite solver runs (5min base + 2min deep search)
- * Configured via fetch AbortSignal.timeout(420000ms)
+ * Timeout: 605s allows maximum elite solver runs (7min base + 3min deep search)
+ * Total: 10 minutes for 100% placement potential
+ * Configured via fetch AbortSignal.timeout(605000ms)
  */
 
 'use server';
@@ -255,14 +256,14 @@ export async function generateTimetableAction(
           "Content-Type": "application/json",
         },
         body: JSON.stringify(payload),
-        // 420 second timeout (7 minutes: 5min base + 2min deep search polishing)
-        signal: AbortSignal.timeout(420000),
+        // 605 second timeout (10 minutes: 7min base + 3min deep search polishing)
+        signal: AbortSignal.timeout(605000),
       });
     } catch (fetchError: any) {
       if (fetchError.name === "TimeoutError") {
         return {
           success: false,
-          message: "Solver timeout (420s). The problem may be too complex. Try disabling some heavy lessons (Aesthetic/IT) or reducing the time limit.",
+          message: "Solver connection lost or timed out (600s). The problem may be extremely complex. Try disabling heavy lessons (Aesthetic/IT) or reducing the time limit.",
         };
       }
       
@@ -270,7 +271,7 @@ export async function generateTimetableAction(
       if (fetchError.cause?.code === "ECONNREFUSED" || fetchError.message?.includes("ECONNREFUSED") || fetchError.message?.includes("fetch failed")) {
         return {
           success: false,
-          message: '🔴 Python Solver is offline. Please run "python solver.py" in your terminal.',
+          message: '🔴 Python Solver is offline. Check if solver.py is running on port 8000.',
         };
       }
       

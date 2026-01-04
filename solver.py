@@ -570,13 +570,14 @@ class TimetableSolver:
             placement_rate = len(slots) / total_required_slots if total_required_slots > 0 else 0
             
             # Trigger deep search if we have 25 or fewer unplaced periods (typically 97%+)
-            if unplaced_count > 0 and unplaced_count <= 25 and solving_time < time_limit_seconds + 120:
+            # Extended polishing: +180s (3 minutes) for maximum placement potential
+            if unplaced_count > 0 and unplaced_count <= 25 and solving_time < time_limit_seconds + 180:
                 print(f"\n🔍 DEEP SEARCH POLISHING: {unplaced_count} periods remaining ({placement_rate*100:.1f}%)")
-                print(f"   Extending time by +120s for 100% placement push...")
+                print(f"   🚀 FINAL PUSH: Extending time by +180s (3 minutes) for 100% placement!")
                 print("   Multi-strategy portfolio search with interleaved exploration")
                 
-                # Extend the time limit
-                extended_time = 120
+                # Extend the time limit to 180 seconds (3 minutes)
+                extended_time = 180
                 self.solver.parameters.max_time_in_seconds = extended_time
                 
                 # Already have elite parameters set, just re-solve

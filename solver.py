@@ -147,53 +147,56 @@ class TimetableSolver:
     def _create_variables(self):
         """Create decision variables for all possible task placements"""
         print(f"📊 Creating variables for {len(self.lessons)} lessons...")
+        print("   🔄 PARALLEL MODE: One task per lesson (applies to ALL classes)")
         
         task_idx = 0
         for lesson_idx, lesson in enumerate(self.lessons):
-            # Create tasks for each class assigned to this lesson
-            for class_idx, class_id in enumerate(lesson.classIds):
-                # Single period tasks
-                for _ in range(lesson.numberOfSingles):
-                    for day in self.days:
-                        for period in range(1, self.num_periods + 1):
-                            var = self.model.NewBoolVar(
-                                f"lesson_{lesson_idx}_class_{class_idx}_single_{task_idx}_day_{day}_period_{period}"
-                            )
-                            self.task_vars[(lesson_idx, class_idx, 'single', task_idx, day, period)] = var
-                            
-                            if day == self.days[0] and period == 1:
-                                self.task_info.append({
-                                    'task_idx': task_idx,
-                                    'lesson_idx': lesson_idx,
-                                    'lesson': lesson,
-                                    'class_id': class_id,
-                                    'type': 'single'
-                                })
-                                self.stats['singlesCreated'] += 1
-                    task_idx += 1
-                
-                # Double period tasks
-                for _ in range(lesson.numberOfDoubles):
-                    for day in self.days:
-                        for period in self.valid_double_starts:
-                            var = self.model.NewBoolVar(
-                                f"lesson_{lesson_idx}_class_{class_idx}_double_{task_idx}_day_{day}_period_{period}"
-                            )
-                            self.task_vars[(lesson_idx, class_idx, 'double', task_idx, day, period)] = var
-                            
-                            if day == self.days[0] and period == self.valid_double_starts[0]:
-                                self.task_info.append({
-                                    'task_idx': task_idx,
-                                    'lesson_idx': lesson_idx,
-                                    'lesson': lesson,
-                                    'class_id': class_id,
-                                    'type': 'double'
-                                })
-                                self.stats['doublesCreated'] += 1
-                    task_idx += 1
+            # ✨ CRITICAL CHANGE: Create ONE task per lesson (not per class)
+            # This ensures parallel classes get scheduled at the SAME time
+            
+            # Single period tasks
+            for single_num in range(lesson.numberOfSingles):
+                for day in self.days:
+                    for period in range(1, self.num_periods + 1):
+                        var = self.model.NewBoolVar(
+                            f"lesson_{lesson_idx}_single_{single_num}_day_{day}_period_{period}"
+                        )
+                        self.task_vars[(lesson_idx, 'single', task_idx, day, period)] = var
+                        
+                        if day == self.days[0] and period == 1:
+                            self.task_info.append({
+                                'task_idx': task_idx,
+                                'lesson_idx': lesson_idx,
+                                'lesson': lesson,
+                                'classIds': lesson.classIds,  # Store ALL classIds
+                                'type': 'single'
+                            })
+                            self.stats['singlesCreated'] += 1
+                task_idx += 1
+            
+            # Double period tasks
+            for double_num in range(lesson.numberOfDoubles):
+                for day in self.days:
+                    for period in self.valid_double_starts:
+                        var = self.model.NewBoolVar(
+                            f"lesson_{lesson_idx}_double_{double_num}_day_{day}_period_{period}"
+                        )
+                        self.task_vars[(lesson_idx, 'double', task_idx, day, period)] = var
+                        
+                        if day == self.days[0] and period == self.valid_double_starts[0]:
+                            self.task_info.append({
+                                'task_idx': task_idx,
+                                'lesson_idx': lesson_idx,
+                                'lesson': lesson,
+                                'classIds': lesson.classIds,  # Store ALL classIds
+                                'type': 'double'
+                            })
+                            self.stats['doublesCreated'] += 1
+                task_idx += 1
         
         self.stats['totalTasks'] = len(self.task_info)
-        print(f"✅ Created {self.stats['totalTasks']} tasks ({self.stats['singlesCreated']} singles, {self.stats['doublesCreated']} doubles)")
+        print(f"✅ Created {self.stats['totalTasks']} unified tasks ({self.stats['singlesCreated']} singles, {self.stats['doublesCreated']} doubles)")
+        print(f"   📍 Each task applies to {sum(len(t['classIds']) for t in self.task_info)} total class slots")
     
     def _add_constraints(self):
         """Add all hard constraints to the model"""
@@ -218,11 +221,7 @@ class TimetableSolver:
         for task in self.task_info:
             task_idx = task['task_idx']
             lesson_idx = task['lesson_idx']
-            class_id = task['class_id']
             task_type = task['type']
-            
-            # Find class index
-            class_idx = next(i for i, cid in enumerate(task['lesson'].classIds) if cid == class_id)
             
             # Create presence variable for this task
             presence_var = self.model.NewBoolVar(f"presence_task_{task_idx}")
@@ -233,12 +232,12 @@ class TimetableSolver:
             for day in self.days:
                 if task_type == 'single':
                     for period in range(1, self.num_periods + 1):
-                        key = (lesson_idx, class_idx, 'single', task_idx, day, period)
+                        key = (lesson_idx, 'single', task_idx, day, period)
                         if key in self.task_vars:
                             task_slot_vars.append(self.task_vars[key])
                 else:  # double
                     for period in self.valid_double_starts:
-                        key = (lesson_idx, class_idx, 'double', task_idx, day, period)
+                        key = (lesson_idx, 'double', task_idx, day, period)
                         if key in self.task_vars:
                             task_slot_vars.append(self.task_vars[key])
             
@@ -268,29 +267,26 @@ class TimetableSolver:
                     teacher_period_vars = []
                     
                     for lesson_idx in lesson_indices:
-                        lesson = self.lessons[lesson_idx]
-                        for class_idx, class_id in enumerate(lesson.classIds):
-                            # Check singles at this period
-                            for task in self.task_info:
-                                if (task['lesson_idx'] == lesson_idx and 
-                                    task['class_id'] == class_id and 
-                                    task['type'] == 'single'):
-                                    key = (lesson_idx, class_idx, 'single', task['task_idx'], day, period)
+                        # Find all tasks for this lesson
+                        for task in self.task_info:
+                            if task['lesson_idx'] == lesson_idx:
+                                task_idx = task['task_idx']
+                                task_type = task['type']
+                                
+                                if task_type == 'single':
+                                    # Check singles at this period
+                                    key = (lesson_idx, 'single', task_idx, day, period)
                                     if key in self.task_vars:
                                         teacher_period_vars.append(self.task_vars[key])
-                            
-                            # Check doubles that occupy this period
-                            for task in self.task_info:
-                                if (task['lesson_idx'] == lesson_idx and 
-                                    task['class_id'] == class_id and 
-                                    task['type'] == 'double'):
+                                else:  # double
+                                    # Check doubles that occupy this period
                                     # Double at period P occupies P and P+1
                                     if period - 1 in self.valid_double_starts:
-                                        key = (lesson_idx, class_idx, 'double', task['task_idx'], day, period - 1)
+                                        key = (lesson_idx, 'double', task_idx, day, period - 1)
                                         if key in self.task_vars:
                                             teacher_period_vars.append(self.task_vars[key])
                                     if period in self.valid_double_starts:
-                                        key = (lesson_idx, class_idx, 'double', task['task_idx'], day, period)
+                                        key = (lesson_idx, 'double', task_idx, day, period)
                                         if key in self.task_vars:
                                             teacher_period_vars.append(self.task_vars[key])
                     
@@ -300,44 +296,48 @@ class TimetableSolver:
     
     def _add_class_no_overlap_constraints(self):
         """No class can have two lessons at the same time"""
-        # Group tasks by class
-        class_tasks = {}
-        for task in self.task_info:
-            class_id = task['class_id']
-            if class_id not in class_tasks:
-                class_tasks[class_id] = []
-            class_tasks[class_id].append(task)
+        print("   🎯 Enhanced: Parallel classes handled via unified tasks")
+        
+        # Get all unique class IDs across all lessons
+        all_class_ids = set()
+        for lesson in self.lessons:
+            all_class_ids.update(lesson.classIds)
         
         # For each class, for each day/period, ensure at most 1 lesson
-        for class_id, tasks in class_tasks.items():
-            if len(tasks) < 2:
-                continue
+        for class_id in all_class_ids:
+            # Find all tasks that involve this class
+            relevant_tasks = [t for t in self.task_info if class_id in t['classIds']]
+            
+            if len(relevant_tasks) < 2:
+                continue  # No conflicts possible
             
             for day in self.days:
                 for period in range(1, self.num_periods + 1):
                     class_period_vars = []
                     
-                    for task in tasks:
+                    for task in relevant_tasks:
                         lesson_idx = task['lesson_idx']
-                        lesson = task['lesson']
-                        class_idx = next(i for i, cid in enumerate(lesson.classIds) if cid == class_id)
+                        task_idx = task['task_idx']
+                        task_type = task['type']
                         
-                        if task['type'] == 'single':
-                            key = (lesson_idx, class_idx, 'single', task['task_idx'], day, period)
+                        if task_type == 'single':
+                            # Single at this period
+                            key = (lesson_idx, 'single', task_idx, day, period)
                             if key in self.task_vars:
                                 class_period_vars.append(self.task_vars[key])
                         else:  # double
                             # Double at period P occupies P and P+1
                             if period - 1 in self.valid_double_starts:
-                                key = (lesson_idx, class_idx, 'double', task['task_idx'], day, period - 1)
+                                key = (lesson_idx, 'double', task_idx, day, period - 1)
                                 if key in self.task_vars:
                                     class_period_vars.append(self.task_vars[key])
                             if period in self.valid_double_starts:
-                                key = (lesson_idx, class_idx, 'double', task['task_idx'], day, period)
+                                key = (lesson_idx, 'double', task_idx, day, period)
                                 if key in self.task_vars:
                                     class_period_vars.append(self.task_vars[key])
                     
                     if len(class_period_vars) > 1:
+                        # At most 1 lesson for this class at this time
                         self.model.Add(sum(class_period_vars) <= 1)
                         self.stats['constraintsAdded'] += 1
     
@@ -348,9 +348,10 @@ class TimetableSolver:
         pass
     
     def _set_objective(self):
-        """Maximize number of placed lessons with priority weights"""
+        """Maximize number of placed lessons with priority weights and subject distribution"""
         # OPTIMIZATION MODE: Place as many lessons as possible
         # Priority: Double periods (100 points) > Single periods (50 points)
+        # Penalty: Same subject multiple times per day for a class (-20 points)
         
         objective_terms = []
         for task in self.task_info:
@@ -358,14 +359,84 @@ class TimetableSolver:
             presence_var = self.presence_vars[task_idx]
             
             # Weight: doubles are more valuable than singles
+            # Multiply by number of classes to fairly weight parallel lessons
             weight = 100 if task['type'] == 'double' else 50
+            weight *= len(task['classIds'])  # Fair weighting for parallel classes
             objective_terms.append(weight * presence_var)
         
-        # Maximize total weighted placements
+        # ADVANCED: Add subject distribution penalties
+        # Discourage same subject appearing multiple times in one day for a class
+        print("\n🎯 Adding advanced subject distribution constraints...")
+        distribution_penalties = []
+        
+        # Get all unique class IDs
+        all_class_ids = set()
+        for lesson in self.lessons:
+            all_class_ids.update(lesson.classIds)
+        
+        # Group tasks by class and subject
+        class_subject_tasks = {}
+        for task in self.task_info:
+            lesson = task['lesson']
+            # Use first subject as representative (lessons can have multiple subjects)
+            subject_id = lesson.subjectIds[0] if lesson.subjectIds else None
+            
+            if subject_id:
+                # For each class in this task's classIds
+                for class_id in task['classIds']:
+                    key = (class_id, subject_id)
+                    if key not in class_subject_tasks:
+                        class_subject_tasks[key] = []
+                    class_subject_tasks[key].append(task)
+        
+        # For each class-subject combination, penalize multiple occurrences per day
+        penalty_count = 0
+        for (class_id, subject_id), tasks in class_subject_tasks.items():
+            if len(tasks) <= 1:
+                continue  # Only one task, no distribution issue
+            
+            # For each day, count how many of these tasks are placed
+            for day in self.days:
+                day_vars = []
+                for task in tasks:
+                    task_idx = task['task_idx']
+                    lesson_idx = task['lesson_idx']
+                    task_type = task['type']
+                    
+                    # Collect variables for this task on this day
+                    if task_type == 'single':
+                        for period in range(1, self.num_periods + 1):
+                            key = (lesson_idx, 'single', task_idx, day, period)
+                            if key in self.task_vars:
+                                day_vars.append(self.task_vars[key])
+                    else:  # double
+                        for period in self.valid_double_starts:
+                            key = (lesson_idx, 'double', task_idx, day, period)
+                            if key in self.task_vars:
+                                day_vars.append(self.task_vars[key])
+                
+                if len(day_vars) > 1:
+                    # Create a variable to count occurrences on this day
+                    count_var = self.model.NewIntVar(0, len(day_vars), f"count_class_{class_id}_subj_{subject_id}_day_{day}")
+                    self.model.Add(count_var == sum(day_vars))
+                    
+                    # Penalize if count > 1 (excluding double periods which count as 1 task)
+                    # For each occurrence beyond the first, subtract 20 points
+                    overflow_var = self.model.NewIntVar(0, len(day_vars), f"overflow_class_{class_id}_subj_{subject_id}_day_{day}")
+                    self.model.AddMaxEquality(overflow_var, [count_var - 1, 0])
+                    objective_terms.append(-20 * overflow_var)
+                    penalty_count += 1
+        
+        print(f"   ✅ Added {penalty_count} subject distribution penalties")
+        print("   📈 This encourages spreading subjects across the week")
+        
+        # Maximize total weighted placements with penalties
         self.model.Maximize(sum(objective_terms))
         
-        print(f"🎯 Objective: Maximize placed lessons (Doubles=100pts, Singles=50pts)")
-        print(f"   Best case: {len(self.task_info)} tasks placed")
+        print(f"\n🎯 Objective: Maximize placed lessons with quality distribution")
+        print(f"   Base weights: Doubles=100pts, Singles=50pts (× class count for parallel lessons)")
+        print(f"   Penalties: Same subject >1/day = -20pts per extra occurrence")
+        print(f"   Best case: {len(self.task_info)} tasks placed with perfect distribution")
     
     def solve(self, time_limit_seconds: int = 120) -> SolverResponse:
         """Run the CP-SAT solver in optimization mode"""
@@ -504,70 +575,81 @@ class TimetableSolver:
                     task_placed = False
             
             if not task_placed:
-                # Task not placed - add to unplaced list
+                # Task not placed - add to unplaced list FOR EACH CLASS
                 lesson = task['lesson']
-                class_id = task['class_id']
                 task_type = task['type']
                 
-                # Find class name
-                class_obj = next((c for c in self.request.classes if c.class_id == class_id), None)
-                class_name = f"{class_obj.grade}-{class_obj.name}" if class_obj else "Unknown"
-                
-                unplaced_tasks.append(UnplacedTask(
-                    lessonId=lesson.lesson_id,
-                    classId=class_id,
-                    lessonName=lesson.lesson_name,
-                    className=class_name,
-                    teacherName="N/A",  # Teacher names not available in lesson model
-                    taskType=task_type
-                ))
+                for class_id in task['classIds']:
+                    # Find class name
+                    class_obj = next((c for c in self.request.classes if c.class_id == class_id), None)
+                    class_name = f"{class_obj.grade}-{class_obj.name}" if class_obj else "Unknown"
+                    
+                    unplaced_tasks.append(UnplacedTask(
+                        lessonId=lesson.lesson_id,
+                        classId=class_id,
+                        lessonName=lesson.lesson_name,
+                        className=class_name,
+                        teacherName="N/A",  # Teacher names not available in lesson model
+                        taskType=task_type
+                    ))
                 continue  # Skip to next task
             
             lesson_idx = task['lesson_idx']
             lesson = task['lesson']
-            class_id = task['class_id']
             task_type = task['type']
             
-            # Find class index
-            class_idx = next(i for i, cid in enumerate(lesson.classIds) if cid == class_id)
-            
             # Find which slot this task was assigned to
+            assigned_day = None
+            assigned_period = None
+            
             for day in self.days:
                 if task_type == 'single':
                     for period in range(1, self.num_periods + 1):
-                        key = (lesson_idx, class_idx, 'single', task_idx, day, period)
+                        key = (lesson_idx, 'single', task_idx, day, period)
                         if key in self.task_vars and self.solver.Value(self.task_vars[key]):
-                            slots.append(TimetableSlot(
-                                classId=class_id,
-                                lessonId=lesson.lesson_id,
-                                day=day,
-                                periodNumber=period,
-                                isDoubleStart=False,
-                                isDoubleEnd=False
-                            ))
+                            assigned_day = day
+                            assigned_period = period
                             break
                 else:  # double
                     for period in self.valid_double_starts:
-                        key = (lesson_idx, class_idx, 'double', task_idx, day, period)
+                        key = (lesson_idx, 'double', task_idx, day, period)
                         if key in self.task_vars and self.solver.Value(self.task_vars[key]):
-                            # Add two slots for double period
-                            slots.append(TimetableSlot(
-                                classId=class_id,
-                                lessonId=lesson.lesson_id,
-                                day=day,
-                                periodNumber=period,
-                                isDoubleStart=True,
-                                isDoubleEnd=False
-                            ))
-                            slots.append(TimetableSlot(
-                                classId=class_id,
-                                lessonId=lesson.lesson_id,
-                                day=day,
-                                periodNumber=period + 1,
-                                isDoubleStart=False,
-                                isDoubleEnd=True
-                            ))
+                            assigned_day = day
+                            assigned_period = period
                             break
+                if assigned_day:
+                    break
+            
+            # ✨ CRITICAL: Create slots for ALL classes in this task's classIds
+            if assigned_day and assigned_period:
+                for class_id in task['classIds']:
+                    if task_type == 'single':
+                        slots.append(TimetableSlot(
+                            classId=class_id,
+                            lessonId=lesson.lesson_id,
+                            day=assigned_day,
+                            periodNumber=assigned_period,
+                            isDoubleStart=False,
+                            isDoubleEnd=False
+                        ))
+                    else:  # double
+                        # Add two slots for double period
+                        slots.append(TimetableSlot(
+                            classId=class_id,
+                            lessonId=lesson.lesson_id,
+                            day=assigned_day,
+                            periodNumber=assigned_period,
+                            isDoubleStart=True,
+                            isDoubleEnd=False
+                        ))
+                        slots.append(TimetableSlot(
+                            classId=class_id,
+                            lessonId=lesson.lesson_id,
+                            day=assigned_day,
+                            periodNumber=assigned_period + 1,
+                            isDoubleStart=False,
+                            isDoubleEnd=True
+                        ))
         
         return slots, unplaced_tasks
 

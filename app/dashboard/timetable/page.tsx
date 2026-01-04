@@ -373,8 +373,15 @@ export default function TimetablePage() {
     // NOTE: Same lesson for multiple classes (parallel lesson) is NOT a conflict
     for (const [key, slotList] of occupiedSlots.entries()) {
       if (slotList.length > 1) {
-        // Get unique lesson IDs in this slot list
-        const uniqueLessonIds = new Set(slotList.map(slot => slot.lessonId._id));
+        // Get unique lesson IDs in this slot list with robust normalization
+        const uniqueLessonIds = new Set(slotList.map(slot => {
+          const lessonId = slot.lessonId;
+          if (!lessonId) return null;
+          if (typeof lessonId === 'object') {
+            return lessonId._id?.toString() || lessonId.toString();
+          }
+          return lessonId.toString();
+        }).filter(Boolean));
         
         // CONFLICT only if there are DIFFERENT lessons at the same time
         if (uniqueLessonIds.size > 1) {
@@ -387,8 +394,19 @@ export default function TimetablePage() {
             const currentLesson = slot.lessonId;
             const currentClass = slot.classId;
             
+            // Normalize current lesson ID
+            const currentLessonId = typeof currentLesson === 'object' 
+              ? (currentLesson._id?.toString() || currentLesson.toString())
+              : currentLesson?.toString();
+            
             // Find all OTHER conflicting lessons at this time
-            const otherSlots = slotList.filter(s => s._id !== slot._id && s.lessonId._id !== currentLesson._id);
+            const otherSlots = slotList.filter(s => {
+              if (s._id === slot._id) return false;
+              const otherLessonId = typeof s.lessonId === 'object'
+                ? (s.lessonId._id?.toString() || s.lessonId.toString())
+                : s.lessonId?.toString();
+              return otherLessonId !== currentLessonId;
+            });
             
             const slotDetails: Array<any> = [];
             
@@ -475,10 +493,22 @@ export default function TimetablePage() {
     // Check for class conflicts (if target class is known)
     if (targetClassId) {
       const existingSlotsForClass = slots.filter(
-        s => s.day === targetDay && 
-             s.periodNumber === targetPeriod && 
-             s.classId._id === targetClassId &&
-             s.lessonId._id !== draggedLesson._id // Ignore same lesson (parallel)
+        s => {
+          if (s.day !== targetDay || s.periodNumber !== targetPeriod) return false;
+          
+          // Normalize classId comparison
+          const slotClassId = typeof s.classId === 'object' 
+            ? (s.classId._id?.toString() || s.classId.toString())
+            : s.classId?.toString();
+          
+          // Normalize lessonId comparison
+          const slotLessonId = typeof s.lessonId === 'object'
+            ? (s.lessonId._id?.toString() || s.lessonId.toString())
+            : s.lessonId?.toString();
+          const draggedLessonId = draggedLesson._id?.toString();
+          
+          return slotClassId === targetClassId.toString() && slotLessonId !== draggedLessonId;
+        }
       );
       
       for (const existingSlot of existingSlotsForClass) {
@@ -500,10 +530,21 @@ export default function TimetablePage() {
     if (draggedLesson.teacherIds) {
       for (const teacher of draggedLesson.teacherIds) {
         const existingSlotsForTeacher = slots.filter(
-          s => s.day === targetDay && 
-               s.periodNumber === targetPeriod && 
-               s.lessonId.teacherIds?.some(t => t._id === teacher._id) &&
-               s.lessonId._id !== draggedLesson._id // Ignore same lesson (parallel)
+          s => {
+            if (s.day !== targetDay || s.periodNumber !== targetPeriod) return false;
+            
+            // Check if teacher is teaching this slot
+            const hasTeacher = s.lessonId?.teacherIds?.some(t => t._id === teacher._id);
+            if (!hasTeacher) return false;
+            
+            // Normalize lessonId comparison to exclude same lesson (parallel)
+            const slotLessonId = typeof s.lessonId === 'object'
+              ? (s.lessonId._id?.toString() || s.lessonId.toString())
+              : s.lessonId?.toString();
+            const draggedLessonId = draggedLesson._id?.toString();
+            
+            return slotLessonId !== draggedLessonId;
+          }
         );
         
         for (const existingSlot of existingSlotsForTeacher) {
@@ -1018,7 +1059,12 @@ export default function TimetablePage() {
     // Handle multiple lessons at same position
     if (allSlotsHere && allSlotsHere.length > 1) {
       // Check if this is a parallel lesson (same lessonId) or genuine conflict (different lessonIds)
-      const uniqueLessonIds = new Set(allSlotsHere.map(s => s.lessonId?._id));
+      // Normalize lessonId to handle both string IDs and populated objects
+      const uniqueLessonIds = new Set(allSlotsHere.map(s => {
+        const lessonId = s.lessonId;
+        if (!lessonId) return null;
+        return typeof lessonId === 'object' ? (lessonId._id?.toString() || lessonId.toString()) : lessonId.toString();
+      }).filter(Boolean));
       const isParallelLesson = uniqueLessonIds.size === 1;
       
       // If parallel lesson (6A/6B/6C Aesthetic at same time), render normally without conflict badge
@@ -1972,7 +2018,11 @@ export default function TimetablePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {Array.from({ length: config.numberOfPeriods }, (_, i) => i + 1).map((period) => {
+                    {/* CRITICAL: Render ALL periods from config (should be 8 for full grid) */}
+                    {(() => {
+                      console.log('🔢 Grid rendering with numberOfPeriods:', config.numberOfPeriods);
+                      return Array.from({ length: config.numberOfPeriods }, (_, i) => i + 1);
+                    })().map((period) => {
                       // Check if there's an interval after this period
                       const intervalAfterThisPeriod = config.intervalSlots.find(
                         slot => slot.afterPeriod === period

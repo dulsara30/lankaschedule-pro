@@ -246,14 +246,15 @@ export async function saveTimetableResults(jobId: string, versionName: string) {
     }));
 
     console.log(`💾 Inserting ${slots.length} new slots for 100% placement`);
-    await TimetableSlot.insertMany(slots);
-    console.log(`   ✅ Successfully saved ${slots.length} slots to database`);
+    const insertResult = await TimetableSlot.insertMany(slots);
+    console.log(`   ✅ Successfully saved ${insertResult.length} slots to database`);
+    
+    // CRITICAL: Revalidate paths AFTER successful insert to force immediate UI refresh
     console.log(`   🔄 Triggering UI refresh for immediate visibility`);
-
-    // Revalidate paths to force immediate refresh
     revalidatePath('/dashboard/timetable');
     revalidatePath('/dashboard/lessons');
     revalidatePath('/');
+    console.log(`   ✅ UI refresh paths revalidated`);
 
     return {
       success: true,

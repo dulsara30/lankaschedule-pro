@@ -5,10 +5,13 @@
  * Python solver using Google OR-Tools CP-SAT. It fetches the optimized timetable
  * from the Python FastAPI service and saves it to MongoDB.
  * 
- * Timeout: 240s fetch timeout allows Python solver (180s) + 60s buffer
+ * Timeout: 420s allows full elite solver runs (5min base + 2min deep search)
  */
 
 'use server';
+
+// Set maximum duration for this server action to 7 minutes
+export const maxDuration = 420;
 
 import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/dbConnect';
@@ -254,14 +257,14 @@ export async function generateTimetableAction(
           "Content-Type": "application/json",
         },
         body: JSON.stringify(payload),
-        // 240 second timeout (solver has 180s limit + 60s buffer)
-        signal: AbortSignal.timeout(240000),
+        // 420 second timeout (7 minutes: 5min base + 2min deep search polishing)
+        signal: AbortSignal.timeout(420000),
       });
     } catch (fetchError: any) {
       if (fetchError.name === "TimeoutError") {
         return {
           success: false,
-          message: "Solver timeout (240s). The problem may be too complex. Try disabling some heavy lessons (Aesthetic/IT) and regenerate.",
+          message: "Solver timeout (420s). The problem may be too complex. Try disabling some heavy lessons (Aesthetic/IT) or reducing the time limit.",
         };
       }
       return {

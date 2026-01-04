@@ -6,12 +6,10 @@
  * from the Python FastAPI service and saves it to MongoDB.
  * 
  * Timeout: 420s allows full elite solver runs (5min base + 2min deep search)
+ * Configured via fetch AbortSignal.timeout(420000ms)
  */
 
 'use server';
-
-// Set maximum duration for this server action to 7 minutes
-export const maxDuration = 420;
 
 import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/dbConnect';

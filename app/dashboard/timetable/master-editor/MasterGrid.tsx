@@ -537,9 +537,6 @@ export default function MasterGrid({
                 ))
               )}
             </div>
-                </div>
-              ))}
-            </div>
           </div>
         </div>
       </CardContent>

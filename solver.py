@@ -150,6 +150,13 @@ class TimetableSolver:
     
     def _create_variables(self):
         """Create decision variables for all possible task placements"""
+        # CRITICAL: Clear all previous data to prevent duplication during model rebuilds
+        self.task_vars = {}
+        self.task_info = []
+        self.presence_vars = {}
+        self.stats['singlesCreated'] = 0
+        self.stats['doublesCreated'] = 0
+        
         print(f"📊 Creating variables for {len(self.lessons)} lessons...")
         print("   🔄 PARALLEL MODE: One task per lesson (applies to ALL classes)")
         
@@ -661,6 +668,7 @@ class TimetableSolver:
         placed_count = len(slots)
         
         # Calculate total required slots (single = 1 slot, double = 2 slots per class)
+        # Uses current task_info state (reset on each model rebuild)
         total_required_slots = sum(
             (1 if t['type'] == 'single' else 2) * len(t['classIds']) 
             for t in self.task_info

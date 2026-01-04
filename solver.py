@@ -484,10 +484,12 @@ class TimetableSolver:
                 stage_callback("stage1")
             
             self.solver.parameters.max_time_in_seconds = stage1_time
-            self.solver.parameters.num_search_workers = 8
+            self.solver.parameters.num_search_workers = 8  # Maximum CPU power
             self.solver.parameters.log_search_progress = True
             self.solver.parameters.random_seed = 42
-            self.solver.parameters.relative_gap_limit = 0.02  # 5% gap acceptable
+            self.solver.parameters.relative_gap_limit = 0.0  # ELITE: Absolute best solution only
+            self.solver.parameters.search_branching = cp_model.PORTFOLIO_SEARCH  # Multi-strategy
+            self.solver.parameters.interleave_search = True  # Parallel path exploration
             
             status = self.solver.Solve(self.model)
             
@@ -522,10 +524,12 @@ class TimetableSolver:
             self._set_objective(penalty_multiplier=0.125)  # -50 instead of -400
             
             self.solver.parameters.max_time_in_seconds = stage2_time
-            self.solver.parameters.num_search_workers = 8
+            self.solver.parameters.num_search_workers = 8  # Maximum CPU power
             self.solver.parameters.log_search_progress = True
             self.solver.parameters.random_seed = 42
-            self.solver.parameters.relative_gap_limit = 0.02
+            self.solver.parameters.relative_gap_limit = 0.0  # ELITE: Absolute best solution only
+            self.solver.parameters.search_branching = cp_model.PORTFOLIO_SEARCH  # Multi-strategy
+            self.solver.parameters.interleave_search = True  # Parallel path exploration
             
             status = self.solver.Solve(self.model)
         else:
@@ -535,14 +539,55 @@ class TimetableSolver:
             print("="*60)
             
             self.solver.parameters.max_time_in_seconds = time_limit_seconds
-            self.solver.parameters.num_search_workers = 8
+            self.solver.parameters.num_search_workers = 8  # Maximum CPU power
             self.solver.parameters.log_search_progress = True
             self.solver.parameters.random_seed = 42
-            self.solver.parameters.relative_gap_limit = 0.02
+            self.solver.parameters.relative_gap_limit = 0.0  # ELITE: Absolute best solution only
+            self.solver.parameters.search_branching = cp_model.PORTFOLIO_SEARCH  # Multi-strategy
+            self.solver.parameters.interleave_search = True  # Parallel path exploration
             
             status = self.solver.Solve(self.model)
         
         solving_time = time.time() - start_time
+        
+        # 🔍 DEEP SEARCH POLISHING PHASE: Dynamic time extension for near-perfect solutions
+        # If we're very close to 100% (≤25 unplaced), extend time to push to perfection
+        if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
+            slots, unplaced_tasks = self._extract_solution()
+            unplaced_count = len(unplaced_tasks)
+            total_tasks = self.stats['totalTasks']
+            placement_rate = len(slots) / total_tasks if total_tasks > 0 else 0
+            
+            # Trigger deep search if we have 25 or fewer unplaced slots (typically 97%+)
+            if unplaced_count > 0 and unplaced_count <= 25 and solving_time < time_limit_seconds + 120:
+                print(f"\n🔍 DEEP SEARCH POLISHING: {unplaced_count} slots remaining ({placement_rate*100:.1f}%)")
+                print(f"   Extending time by +120s for 100% placement push...")
+                print("   Multi-strategy portfolio search with interleaved exploration")
+                
+                # Extend the time limit
+                extended_time = 120
+                self.solver.parameters.max_time_in_seconds = extended_time
+                
+                # Already have elite parameters set, just re-solve
+                print(f"   ⚡ ELITE MODE: 8 workers, 0.0% gap, portfolio branching")
+                status = self.solver.Solve(self.model)
+                solving_time = time.time() - start_time
+                
+                # Check if polishing improved the solution
+                new_slots, new_unplaced = self._extract_solution()
+                new_unplaced_count = len(new_unplaced)
+                
+                if new_unplaced_count < unplaced_count:
+                    print(f"   ✅ POLISHING SUCCESS: {unplaced_count - new_unplaced_count} additional slots placed!")
+                    slots, unplaced_tasks = new_slots, new_unplaced
+                elif new_unplaced_count == 0:
+                    print(f"   🎉 PERFECT SOLUTION: 100% placement achieved!")
+                    slots, unplaced_tasks = new_slots, new_unplaced
+                else:
+                    print(f"   ⚠️  Polishing complete: {new_unplaced_count} slots remain unplaced")
+                    slots, unplaced_tasks = new_slots, new_unplaced
+                
+                return self._build_response(status, solving_time, slots, unplaced_tasks)
         
         # Handle UNKNOWN status (time limit with partial solution)
         if status == cp_model.UNKNOWN:
@@ -658,13 +703,25 @@ class TimetableSolver:
             class_busy_count = sum(len(periods) for periods in class_schedule.get(task.classId, {}).values())
             class_utilization = class_busy_count / total_slots if total_slots > 0 else 0
             
-            # Determine diagnostic
-            if teacher_utilization > 0.90:
-                task.diagnostic = f"Teacher workload is too high ({teacher_utilization*100:.0f}% utilization)"
+            # Get teacher and class names for detailed diagnostics
+            teacher_name = "Unknown Teacher"
+            if lesson.teacherIds:
+                # Try to get teacher name (not available in lesson model, use ID as fallback)
+                teacher_name = f"Teacher {lesson.teacherIds[0][-6:]}"  # Last 6 chars of ID
+            
+            class_name = task.className
+            
+            # ELITE DIAGNOSTIC: Determine very specific blocking reason
+            if teacher_utilization >= 1.0:
+                task.diagnostic = f"Placement blocked: {teacher_name} is 100% busy across all periods"
+            elif class_utilization >= 1.0:
+                task.diagnostic = f"Placement blocked: {class_name} schedule is completely full (100% utilization)"
+            elif teacher_utilization > 0.90:
+                task.diagnostic = f"Placement blocked: {teacher_name} workload critically high ({teacher_utilization*100:.0f}% utilization)"
             elif class_utilization > 0.90:
-                task.diagnostic = f"Class schedule is nearly full ({class_utilization*100:.0f}% utilization)"
+                task.diagnostic = f"Placement blocked: {class_name} schedule nearly full ({class_utilization*100:.0f}% utilization)"
             elif teacher_utilization > 0.70 and class_utilization > 0.70:
-                # Check if teacher is free when class is busy (resource conflict)
+                # ELITE: Check for exact schedule mismatch
                 teacher_free_slots = set()
                 class_free_slots = set()
                 
@@ -680,14 +737,19 @@ class TimetableSolver:
                 
                 # Check if there's overlap in free slots
                 overlap = teacher_free_slots & class_free_slots
-                if len(overlap) < (2 if task.taskType == 'double' else 1):
-                    task.diagnostic = "Resource scheduling conflict: Teacher and class schedules don't align"
+                required_slots = 2 if task.taskType == 'double' else 1
+                
+                if len(overlap) == 0:
+                    task.diagnostic = f"Placement blocked: {teacher_name} is 100% busy during all periods where {class_name} has free slots"
+                elif len(overlap) < required_slots:
+                    task.diagnostic = f"Placement blocked: Only {len(overlap)} overlapping free slot(s), but {required_slots} consecutive needed for {task.taskType}"
                 else:
-                    task.diagnostic = "Constraints prevent scheduling despite available slots"
+                    # Has overlap but still can't place - must be interval or other constraint
+                    task.diagnostic = f"Placement blocked: Interval breaks or subject distribution constraints prevent scheduling despite {len(overlap)} free overlapping slots"
             elif teacher_utilization < 0.30:
-                task.diagnostic = "Insufficient demand or over-constrained problem"
+                task.diagnostic = f"Placement blocked: Insufficient overall demand or over-constrained problem (teacher only {teacher_utilization*100:.0f}% utilized)"
             else:
-                task.diagnostic = "Unable to find valid slot due to constraints (intervals/conflicts)"
+                task.diagnostic = f"Placement blocked: Constraints prevent scheduling (teacher {teacher_utilization*100:.0f}%, class {class_utilization*100:.0f}% utilized)"
             
             diagnosed_tasks.append(task)
         

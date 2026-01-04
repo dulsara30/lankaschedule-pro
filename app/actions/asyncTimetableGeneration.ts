@@ -69,6 +69,16 @@ export async function startTimetableGeneration(
       statusCounts[status] = (statusCounts[status] || 0) + 1;
     });
     console.log(`📋 Status distribution:`, statusCounts);
+    
+    // CRITICAL: Log first few lessons to verify structure
+    console.log(`🔍 Sample lessons (first 3):`, enabledLessons.slice(0, 3).map(l => ({
+      _id: l._id,
+      lessonName: l.lessonName,
+      status: l.status,
+      subjectIds: l.subjectIds?.length,
+      teacherIds: l.teacherIds?.length,
+      classIds: l.classIds?.length,
+    })));
 
     if (enabledLessons.length === 0) {
       return {

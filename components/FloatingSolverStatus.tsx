@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Sparkles, X, ExternalLink, Loader2 } from 'lucide-react';
@@ -26,6 +26,10 @@ export default function FloatingSolverStatus() {
   const [isVisible, setIsVisible] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  
+  // Use ref to prevent duplicate saves and track interval
+  const isSavingRef = useRef(false);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Poll for job status
   useEffect(() => {
@@ -37,9 +41,13 @@ export default function FloatingSolverStatus() {
       try {
         const response = await fetch(`http://127.0.0.1:8000/job-status/${storedJobId}`);
         if (!response.ok) {
-          // Job not found - clear localStorage
+          // Job not found - clear localStorage and stop polling
           localStorage.removeItem('activeGenerationJobId');
           setIsVisible(false);
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
           return;
         }
 
@@ -47,9 +55,18 @@ export default function FloatingSolverStatus() {
         setJobStatus(status);
         setIsVisible(true);
 
-        // If completed, automatically save results
-        if (status.status === 'completed' && !isSaving) {
-          console.log('✅ Job completed - auto-saving results...');
+        // CRITICAL: If completed, IMMEDIATELY stop polling and save ONCE
+        if (status.status === 'completed' && !isSavingRef.current) {
+          console.log('✅ Job completed - stopping polling and auto-saving results...');
+          
+          // STOP POLLING IMMEDIATELY
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+          
+          // Mark as saving to prevent duplicates
+          isSavingRef.current = true;
           setIsSaving(true);
           
           try {
@@ -61,6 +78,9 @@ export default function FloatingSolverStatus() {
                 duration: 6000,
                 description: `${saveResult.slotsPlaced} slots placed with ${saveResult.conflicts} conflicts`
               });
+              
+              // Clear job ID after successful save
+              localStorage.removeItem('activeGenerationJobId');
             } else {
               toast.error('Failed to save timetable', {
                 description: saveResult.message
@@ -74,8 +94,12 @@ export default function FloatingSolverStatus() {
           }
         }
 
-        // If failed, show error
+        // If failed, show error and stop polling
         if (status.status === 'failed') {
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
           toast.error('Generation failed', {
             description: status.error,
             duration: 8000
@@ -90,10 +114,15 @@ export default function FloatingSolverStatus() {
     checkJob();
 
     // Poll every 3 seconds for more responsive updates
-    const interval = setInterval(checkJob, 3000);
+    intervalRef.current = setInterval(checkJob, 3000);
 
-    return () => clearInterval(interval);
-  }, [isDismissed, isSaving]);
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [isDismissed]); // Only re-run if isDismissed changes
 
   const handleDismiss = () => {
     localStorage.removeItem('activeGenerationJobId');

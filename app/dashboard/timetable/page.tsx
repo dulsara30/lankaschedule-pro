@@ -124,9 +124,17 @@ export default function TimetablePage() {
   const [adminNote, setAdminNote] = useState('');
   const [isPublishing, setIsPublishing] = useState(false);
 
-  // Conflict detection state
+  // Enhanced conflict detection state with detailed diagnostics
   const [showConflicts, setShowConflicts] = useState(true);
   const [conflictSlots, setConflictSlots] = useState<Set<string>>(new Set());
+  const [conflictDetails, setConflictDetails] = useState<Map<string, Array<{
+    type: 'Teacher Overlap' | 'Class Overlap';
+    entity: string;
+    conflictingLesson: string;
+    conflictingClass: string;
+    day: string;
+    period: number;
+  }>>>(new Map());
 
   // PDF Export state
   const [downloadDialogOpen, setDownloadDialogOpen] = useState(false);
@@ -320,8 +328,20 @@ export default function TimetablePage() {
 
   // Detect conflicts: Check for overlapping teacher/class assignments
   // CRITICAL: Parallel lessons (same lessonId at same time) are NOT conflicts
-  const detectConflicts = (slotsData: TimetableSlot[]): Set<string> => {
+  // Returns both conflict set and detailed diagnostic information
+  const detectConflicts = (slotsData: TimetableSlot[]): {
+    conflicts: Set<string>;
+    details: Map<string, Array<{
+      type: 'Teacher Overlap' | 'Class Overlap';
+      entity: string;
+      conflictingLesson: string;
+      conflictingClass: string;
+      day: string;
+      period: number;
+    }>>;
+  } => {
     const conflicts = new Set<string>();
+    const details = new Map<string, Array<any>>();
     const occupiedSlots = new Map<string, TimetableSlot[]>(); // key: day-period-entityId
 
     // Build occupation map
@@ -358,9 +378,61 @@ export default function TimetablePage() {
         
         // CONFLICT only if there are DIFFERENT lessons at the same time
         if (uniqueLessonIds.size > 1) {
-          // Mark all conflicting slots
+          // Determine conflict type from key
+          const isTeacherConflict = key.includes('-teacher-');
+          const isClassConflict = key.includes('-class-');
+          
+          // Build detailed diagnostics for each conflicting slot
           for (const slot of slotList) {
-            conflicts.add(slot._id);
+            const currentLesson = slot.lessonId;
+            const currentClass = slot.classId;
+            
+            // Find all OTHER conflicting lessons at this time
+            const otherSlots = slotList.filter(s => s._id !== slot._id && s.lessonId._id !== currentLesson._id);
+            
+            const slotDetails: Array<any> = [];
+            
+            for (const otherSlot of otherSlots) {
+              const otherLesson = otherSlot.lessonId;
+              const otherClass = otherSlot.classId;
+              
+              if (isTeacherConflict) {
+                // Teacher teaching multiple different lessons at same time
+                const teacherNames = currentLesson.teacherIds?.map(t => t.name).join(', ') || 'Unknown';
+                const subjectName = otherLesson.subjectIds?.[0]?.name || 'Unknown Subject';
+                const className = otherClass.name || `Grade ${otherClass.grade}`;
+                
+                slotDetails.push({
+                  type: 'Teacher Overlap' as const,
+                  entity: teacherNames,
+                  conflictingLesson: `${subjectName} (${otherLesson.lessonName})`,
+                  conflictingClass: className,
+                  day: slot.day,
+                  period: slot.periodNumber
+                });
+              }
+              
+              if (isClassConflict) {
+                // Class has multiple different lessons at same time
+                const className = currentClass.name || `Grade ${currentClass.grade}`;
+                const subjectName = otherLesson.subjectIds?.[0]?.name || 'Unknown Subject';
+                const teacherNames = otherLesson.teacherIds?.map(t => t.name).join(', ') || 'Unknown';
+                
+                slotDetails.push({
+                  type: 'Class Overlap' as const,
+                  entity: className,
+                  conflictingLesson: `${subjectName} (${otherLesson.lessonName})`,
+                  conflictingClass: teacherNames,
+                  day: slot.day,
+                  period: slot.periodNumber
+                });
+              }
+            }
+            
+            if (slotDetails.length > 0) {
+              details.set(slot._id, slotDetails);
+              conflicts.add(slot._id);
+            }
           }
         }
         // If uniqueLessonIds.size === 1, it's a parallel lesson (e.g., 6A/6B/6C Aesthetic)
@@ -368,18 +440,92 @@ export default function TimetablePage() {
       }
     }
 
-    return conflicts;
+    return { conflicts, details };
   };
 
   // Update conflicts when slots change
   useEffect(() => {
-    const conflicts = detectConflicts(slots);
-    setConflictSlots(conflicts);
+    const result = detectConflicts(slots);
+    setConflictSlots(result.conflicts);
+    setConflictDetails(result.details);
     
-    if (conflicts.size > 0) {
-      console.log(`⚠️ Detected ${conflicts.size} conflicting slots`);
+    if (result.conflicts.size > 0) {
+      console.log(`⚠️ Detected ${result.conflicts.size} conflicting slots with detailed diagnostics`);
     }
   }, [slots]);
+
+  // Real-time conflict preview for drag operations
+  const checkPotentialConflict = (
+    draggedLesson: Lesson,
+    targetDay: string,
+    targetPeriod: number,
+    targetClassId?: string,
+    targetTeacherId?: string
+  ): {
+    hasConflict: boolean;
+    details: Array<{
+      type: 'Teacher Overlap' | 'Class Overlap';
+      entity: string;
+      conflictingLesson: string;
+      conflictingClass: string;
+    }>;
+  } => {
+    const potentialConflicts: Array<any> = [];
+    
+    // Check for class conflicts (if target class is known)
+    if (targetClassId) {
+      const existingSlotsForClass = slots.filter(
+        s => s.day === targetDay && 
+             s.periodNumber === targetPeriod && 
+             s.classId._id === targetClassId &&
+             s.lessonId._id !== draggedLesson._id // Ignore same lesson (parallel)
+      );
+      
+      for (const existingSlot of existingSlotsForClass) {
+        const existingLesson = existingSlot.lessonId;
+        const className = existingSlot.classId.name || `Grade ${existingSlot.classId.grade}`;
+        const subjectName = existingLesson.subjectIds?.[0]?.name || 'Unknown Subject';
+        const teacherNames = existingLesson.teacherIds?.map(t => t.name).join(', ') || 'Unknown';
+        
+        potentialConflicts.push({
+          type: 'Class Overlap' as const,
+          entity: className,
+          conflictingLesson: `${subjectName} (${existingLesson.lessonName})`,
+          conflictingClass: teacherNames
+        });
+      }
+    }
+    
+    // Check for teacher conflicts
+    if (draggedLesson.teacherIds) {
+      for (const teacher of draggedLesson.teacherIds) {
+        const existingSlotsForTeacher = slots.filter(
+          s => s.day === targetDay && 
+               s.periodNumber === targetPeriod && 
+               s.lessonId.teacherIds?.some(t => t._id === teacher._id) &&
+               s.lessonId._id !== draggedLesson._id // Ignore same lesson (parallel)
+        );
+        
+        for (const existingSlot of existingSlotsForTeacher) {
+          const existingLesson = existingSlot.lessonId;
+          const subjectName = existingLesson.subjectIds?.[0]?.name || 'Unknown Subject';
+          const className = existingSlot.classId.name || `Grade ${existingSlot.classId.grade}`;
+          
+          potentialConflicts.push({
+            type: 'Teacher Overlap' as const,
+            entity: teacher.name,
+            conflictingLesson: `${subjectName} (${existingLesson.lessonName})`,
+            conflictingClass: className
+          });
+        }
+      }
+    }
+    
+    return {
+      hasConflict: potentialConflicts.length > 0,
+      details: potentialConflicts
+    };
+  };
 
   // Drag-and-drop handlers
   const handleDragStart = (event: DragStartEvent) => {
@@ -976,11 +1122,54 @@ export default function TimetablePage() {
         {/* Subtle white overlay for text contrast */}
         <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none" />
         
-        {/* Conflict badge - red alert */}
+        {/* Conflict badge - red alert with detailed tooltip */}
         {hasConflict && showConflicts && (
-          <div className="absolute top-2 left-2 bg-red-600 border-2 border-white text-white text-[10px] px-2.5 py-1 rounded-full font-bold shadow-lg z-10 animate-pulse">
-            ⚠ CONFLICT
-          </div>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="absolute top-2 left-2 bg-red-600 border-2 border-white text-white text-[10px] px-2.5 py-1 rounded-full font-bold shadow-lg z-10 animate-pulse cursor-help">
+                  ⚠ CONFLICT
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-sm bg-red-50 border-red-200">
+                <div className="space-y-2">
+                  <p className="font-bold text-red-900 flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4" />
+                    Conflict Details:
+                  </p>
+                  {conflictDetails.get(slot._id)?.map((detail, idx) => (
+                    <div key={idx} className="text-xs text-red-800 bg-white p-2 rounded border border-red-200">
+                      {detail.type === 'Teacher Overlap' ? (
+                        <>
+                          <p className="font-semibold">⚠️ Teacher Conflict:</p>
+                          <p className="mt-1">
+                            <span className="font-medium">{detail.entity}</span> is already teaching{' '}
+                            <span className="font-medium">{detail.conflictingLesson}</span> in{' '}
+                            <span className="font-medium">{detail.conflictingClass}</span> during this slot.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="font-semibold">⚠️ Class Conflict:</p>
+                          <p className="mt-1">
+                            <span className="font-medium">{detail.entity}</span> already has{' '}
+                            <span className="font-medium">{detail.conflictingLesson}</span> with{' '}
+                            <span className="font-medium">{detail.conflictingClass}</span> during this slot.
+                          </p>
+                        </>
+                      )}
+                      <p className="text-[10px] text-gray-600 mt-1">
+                        {detail.day} - Period {detail.period}
+                      </p>
+                    </div>
+                  ))}
+                  <p className="text-[10px] text-red-700 italic mt-2">
+                    💡 Tip: Use drag-and-drop to reschedule or force-place to resolve.
+                  </p>
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         )}
         
         {/* Modern double period badge - glassmorphism */}
@@ -1044,9 +1233,18 @@ export default function TimetablePage() {
         : activeLesson.classIds?.some(c => c._id === selectedEntity)
     ) : false;
 
+    // Check for potential conflicts when dragging over this cell
+    const potentialConflict = (isOver && activeLesson) ? checkPotentialConflict(
+      activeLesson,
+      day,
+      period,
+      viewMode === 'class' ? selectedEntity : undefined,
+      viewMode === 'teacher' ? selectedEntity : undefined
+    ) : { hasConflict: false, details: [] };
+
     return (
       <TooltipProvider delayDuration={200}>
-        <Tooltip>
+        <Tooltip open={isOver && potentialConflict.details.length > 0 ? true : undefined}>
           <TooltipTrigger asChild>
             <td
               ref={setNodeRef}
@@ -1055,8 +1253,9 @@ export default function TimetablePage() {
                 'relative cursor-pointer transition-all',
                 isDoubleStart && rowSpan === 2 ? 'h-40' : 'h-24',
                 'border border-zinc-100 dark:border-zinc-800 p-2',
-                // Drag-and-drop feedback
-                isOver && canDrop && 'bg-green-100 dark:bg-green-900/20 ring-2 ring-green-500',
+                // Drag-and-drop feedback with conflict warning
+                isOver && canDrop && !potentialConflict.hasConflict && 'bg-green-100 dark:bg-green-900/20 ring-2 ring-green-500',
+                isOver && canDrop && potentialConflict.hasConflict && 'bg-yellow-100 dark:bg-yellow-900/20 ring-2 ring-yellow-500',
                 isOver && !canDrop && 'bg-red-100 dark:bg-red-900/20 ring-2 ring-red-500',
                 !isOver && 'bg-zinc-50 dark:bg-zinc-900'
               )}
@@ -1067,7 +1266,42 @@ export default function TimetablePage() {
               {renderSlotContent(slot, isDoubleStart, period, allSlotsHere)}
             </td>
           </TooltipTrigger>
-          {slot && (
+          {/* Show conflict preview when dragging over */}
+          {isOver && potentialConflict.details.length > 0 && (
+            <TooltipContent side="top" className="bg-yellow-600 dark:bg-yellow-500 text-white border-yellow-700 dark:border-yellow-400 max-w-xs">
+              <div className="space-y-2">
+                <div className="font-semibold flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4" />
+                  Conflict Warning
+                </div>
+                {potentialConflict.details.map((detail, idx) => (
+                  <div key={idx} className="text-xs border-t border-yellow-500/30 pt-1.5">
+                    {detail.type === 'Teacher Overlap' ? (
+                      <>
+                        <div className="font-medium">⚠️ Teacher Conflict:</div>
+                        <div>{detail.entity} is already teaching</div>
+                        <div className="font-semibold">{detail.conflictingLesson}</div>
+                        <div>in {detail.conflictingClass} during this slot</div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="font-medium">⚠️ Class Conflict:</div>
+                        <div>{detail.entity} already has</div>
+                        <div className="font-semibold">{detail.conflictingLesson}</div>
+                        <div>with {detail.conflictingClass} during this slot</div>
+                      </>
+                    )}
+                    <div className="text-yellow-200 mt-0.5">{day} - Period {period}</div>
+                  </div>
+                ))}
+                <div className="text-xs opacity-90 border-t border-yellow-500/30 pt-1.5">
+                  💡 You can still drop, but conflicts must be resolved
+                </div>
+              </div>
+            </TooltipContent>
+          )}
+          {/* Show normal tooltip when not dragging */}
+          {!isOver && slot && (
             <TooltipContent side="top" className="bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 border-zinc-700 dark:border-zinc-300">
               <div className="space-y-1">
                 <div className="font-semibold">{slot.lessonId?.lessonName}</div>

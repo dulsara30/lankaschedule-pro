@@ -13,7 +13,7 @@ This solver handles:
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from ortools.sat.python import cp_model
 import uvicorn
 import time
@@ -68,12 +68,14 @@ class Class(BaseModel):
     
     class_id: str = Field(alias='_id')
     name: str
-    grade: str  # Changed to str to support Sri Lankan grades like '13-years', 'Grade 11', etc.
+    grade: Any  # Accept both numbers and strings (e.g., 10, '13-years', 'Grade 11')
 
 class SolverRequest(BaseModel):
+    model_config = {"populate_by_name": True}
+    
     lessons: List[Lesson]
     classes: List[Class]
-    config: SchoolConfig
+    config: SchoolConfig = Field(alias='schoolConfig')  # Map frontend 'schoolConfig' to 'config'
     allowRelaxation: bool = True  # Allow two-stage solving with relaxed penalties
     maxTimeLimit: int = 180  # User-defined time limit in seconds
 

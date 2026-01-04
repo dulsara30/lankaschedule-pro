@@ -52,12 +52,23 @@ export async function startTimetableGeneration(
     ]);
 
     // Step 4: Filter enabled lessons only
-    const enabledLessons = lessonsData.filter((lesson: any) => lesson.status === 'enabled');
+    // NOTE: Lessons without a status field default to 'enabled'
+    const enabledLessons = lessonsData.filter((lesson: any) => 
+      lesson.status === 'enabled' || lesson.status === undefined || lesson.status === null
+    );
     const disabledLessons = lessonsData.filter((lesson: any) => lesson.status === 'disabled');
 
-    console.log(`📊 Total lessons: ${lessonsData.length}`);
-    console.log(`✅ Enabled lessons: ${enabledLessons.length}`);
+    console.log(`📊 Total lessons in database: ${lessonsData.length}`);
+    console.log(`✅ Enabled lessons (including undefined): ${enabledLessons.length}`);
     console.log(`❌ Disabled lessons: ${disabledLessons.length}`);
+    
+    // Log status distribution for debugging
+    const statusCounts: any = {};
+    lessonsData.forEach((lesson: any) => {
+      const status = lesson.status || 'undefined';
+      statusCounts[status] = (statusCounts[status] || 0) + 1;
+    });
+    console.log(`📋 Status distribution:`, statusCounts);
 
     if (enabledLessons.length === 0) {
       return {
@@ -91,8 +102,12 @@ export async function startTimetableGeneration(
         name: subject.name,
       })),
       schoolConfig: {
-        daysOfWeek: school.daysOfWeek || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
-        periodsPerDay: school.periodsPerDay || 8,
+        numberOfPeriods: school.periodsPerDay || 8,
+        intervalSlots: school.intervalSlots || [],
+        daysOfWeek: (school.daysOfWeek || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']).map((day: string) => ({
+          name: day,
+          abbreviation: day.substring(0, 3),
+        })),
       },
       versionName,
       maxTimeLimit,
@@ -100,6 +115,14 @@ export async function startTimetableGeneration(
     };
 
     console.log(`✅ Payload prepared: ${payload.lessons.length} enabled lessons`);
+    console.log(`📦 Payload structure:`);
+    console.log(`   - Lessons: ${payload.lessons.length}`);
+    console.log(`   - Classes: ${payload.classes.length}`);
+    console.log(`   - Teachers: ${payload.teachers.length}`);
+    console.log(`   - Subjects: ${payload.subjects.length}`);
+    console.log(`   - School Config:`, JSON.stringify(payload.schoolConfig, null, 2));
+    console.log(`   - Max Time Limit: ${payload.maxTimeLimit}s`);
+    console.log(`   - Allow Relaxation: ${payload.allowRelaxation}`);
 
     // Step 6: Call Python solver to START job
     const solverUrl = process.env.SOLVER_URL || 'http://127.0.0.1:8000';
@@ -115,9 +138,11 @@ export async function startTimetableGeneration(
 
     if (!startResponse.ok) {
       const errorText = await startResponse.text();
+      console.error(`❌ Solver returned ${startResponse.status}: ${errorText}`);
+      console.error(`📦 Payload sent:`, JSON.stringify(payload, null, 2));
       return {
         success: false,
-        message: `Failed to start solver: ${errorText}`,
+        message: `Failed to start solver (${startResponse.status}): ${errorText}`,
       };
     }
 

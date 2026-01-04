@@ -89,8 +89,8 @@ export default function FloatingSolverStatus() {
     // Initial check
     checkJob();
 
-    // Poll every 5 seconds
-    const interval = setInterval(checkJob, 5000);
+    // Poll every 3 seconds for more responsive updates
+    const interval = setInterval(checkJob, 3000);
 
     return () => clearInterval(interval);
   }, [isDismissed, isSaving]);

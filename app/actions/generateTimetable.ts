@@ -240,11 +240,11 @@ export async function generateTimetableAction(
 
     // Step 4: Call Python solver
     console.log("\n🔧 Step 4: Calling Python CP-SAT solver...");
-    console.log("[DEBUG] Solver URL:", process.env.SOLVER_URL || "http://localhost:8000");
+    console.log("[DEBUG] Solver URL:", process.env.SOLVER_URL || "http://127.0.0.1:8000");
     console.log("[DEBUG] Payload size:", JSON.stringify(payload).length, "bytes");
-    console.log("📍 Endpoint: http://localhost:8000/solve");
+    console.log("📍 Endpoint: http://127.0.0.1:8000/solve");
     
-    const solverUrl = process.env.SOLVER_URL || "http://localhost:8000";
+    const solverUrl = process.env.SOLVER_URL || "http://127.0.0.1:8000";
     const startTime = Date.now();
 
     let response: Response;
@@ -265,6 +265,15 @@ export async function generateTimetableAction(
           message: "Solver timeout (420s). The problem may be too complex. Try disabling some heavy lessons (Aesthetic/IT) or reducing the time limit.",
         };
       }
+      
+      // Check for connection refused errors
+      if (fetchError.cause?.code === "ECONNREFUSED" || fetchError.message?.includes("ECONNREFUSED") || fetchError.message?.includes("fetch failed")) {
+        return {
+          success: false,
+          message: '🔴 Python Solver is offline. Please run "python solver.py" in your terminal.',
+        };
+      }
+      
       return {
         success: false,
         message: `Failed to connect to Python solver at ${solverUrl}. Ensure solver.py is running on port 8000. Error: ${fetchError.message}`,

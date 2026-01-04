@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
@@ -61,6 +62,7 @@ export default function LessonsPage() {
   const [generationStep, setGenerationStep] = useState(0);
   const [generationVersionName, setGenerationVersionName] = useState('');
   const [strictBalancing, setStrictBalancing] = useState(true);  // Default: strict mode
+  const [maxSearchTime, setMaxSearchTime] = useState(3);  // Default: 3 minutes
 
   const [formData, setFormData] = useState({
     lessonName: '',
@@ -395,8 +397,9 @@ export default function LessonsPage() {
       await new Promise(resolve => setTimeout(resolve, 2000));
       setGenerationStep(3);
       
-      // Step 3: Call Python CP-SAT solver (30-120s)
-      const result = await generateTimetableAction(versionToUse, strictBalancing);
+      // Step 3: Call Python CP-SAT solver with user-defined time limit
+      const timeInSeconds = maxSearchTime * 60;  // Convert minutes to seconds
+      const result = await generateTimetableAction(versionToUse, strictBalancing, timeInSeconds);
 
       if (result?.success) {
         setGenerationStep(4);
@@ -543,6 +546,22 @@ export default function LessonsPage() {
             className="w-48"
             disabled={isGenerating}
           />
+          <Select
+            value={maxSearchTime.toString()}
+            onValueChange={(value) => setMaxSearchTime(parseInt(value))}
+            disabled={isGenerating}
+          >
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="Search time" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="1">1 Minute</SelectItem>
+              <SelectItem value="2">2 Minutes</SelectItem>
+              <SelectItem value="3">3 Minutes</SelectItem>
+              <SelectItem value="4">4 Minutes</SelectItem>
+              <SelectItem value="5">5 Minutes</SelectItem>
+            </SelectContent>
+          </Select>
           <div className="flex items-center space-x-2 border border-zinc-200 dark:border-zinc-700 rounded-md px-3 py-2 bg-white dark:bg-zinc-900">
             <Checkbox
               id="strictBalancing"

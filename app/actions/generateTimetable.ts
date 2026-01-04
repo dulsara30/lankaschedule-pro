@@ -73,7 +73,8 @@ export interface GenerateTimetableResult {
 
 export async function generateTimetableAction(
   versionName?: string,
-  strictBalancing: boolean = true
+  strictBalancing: boolean = true,
+  maxTimeLimit: number = 180  // Time in seconds, default 3 minutes
 ): Promise<GenerateTimetableResult> {
   try {
     await dbConnect();
@@ -213,11 +214,13 @@ export async function generateTimetableAction(
         })),
       },
       allowRelaxation: !strictBalancing,  // Invert: strict=true means no relaxation
+      maxTimeLimit: maxTimeLimit,  // User-defined time limit in seconds
     };
 
     console.log(`[DEBUG] Payload prepared successfully`);
     console.log(`[DEBUG] Lessons in payload: ${payload.lessons.length}`);
     console.log(`[DEBUG] Classes in payload: ${payload.classes.length}`);
+    console.log(`[DEBUG] Max search time: ${maxTimeLimit}s (${Math.floor(maxTimeLimit/60)}min ${maxTimeLimit%60}s)`);
     console.log(`[DEBUG] Relaxation mode: ${!strictBalancing ? 'ENABLED (two-stage)' : 'DISABLED (strict only)'}`);
     console.log(`[DEBUG] Sample class grades:`, payload.classes.slice(0, 3).map(c => `${c.name}='${c.grade}'`))
     console.log(`[DEBUG] Days in config payload: ${payload.config.daysOfWeek.length}`);

@@ -68,6 +68,7 @@ class SolverRequest(BaseModel):
     classes: List[Class]
     config: SchoolConfig
     allowRelaxation: bool = True  # Allow two-stage solving with relaxed penalties
+    maxTimeLimit: int = 180  # User-defined time limit in seconds
 
 class TimetableSlot(BaseModel):
     classId: str
@@ -555,12 +556,17 @@ class TimetableSolver:
         if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
             slots, unplaced_tasks = self._extract_solution()
             unplaced_count = len(unplaced_tasks)
-            total_tasks = self.stats['totalTasks']
-            placement_rate = len(slots) / total_tasks if total_tasks > 0 else 0
             
-            # Trigger deep search if we have 25 or fewer unplaced slots (typically 97%+)
+            # Calculate total required periods (single = 1, double = 2 per class)
+            total_required_slots = sum(
+                (1 if t['type'] == 'single' else 2) * len(t['classIds']) 
+                for t in self.task_info
+            )
+            placement_rate = len(slots) / total_required_slots if total_required_slots > 0 else 0
+            
+            # Trigger deep search if we have 25 or fewer unplaced periods (typically 97%+)
             if unplaced_count > 0 and unplaced_count <= 25 and solving_time < time_limit_seconds + 120:
-                print(f"\n🔍 DEEP SEARCH POLISHING: {unplaced_count} slots remaining ({placement_rate*100:.1f}%)")
+                print(f"\n🔍 DEEP SEARCH POLISHING: {unplaced_count} periods remaining ({placement_rate*100:.1f}%)")
                 print(f"   Extending time by +120s for 100% placement push...")
                 print("   Multi-strategy portfolio search with interleaved exploration")
                 
@@ -578,13 +584,13 @@ class TimetableSolver:
                 new_unplaced_count = len(new_unplaced)
                 
                 if new_unplaced_count < unplaced_count:
-                    print(f"   ✅ POLISHING SUCCESS: {unplaced_count - new_unplaced_count} additional slots placed!")
+                    print(f"   ✅ POLISHING SUCCESS: {unplaced_count - new_unplaced_count} additional periods placed!")
                     slots, unplaced_tasks = new_slots, new_unplaced
                 elif new_unplaced_count == 0:
                     print(f"   🎉 PERFECT SOLUTION: 100% placement achieved!")
                     slots, unplaced_tasks = new_slots, new_unplaced
                 else:
-                    print(f"   ⚠️  Polishing complete: {new_unplaced_count} slots remain unplaced")
+                    print(f"   ⚠️  Polishing complete: {new_unplaced_count} periods remain unplaced")
                     slots, unplaced_tasks = new_slots, new_unplaced
                 
                 return self._build_response(status, solving_time, slots, unplaced_tasks)
@@ -619,14 +625,20 @@ class TimetableSolver:
         
         conflicts = 0  # CP-SAT guarantees no conflicts
         placed_count = len(slots)
-        total_tasks = self.stats['totalTasks']
-        coverage = (placed_count / total_tasks * 100) if total_tasks > 0 else 0
+        
+        # Calculate total required slots (single = 1 slot, double = 2 slots per class)
+        total_required_slots = sum(
+            (1 if t['type'] == 'single' else 2) * len(t['classIds']) 
+            for t in self.task_info
+        )
+        
+        coverage = (placed_count / total_required_slots * 100) if total_required_slots > 0 else 0
         
         if status == cp_model.OPTIMAL:
-            message = f"✅ Optimal solution! Placed {placed_count}/{total_tasks} tasks ({coverage:.1f}%)"
+            message = f"✅ Optimal solution! Placed {placed_count}/{total_required_slots} periods ({coverage:.1f}%)"
             success = True
         elif status == cp_model.FEASIBLE:
-            message = f"✅ Feasible solution. Placed {placed_count}/{total_tasks} tasks ({coverage:.1f}%)"
+            message = f"✅ Feasible solution. Placed {placed_count}/{total_required_slots} periods ({coverage:.1f}%)"
             success = True
         else:
             message = f"❌ No solution found (status: {self.solver.StatusName(status)})"
@@ -636,7 +648,7 @@ class TimetableSolver:
         print(f"⏱️  Solving time: {solving_time:.2f}s")
         
         if coverage < 100:
-            print(f"⚠️  WARNING: {total_tasks - placed_count} tasks could not be placed")
+            print(f"⚠️  WARNING: {total_required_slots - placed_count} periods could not be placed")
         
         print("="*60)
         
@@ -879,7 +891,7 @@ async def solve_timetable(request: SolverRequest):
     try:
         solver = TimetableSolver(request)
         result = solver.solve(
-            time_limit_seconds=180,
+            time_limit_seconds=request.maxTimeLimit,
             allow_relaxation=request.allowRelaxation
         )
         return result

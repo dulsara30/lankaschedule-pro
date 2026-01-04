@@ -148,6 +148,7 @@ export default function TimetablePage() {
   const [showTimeColumn, setShowTimeColumn] = useState(true);
   const [showPrincipalSignature, setShowPrincipalSignature] = useState(false);
   const [showClassTeacherSignature, setShowClassTeacherSignature] = useState(false);
+  const [showSchoolHeader, setShowSchoolHeader] = useState(true);
   
   // Resizable sidebar state
   const [sidebarWidth, setSidebarWidth] = useState(450);
@@ -887,7 +888,7 @@ export default function TimetablePage() {
     try {
       toast.info('Generating PDF...');
 
-      let entities: Array<{ id: string; name: string }> = [];
+      let entities: Array<{ id: string; name: string; classTeacher?: string }> = [];
       let pdfType: 'class' | 'teacher' = 'class';
 
       if (exportType === 'single') {
@@ -896,7 +897,11 @@ export default function TimetablePage() {
           toast.error('Please select a class');
           return;
         }
-        entities = [{ id: classEntity._id, name: classEntity.name }];
+        entities = [{ 
+          id: classEntity._id, 
+          name: classEntity.name,
+          classTeacher: (classEntity as any).classTeacher?.name || 'Not Assigned'
+        }];
         pdfType = 'class';
       } else if (exportType === 'teacher') {
         const teacherEntity = teachers.find(t => t._id === exportEntityId);
@@ -908,7 +913,11 @@ export default function TimetablePage() {
         pdfType = 'teacher';
       } else if (exportType === 'bulk-classes') {
         // Export all classes
-        entities = classes.map(c => ({ id: c._id, name: c.name }));
+        entities = classes.map(c => ({ 
+          id: c._id, 
+          name: c.name,
+          classTeacher: (c as any).classTeacher?.name || 'Not Assigned'
+        }));
         pdfType = 'class';
       } else if (exportType === 'bulk-teachers') {
         // Export all teachers
@@ -936,6 +945,7 @@ export default function TimetablePage() {
           showTimeColumn={showTimeColumn}
           showPrincipalSignature={showPrincipalSignature}
           showClassTeacherSignature={showClassTeacherSignature}
+          showSchoolHeader={showSchoolHeader}
         />
       ).toBlob();
 
@@ -2368,6 +2378,17 @@ export default function TimetablePage() {
                       <Square className="h-4 w-4 text-zinc-400" />
                     )}
                     <span className="text-xs text-zinc-700 dark:text-zinc-300">Show Class Teacher Signature</span>
+                  </div>
+                  <div 
+                    className="flex items-center gap-2 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900 p-1.5 rounded transition-colors"
+                    onClick={() => setShowSchoolHeader(!showSchoolHeader)}
+                  >
+                    {showSchoolHeader ? (
+                      <CheckSquare2 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    ) : (
+                      <Square className="h-4 w-4 text-zinc-400" />
+                    )}
+                    <span className="text-xs text-zinc-700 dark:text-zinc-300">Show School Header</span>
                   </div>
                 </div>
               </div>

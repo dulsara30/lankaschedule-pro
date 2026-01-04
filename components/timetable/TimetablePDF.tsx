@@ -41,6 +41,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 5,
   },
+  subHeader: {
+    marginTop: 12,
+    marginBottom: 8,
+    padding: 8,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 4,
+  },
+  subHeaderText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#000000',
+    textAlign: 'center',
+  },
   table: {
     display: 'flex',
     width: 'auto',
@@ -258,6 +271,7 @@ interface SchoolConfig {
 interface TimetableEntity {
   id: string;
   name: string;
+  classTeacher?: string;
 }
 
 interface TimetablePDFProps {
@@ -272,6 +286,7 @@ interface TimetablePDFProps {
   showTimeColumn?: boolean;
   showPrincipalSignature?: boolean;
   showClassTeacherSignature?: boolean;
+  showSchoolHeader?: boolean;
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -288,6 +303,7 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
   showTimeColumn = true,
   showPrincipalSignature = false,
   showClassTeacherSignature = false,
+  showSchoolHeader = true,
 }) => {
   const currentDate = new Date().toLocaleDateString('en-US', { 
     year: 'numeric', 
@@ -371,15 +387,27 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
 
     return (
       <Page key={entity.id} size="A4" orientation="landscape" style={styles.page}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.schoolName}>{schoolName}</Text>
-          {schoolAddress && (
-            <Text style={styles.schoolAddress}>{schoolAddress}</Text>
-          )}
-          <Text style={styles.versionName}>Timetable Version: {versionName}</Text>
-          <Text style={styles.mainTitle}>
-            {type === 'class' ? entity.name : `${entity.name} - Timetable`}
+        {/* Conditional School Header */}
+        {showSchoolHeader && (
+          <View style={styles.header}>
+            <Text style={styles.schoolName}>{schoolName}</Text>
+            {schoolAddress && (
+              <Text style={styles.schoolAddress}>{schoolAddress}</Text>
+            )}
+            <Text style={styles.versionName}>Timetable Version: {versionName}</Text>
+            <Text style={styles.mainTitle}>
+              {type === 'class' ? entity.name : `${entity.name} - Timetable`}
+            </Text>
+          </View>
+        )}
+
+        {/* Professional Sub-Header Info Bar - Always Displayed */}
+        <View style={styles.subHeader}>
+          <Text style={styles.subHeaderText}>
+            {type === 'class' 
+              ? `Class: ${entity.name} | Class Teacher: ${entity.classTeacher || 'Not Assigned'}`
+              : `Teacher: ${entity.name}`
+            }
           </Text>
         </View>
 
@@ -463,7 +491,7 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
                   <View style={styles.intervalRow}>
                     <View style={styles.intervalCell}>
                       <Text style={styles.intervalText}>
-                        INTERVAL — {intervalInfo.duration} minutes (from {intervalInfo.startTime})
+                        INTERVAL — {intervalInfo.duration} minutes
                       </Text>
                     </View>
                   </View>

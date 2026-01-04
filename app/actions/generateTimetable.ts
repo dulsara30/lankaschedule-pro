@@ -4,12 +4,11 @@
  * This server action replaces the TypeScript algorithm with a professional-grade
  * Python solver using Google OR-Tools CP-SAT. It fetches the optimized timetable
  * from the Python FastAPI service and saves it to MongoDB.
+ * 
+ * Timeout: 240s fetch timeout allows Python solver (180s) + 60s buffer
  */
 
 'use server';
-
-// Increase server action timeout to 240 seconds for elite AI solver (180s + buffer)
-export const maxDuration = 240;
 
 import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/dbConnect';

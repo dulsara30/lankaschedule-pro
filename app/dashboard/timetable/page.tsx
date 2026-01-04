@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Calendar, Users, User, Save, History, Trash2, Check, ChevronsUpDown, ChevronDown, ChevronUp, Download, RotateCcw, FileDown, Eye, X, Square, CheckSquare2, Upload, Globe, AlertCircle, Grid3x3, Sparkles } from 'lucide-react';
+import { Calendar, Users, User, Save, History, Trash2, Check, ChevronsUpDown, ChevronDown, ChevronUp, Download, RotateCcw, FileDown, Eye, X, Square, CheckSquare2, Upload, Globe, AlertCircle, Grid3x3 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import dynamic from 'next/dynamic';
@@ -17,10 +17,8 @@ import { pdf } from '@react-pdf/renderer';
 import TimetablePDF from '@/components/timetable/TimetablePDF';
 import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, useSensor, useSensors, PointerSensor, useDroppable } from '@dnd-kit/core';
 import { saveManualMove } from '@/app/actions/saveManualMove';
-import { generateTimetableAction } from '@/app/actions/generateTimetable';
 import MasterGrid from './master-editor/MasterGrid';
 import UnscheduledLessonsSidebar from '@/components/dashboard/UnscheduledLessonsSidebar';
-import { useRouter } from 'next/navigation';
 
 // Dynamically import PDFViewer to avoid SSR issues
 const PDFViewer = dynamic(
@@ -89,7 +87,6 @@ export default function TimetablePage() {
   const [classes, setClasses] = useState<Class[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [lessons, setLessons] = useState<Lesson[]>([]);
-  const [failedLessons, setFailedLessons] = useState<any[]>([]);
   const [config, setConfig] = useState<SchoolConfig | null>(null);
   const [schoolInfo, setSchoolInfo] = useState<{ name: string; address: string }>({ name: 'EduFlow AI', address: '' });
   const [loading, setLoading] = useState(true);
@@ -97,6 +94,7 @@ export default function TimetablePage() {
   const [previousViewMode, setPreviousViewMode] = useState<'class' | 'teacher'>('class');
   const [selectedEntity, setSelectedEntity] = useState<string>('');
   const [entityComboOpen, setEntityComboOpen] = useState(false);
+  const [unplacedLessons, setUnplacedLessons] = useState<any[]>([]); // Unplaced lessons from version document
   
   // Drag-and-drop state
   const [activeLesson, setActiveLesson] = useState<Lesson | null>(null);
@@ -119,12 +117,6 @@ export default function TimetablePage() {
   const [newVersionName, setNewVersionName] = useState('');
   const [savingVersion, setSavingVersion] = useState(false);
   const [isVersionManagerExpanded, setIsVersionManagerExpanded] = useState(false);
-  
-  // Generation state
-  const router = useRouter();
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generationVersionName, setGenerationVersionName] = useState('Draft');
-  const [generationStep, setGenerationStep] = useState(0);
   
   // Publish to Staff state
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
@@ -247,7 +239,12 @@ export default function TimetablePage() {
 
       if (slotsData.success) {
         setSlots(slotsData.data || []);
+        setUnplacedLessons(slotsData.unplacedLessons || []); // Set unplaced lessons from version
         if (slotsData.versionId) setCurrentVersionId(slotsData.versionId);
+        
+        console.log('📊 Data loaded:');
+        console.log(`   - Scheduled slots: ${slotsData.data?.length || 0}`);
+        console.log(`   - Unplaced lessons: ${slotsData.unplacedLessons?.length || 0}`);
         
         // Initialize lesson name map for PDF export
         const uniqueLessons = new Map<string, string>();
@@ -394,11 +391,39 @@ export default function TimetablePage() {
     if (!over) return;
 
     const lessonData = active.data.current?.lesson as Lesson;
+    const dragType = active.data.current?.type;
+    const unplacedItem = active.data.current?.unplacedItem;
     const dropData = over.data.current;
 
     if (!lessonData || !dropData) return;
 
-    const { day, period, teacherId } = dropData;
+    const { day, period, teacherId, classId } = dropData;
+
+    // Handle unplaced lesson drop (from version array to grid)
+    if (dragType === 'unplaced-lesson' && unplacedItem) {
+      console.log('🎯 Dropping unplaced lesson:', { lessonData, unplacedItem, dropData });
+      
+      // Import and call the server action to move lesson
+      const { moveLessonToScheduled } = await import('@/app/actions/moveLessonToScheduled');
+      
+      const result = await moveLessonToScheduled({
+        versionId: currentVersionId,
+        lessonId: unplacedItem.lessonId,
+        classId: unplacedItem.classId,
+        day,
+        periodNumber: period,
+        isDoubleStart: unplacedItem.taskType === 'double',
+        isDoubleEnd: false,
+      });
+
+      if (result.success) {
+        toast.success(`Lesson scheduled! ${result.remainingUnplaced} unplaced remaining`);
+        fetchData(currentVersionId); // Refresh data
+      } else {
+        toast.error(result.error || 'Failed to schedule lesson');
+      }
+      return;
+    }
 
     // Validate that the teacher is assigned to this lesson
     const isTeacherMatch = lessonData.teacherIds?.some(t => t._id === teacherId);
@@ -477,51 +502,6 @@ export default function TimetablePage() {
       fetchData(currentVersionId);
     } else {
       toast.error(result.message);
-    }
-  };
-
-  const handleGenerateTimetable = async () => {
-    setIsGenerating(true);
-    setGenerationStep(1);
-
-    try {
-      toast.info('Starting Python CP-SAT solver...', { duration: 2000 });
-      
-      setGenerationStep(2);
-      
-      // Call the Python CP-SAT solver via server action
-      const result = await generateTimetableAction(generationVersionName);
-
-      if (result?.success) {
-        setGenerationStep(3);
-        
-        // Use optional chaining to safely access nested properties
-        const slotsPlaced = result.slotsPlaced || result.stats?.totalSlots || 0;
-        const conflicts = result.conflicts || 0;
-        
-        toast.success(`Generated ${slotsPlaced} slots with ${conflicts} conflicts`);
-        
-        if (conflicts === 0) {
-          toast.success('🎉 Perfect timetable - Zero conflicts!', { duration: 5000 });
-        }
-
-        // Refresh page to load new timetable
-        router.refresh();
-        
-        // Reload the data
-        setTimeout(() => {
-          fetchData();
-        }, 500);
-      } else {
-        throw new Error(result?.message || 'Failed to generate timetable');
-      }
-    } catch (error: unknown) {
-      console.error('Timetable generation error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      toast.error(`Generation failed: ${errorMessage}`);
-    } finally {
-      setIsGenerating(false);
-      setGenerationStep(0);
     }
   };
 
@@ -1181,53 +1161,6 @@ export default function TimetablePage() {
         </div>
       </div>
 
-      {/* Generate Timetable Section */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5" />
-            Generate New Timetable
-          </CardTitle>
-          <CardDescription>
-            Create a new timetable version using AI-powered optimization
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-3 items-end">
-            <div className="flex-1">
-              <label htmlFor="generationVersionName" className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2 block">
-                Version Name
-              </label>
-              <Input
-                id="generationVersionName"
-                type="text"
-                value={generationVersionName}
-                onChange={(e) => setGenerationVersionName(e.target.value)}
-                placeholder="e.g., 2026 First Term"
-                disabled={isGenerating}
-              />
-            </div>
-            <Button
-              onClick={handleGenerateTimetable}
-              disabled={isGenerating}
-              className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white border-0"
-            >
-              {isGenerating ? (
-                <>
-                  <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  Generate Timetable
-                </>
-              )}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Version Management Section - Collapsible */}
       {slots.length > 0 && versions.length > 0 && (
         <Card>
@@ -1552,7 +1485,9 @@ export default function TimetablePage() {
                   slots={slots.map(s => ({
                     ...s,
                     day: DAYS.indexOf(s.day) + 1
-                  })) as any} 
+                  })) as any}
+                  unplacedLessons={unplacedLessons}
+                  showPagination={true}
                 />
               </div>
             </div>
@@ -1649,7 +1584,10 @@ export default function TimetablePage() {
                   slots={slots.map(s => ({
                     ...s,
                     day: DAYS.indexOf(s.day) + 1
-                  })) as any} 
+                  })) as any}
+                  unplacedLessons={unplacedLessons}
+                  filterByClassId={viewMode === 'class' ? selectedEntity : undefined}
+                  filterByTeacherId={viewMode === 'teacher' ? selectedEntity : undefined}
                 />
               </div>
             </div>

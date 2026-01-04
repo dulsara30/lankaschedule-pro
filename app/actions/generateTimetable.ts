@@ -68,29 +68,55 @@ export interface GenerateTimetableResult {
   totalSteps?: number;
 }
 
-export async function generateTimetableAction(versionName: string = 'Draft'): Promise<GenerateTimetableResult> {
+export async function generateTimetableAction(versionName?: string): Promise<GenerateTimetableResult> {
   try {
+    await dbConnect();
+    
+    // Smart auto-incrementing version logic
     console.log("\n" + "=".repeat(60));
     console.log("🚀 GENERATING TIMETABLE WITH CP-SAT SOLVER");
-    console.log(`📝 Version: ${versionName}`);
     console.log("=".repeat(60));
-
-    await dbConnect();
+    
+    const school = await School.findOne();
+    if (!school) {
+      throw new Error('School configuration not found');
+    }
+    
+    // Determine version name: use provided or auto-generate
+    let finalVersionName: string;
+    
+    if (versionName && versionName.trim()) {
+      // Use provided version name
+      finalVersionName = versionName.trim();
+      console.log(`📝 Using provided version: ${finalVersionName}`);
+    } else {
+      // Auto-generate version number
+      const latestVersion = await TimetableVersion.findOne({ schoolId: school._id })
+        .sort({ createdAt: -1 })
+        .lean();
+      
+      let versionNumber = 1.0;
+      if (latestVersion?.versionName) {
+        // Extract version number from 'Draft v1.0' or 'v1.0' or 'Final v2.5'
+        const versionMatch = latestVersion.versionName.match(/v?(\d+\.\d+)/);
+        if (versionMatch) {
+          const currentVersion = parseFloat(versionMatch[1]);
+          versionNumber = currentVersion + 1.0;
+        }
+      }
+      
+      finalVersionName = `Draft v${versionNumber.toFixed(1)}`;
+      console.log(`📝 Auto-generated version: ${finalVersionName}`);
+      console.log(`   (Latest was: ${latestVersion?.versionName || 'none'})`);
+    }
+    console.log("=".repeat(60));
 
     // Force model registration to prevent MissingSchemaError
     [Subject, Teacher, Class, Lesson, School, TimetableSlot].forEach(m => m?.modelName);
 
-    // Step 1: Fetch school configuration
-    console.log("\n📊 Step 1: Fetching school configuration...");
-    const school = await School.findOne();
-    if (!school) {
-      return {
-        success: false,
-        message: 'School configuration not found. Please complete school setup first.',
-      };
-    }
-
-    console.log(`[DEBUG] Fetched School: ${school.name}`);
+    // Step 1: Verify school configuration
+    console.log("\n📊 Step 1: Verifying school configuration...");
+    console.log(`[DEBUG] School: ${school.name}`);
     console.log(`[DEBUG] School ID: ${school._id}`);
     console.log(`[DEBUG] Raw Config:`, JSON.stringify(school.config, null, 2));
 
@@ -140,14 +166,21 @@ export async function generateTimetableAction(versionName: string = 'Draft'): Pr
       };
     }
 
-    console.log(`✅ Fetched ${lessonsData.length} lessons, ${classesData.length} classes`);
+    // SMART FILTERING: Separate enabled and disabled lessons
+    const enabledLessons = lessonsData.filter((lesson: any) => (lesson.status || 'enabled') === 'enabled');
+    const disabledLessons = lessonsData.filter((lesson: any) => lesson.status === 'disabled');
 
-    // Step 3: Prepare payload for Python solver
+    console.log(`✅ Fetched ${lessonsData.length} total lessons, ${classesData.length} classes`);
+    console.log(`   🟢 ${enabledLessons.length} lessons enabled (AI placement)`);
+    console.log(`   ⚪ ${disabledLessons.length} lessons disabled (manual placement)`);
+
+    // Step 3: Prepare payload for Python solver (ONLY enabled lessons)
     console.log("\n📦 Step 3: Preparing payload for Python solver...");
-    console.log("[DEBUG] Starting Payload Mapping for Python Solver...");
+    console.log(`[DEBUG] Sending ONLY ${enabledLessons.length} enabled lessons to AI solver`);
+    console.log(`[DEBUG] ${disabledLessons.length} disabled lessons will be added to unplaced array`);
     
     const payload = {
-      lessons: lessonsData.map((lesson: any) => ({
+      lessons: enabledLessons.map((lesson: any) => ({
         _id: lesson._id.toString(),
         lessonName: lesson.lessonName,
         subjectIds: lesson.subjectIds.map((id: any) => id.toString()),
@@ -182,16 +215,16 @@ export async function generateTimetableAction(versionName: string = 'Draft'): Pr
     console.log(`[DEBUG] Days in config payload: ${payload.config.daysOfWeek.length}`);
     console.log(`[DEBUG] Periods in config payload: ${payload.config.numberOfPeriods}`);
 
-    // Calculate expected slots
-    const expectedSlots = lessonsData.reduce((total: number, lesson: any) => {
+    // Calculate expected slots (from enabled lessons only)
+    const expectedSlots = enabledLessons.reduce((total: number, lesson: any) => {
       const classCount = lesson.classIds.length;
       const singleSlots = (lesson.numberOfSingles || 0) * classCount;
       const doubleSlots = (lesson.numberOfDoubles || 0) * classCount * 2; // Double periods = 2 slots
       return total + singleSlots + doubleSlots;
     }, 0);
 
-    console.log(`✅ Payload prepared: ${payload.lessons.length} lessons, ${payload.classes.length} classes`);
-    console.log(`🎯 Target: ${expectedSlots} slots`);
+    console.log(`✅ Payload prepared: ${payload.lessons.length} enabled lessons, ${payload.classes.length} classes`);
+    console.log(`🎯 Target: ${expectedSlots} slots from enabled lessons`);
 
     // Step 4: Call Python solver
     console.log("\n🔧 Step 4: Calling Python CP-SAT solver...");
@@ -238,10 +271,24 @@ export async function generateTimetableAction(versionName: string = 'Draft'): Pr
     const apiTime = ((Date.now() - startTime) / 1000).toFixed(2);
 
     console.log(`✅ Solver completed in ${apiTime}s`);
-    console.log(`📊 Result: ${result?.slots?.length || 0} slots generated`);
+    console.log(`📊 Scheduled slots: ${result?.slots?.length || 0}`);
+    console.log(`📌 Unplaced tasks: ${result?.unplacedTasks?.length || 0}`);
     console.log(`⚠️  Conflicts: ${result?.conflicts || 0}`);
+    console.log(`⏱️  Solver time: ${result?.solvingTime?.toFixed(2) || 'N/A'}s`);
+    console.log(`🎯 Subject distribution: Advanced AI balancing with penalty system`);
+    console.log(`   (-20pts per same-subject-per-day overflow)`)
     console.log(`📈 Stats:`, result?.stats);
     console.log(`💬 Message: ${result?.message}`);
+    
+    // Log unplaced task details
+    if (result?.unplacedTasks && result.unplacedTasks.length > 0) {
+      console.log(`\n📌 UNPLACED TASKS FROM SOLVER (${result.unplacedTasks.length} total):`);
+      console.log(`   First 5:`, result.unplacedTasks.slice(0, 5).map(t => ({
+        lessonName: t.lessonName,
+        className: t.className,
+        taskType: t.taskType
+      })));
+    }
 
     // Step 5: Validate result
     console.log("\n🔍 Step 5: Validating solution...");
@@ -270,16 +317,16 @@ export async function generateTimetableAction(versionName: string = 'Draft'): Pr
     }
 
     // Step 6: Ensure version exists and clear its slots
-    console.log(`\n📋 Step 6: Ensuring version '${versionName}' exists...`);
+    console.log(`\n📋 Step 6: Ensuring version '${finalVersionName}' exists...`);
     
     const draftVersion = await TimetableVersion.findOneAndUpdate(
       { 
         schoolId: school._id, 
-        versionName: versionName 
+        versionName: finalVersionName 
       },
       { 
         schoolId: school._id,
-        versionName: versionName,
+        versionName: finalVersionName,
         isSaved: false, // Will be set to true after successful save
         isPublished: false,
         updatedAt: new Date()
@@ -300,6 +347,14 @@ export async function generateTimetableAction(versionName: string = 'Draft'): Pr
       versionId: draftVersion._id 
     });
     console.log(`✅ Deleted ${deleteResult.deletedCount} old slots from Draft version`);
+    
+    // CRITICAL: Delete ALL ghost lessons with day='Unscheduled' (from old architecture)
+    console.log("\n🧹 Cleaning up ghost lessons with day='Unscheduled'...");
+    const ghostDeleteResult = await TimetableSlot.deleteMany({
+      schoolId: school._id,
+      day: 'Unscheduled'
+    });
+    console.log(`✅ Deleted ${ghostDeleteResult.deletedCount} ghost lessons (old unscheduled slots)`);
 
     // Step 7: Save new timetable to MongoDB
     console.log("\n💾 Step 7: Saving timetable to MongoDB...");
@@ -329,52 +384,123 @@ export async function generateTimetableAction(versionName: string = 'Draft'): Pr
     console.log(`🔍 Deduplication: ${result?.slots?.length || 0} → ${deduplicatedSlots.length} slots`);
     console.log(`[DEBUG] Sample scheduled slot:`, deduplicatedSlots[0]);
 
-    // Step 7b: Prepare unplaced tasks as unscheduled lessons
-    let unscheduledSlots: any[] = [];
+    // Step 7b: Save unplaced lessons + disabled lessons to version document
+    // This completely bypasses the E11000 duplicate key error
+    let unplacedLessonsData: any[] = [];
+    
+    // First, add unplaced tasks from solver
     if (result.unplacedTasks && result.unplacedTasks.length > 0) {
-      console.log(`\n📌 Step 7b: Preparing ${result.unplacedTasks.length} unscheduled lessons...`);
+      console.log(`\n📌 Step 7b: Processing ${result.unplacedTasks.length} unplaced lessons from AI...`);
+      console.log(`   Storing in TimetableVersion.unplacedLessons array (bypasses E11000)`);
       
-      // Group unplaced tasks by classId to assign unique negative periods per class
-      const unplacedByClass = new Map<string, number>();
+      // Store unplaced lessons as rich data objects in the version document
+      unplacedLessonsData = result.unplacedTasks.map((task) => ({
+        lessonId: task.lessonId,
+        classId: task.classId,
+        lessonName: task.lessonName,
+        className: task.className,
+        teacherName: task.teacherName,
+        taskType: task.taskType,
+      }));
       
-      unscheduledSlots = result.unplacedTasks.map((task) => {
-        const classIdStr = task.classId.toString();
-        const currentCount = unplacedByClass.get(classIdStr) || 0;
-        unplacedByClass.set(classIdStr, currentCount + 1);
-        
-        return {
-          schoolId: school._id,
-          versionId: draftVersion._id,
-          classId: task.classId,
-          lessonId: task.lessonId,
-          day: 'Unscheduled', // Special day value for sidebar filtering
-          periodNumber: -(currentCount + 1), // Unique negative per class: -1, -2, -3...
-          isUnscheduled: true,
-          isDoubleStart: false,
-          isDoubleEnd: false,
-        };
-      });
+      console.log(`✅ Added ${unplacedLessonsData.length} unplaced lessons from solver`);
+      console.log(`[DEBUG] Sample unplaced lesson:`, unplacedLessonsData[0]);
+    }
+    
+    // Second, add ALL disabled lessons (they were never sent to solver)
+    if (disabledLessons.length > 0) {
+      console.log(`\n📌 Adding ${disabledLessons.length} disabled lessons to manual placement pool...`);
       
-      console.log(`✅ Prepared ${unscheduledSlots.length} unscheduled lessons with unique identifiers`);
-      console.log(`[DEBUG] Sample unscheduled slot:`, unscheduledSlots[0]);
+      for (const disabledLesson of disabledLessons) {
+        // For each class in the lesson, create unplaced entries for singles and doubles
+        for (const classId of disabledLesson.classIds) {
+          const classObj = classesData.find((c: any) => c._id.toString() === classId.toString());
+          const className = classObj ? `${classObj.grade}-${classObj.name}` : 'Unknown';
+          
+          // Add singles
+          for (let i = 0; i < (disabledLesson.numberOfSingles || 0); i++) {
+            unplacedLessonsData.push({
+              lessonId: disabledLesson._id.toString(),
+              classId: classId.toString(),
+              lessonName: disabledLesson.lessonName,
+              className: className,
+              teacherName: 'N/A',
+              taskType: 'single',
+            });
+          }
+          
+          // Add doubles
+          for (let i = 0; i < (disabledLesson.numberOfDoubles || 0); i++) {
+            unplacedLessonsData.push({
+              lessonId: disabledLesson._id.toString(),
+              classId: classId.toString(),
+              lessonName: disabledLesson.lessonName,
+              className: className,
+              teacherName: 'N/A',
+              taskType: 'double',
+            });
+          }
+        }
+      }
+      
+      console.log(`✅ Added ${disabledLessons.length} disabled lessons (${unplacedLessonsData.length - (result.unplacedTasks?.length || 0)} tasks) to manual placement pool`);
+      console.log(`   These lessons will appear in the sidebar for drag-and-drop placement`);
+    }
+    
+    // Update version document with combined unplaced array
+    if (unplacedLessonsData.length > 0) {
+      await TimetableVersion.findByIdAndUpdate(
+        draftVersion._id,
+        { unplacedLessons: unplacedLessonsData },
+        { new: true }
+      );
+      
+      console.log(`✅ Saved ${unplacedLessonsData.length} total items to version document`);
+      console.log(`   ${result.unplacedTasks?.length || 0} from AI + ${disabledLessons.length} disabled`);
+      console.log(`   100% guaranteed persistence - no unique index conflicts`);
     } else {
       console.log(`\n✅ Step 7b: No unscheduled lessons - all tasks placed!`);
+      
+      // Clear any existing unplaced lessons
+      await TimetableVersion.findByIdAndUpdate(
+        draftVersion._id,
+        { unplacedLessons: [] },
+        { new: true }
+      );
     }
 
-    // Step 7c: Combine and batch insert all slots (placed + unplaced)
-    console.log(`\n💾 Step 7c: Batch inserting all slots...`);
-    const allSlots = [...deduplicatedSlots, ...unscheduledSlots];
-    console.log(`[DEBUG] Total slots to insert: ${allSlots.length} (${deduplicatedSlots.length} scheduled + ${unscheduledSlots.length} unscheduled)`);
+    // Step 7c: Insert ONLY the successfully placed slots (no unplaced slots)
+    console.log(`\n💾 Step 7c: Inserting scheduled slots to TimetableSlot collection...`);
+    const allSlots = deduplicatedSlots; // ONLY placed slots, no unscheduled
+    console.log(`[DEBUG] Scheduled slots to insert: ${allSlots.length}`);
+    console.log(`[DEBUG] Unplaced lessons in version: ${unplacedLessonsData.length}`);
+    console.log(`[DEBUG] Total accountability: ${allSlots.length} + ${unplacedLessonsData.length} = ${allSlots.length + unplacedLessonsData.length} periods`);
     
-    const insertResult = await TimetableSlot.insertMany(allSlots, {
-      ordered: false, // Continue on duplicate key errors
-    });
+    let insertResult;
+    try {
+      insertResult = await TimetableSlot.insertMany(allSlots, {
+        ordered: false, // Continue on duplicate key errors
+      });
+      console.log(`✅ Successfully inserted ${insertResult.length} slots`);
+    } catch (insertError: any) {
+      console.error(`❌ Insert error occurred:`, insertError.message);
+      
+      if (insertError.code === 11000) {
+        console.error(`   E11000 Duplicate Key Error Details:`, insertError.writeErrors?.slice(0, 3));
+        // Still count successful inserts
+        insertResult = insertError.insertedDocs || [];
+        console.log(`   Partially inserted: ${insertResult.length} slots before error`);
+      } else {
+        throw insertError;
+      }
+    }
 
     const scheduledCount = deduplicatedSlots.length;
-    const unscheduledCount = unscheduledSlots.length;
-    console.log(`✅ Inserted ${insertResult.length} total slots successfully`);
-    console.log(`   - Scheduled: ${scheduledCount}`);
-    console.log(`   - Unscheduled: ${unscheduledCount}`);
+    const unplacedCount = unplacedLessonsData.length;
+    console.log(`✅ Successfully saved timetable data:`);
+    console.log(`   - Scheduled slots (TimetableSlot): ${scheduledCount}`);
+    console.log(`   - Unplaced lessons (Version array): ${unplacedCount}`);
+    console.log(`   - Total periods accounted: ${scheduledCount + unplacedCount}`);
     console.log(`[DEBUG] Insert result count: ${insertResult.length}`);
     
     // Step 8: Update version status to saved
@@ -395,8 +521,8 @@ export async function generateTimetableAction(versionName: string = 'Draft'): Pr
     console.log("=".repeat(60));
     console.log(`⏱️  Total time: ${apiTime}s`);
     console.log(`📊 Scheduled slots: ${scheduledCount}/${expectedSlots}`);
-    console.log(`📌 Unscheduled lessons: ${unscheduledCount}`);
-    console.log(`📦 Total saved: ${insertResult.length} (${scheduledCount} + ${unscheduledCount})`);
+    console.log(`📌 Unplaced lessons: ${unplacedCount}`);
+    console.log(`📦 Total saved: ${insertResult.length} scheduled + ${unplacedCount} in version array`);
     console.log(`⚠️  Conflicts: ${result.conflicts} (CP-SAT guarantees 0)`);
     console.log(`🎯 Coverage: ${slotCoverage}%`);
     console.log(`📁 Version: ${draftVersion.versionName} (${draftVersion._id})`);
@@ -404,8 +530,8 @@ export async function generateTimetableAction(versionName: string = 'Draft'): Pr
 
     return {
       success: true,
-      message: unscheduledCount > 0 
-        ? `Timetable generated! ${scheduledCount} scheduled + ${unscheduledCount} unscheduled (${slotCoverage}% grid coverage).`
+      message: unplacedCount > 0 
+        ? `Timetable generated! ${scheduledCount} scheduled + ${unplacedCount} unplaced (${slotCoverage}% grid coverage).`
         : `Timetable generated successfully! ${scheduledCount}/${expectedSlots} slots placed in ${versionName} version (${slotCoverage}% coverage).`,
       slotsPlaced: scheduledCount,
       totalSlots: expectedSlots,
@@ -414,7 +540,7 @@ export async function generateTimetableAction(versionName: string = 'Draft'): Pr
       stats: {
         totalSlots: insertResult.length,
         scheduledLessons: scheduledCount,
-        failedLessons: unscheduledCount,
+        failedLessons: unplacedCount,
         swapAttempts: 0,
         successfulSwaps: 0,
         iterations: result.stats.constraintsAdded,

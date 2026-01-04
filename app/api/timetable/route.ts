@@ -119,10 +119,16 @@ export async function GET(request: Request) {
       console.warn('⚠️ No slots found for versionId:', versionId);
     }
 
+    // Fetch unplaced lessons from the version document
+    const versionDoc = await TimetableVersion.findById(versionId).lean();
+    const unplacedLessons = versionDoc?.unplacedLessons || [];
+    console.log(`📋 Timetable API: Found ${unplacedLessons.length} unplaced lessons in version document`);
+
     return NextResponse.json({
       success: true,
       data: slots,
       versionId,
+      unplacedLessons, // Include unplaced lessons from version document
     });
   } catch (error) {
     console.error('Error fetching timetable slots:', error);

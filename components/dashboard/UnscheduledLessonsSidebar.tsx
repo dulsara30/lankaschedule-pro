@@ -8,6 +8,43 @@ import { useDraggable } from '@dnd-kit/core';
 import { GripVertical, AlertCircle, Users, User, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+// Draggable wrapper for unplaced lessons
+function DraggableUnplacedLesson({ lesson, unplacedItem }: { lesson: Lesson; unplacedItem: any }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `unplaced-${unplacedItem.lessonId}-${unplacedItem.classId}`,
+    data: {
+      lesson,
+      type: 'unplaced-lesson',
+      unplacedItem, // Pass the unplaced item data for server action
+    },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      className={cn(
+        'bg-red-50 border border-red-200 rounded-md p-2 cursor-grab active:cursor-grabbing transition-opacity',
+        isDragging && 'opacity-50'
+      )}
+    >
+      <div className="flex items-start gap-2">
+        <GripVertical className="h-4 w-4 text-gray-400 shrink-0 mt-0.5" />
+        <div className="flex-1 min-w-0">
+          <div className="text-xs font-medium text-gray-900 truncate">
+            {unplacedItem.lessonName}
+          </div>
+          <div className="text-[10px] text-gray-600 mt-0.5">
+            {unplacedItem.className} • {unplacedItem.taskType === 'double' ? '2 periods' : '1 period'}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 interface Teacher {
   _id: string;
   name: string;
@@ -38,23 +75,73 @@ interface Lesson {
 interface TimetableSlot {
   _id: string;
   lessonId: Lesson | string;
-  day: number;
+  day: number | string; // Can be number (1-5) or 'Unscheduled'
   periodNumber: number;
   isDoubleStart?: boolean;
   isDoubleEnd?: boolean;
+  isUnscheduled?: boolean;
 }
 
 interface UnscheduledLessonsSidebarProps {
   lessons: Lesson[];
   slots: TimetableSlot[];
+  unplacedLessons?: any[]; // Unplaced lessons from version document
+  filterByClassId?: string; // Optional: filter by specific class
+  filterByTeacherId?: string; // Optional: filter by specific teacher
+  showPagination?: boolean; // Optional: enable pagination for master matrix
 }
 
-export default function UnscheduledLessonsSidebar({ lessons, slots }: UnscheduledLessonsSidebarProps) {
+export default function UnscheduledLessonsSidebar({ 
+  lessons, 
+  slots, 
+  unplacedLessons = [],
+  filterByClassId,
+  filterByTeacherId,
+  showPagination = false,
+}: UnscheduledLessonsSidebarProps) {
+  const [currentPage, setCurrentPage] = React.useState(1);
+  const itemsPerPage = 10;
+  
+  // Filter unplaced lessons based on context
+  const filteredUnplacedLessons = React.useMemo(() => {
+    let filtered = unplacedLessons;
+    
+    // Filter by class if specified
+    if (filterByClassId) {
+      filtered = filtered.filter(item => item.classId === filterByClassId);
+    }
+    
+    // Filter by teacher if specified (requires matching lesson)
+    if (filterByTeacherId) {
+      filtered = filtered.filter(item => {
+        const lesson = lessons.find(l => l._id === item.lessonId);
+        return lesson?.teacherIds?.some((t: any) => t._id === filterByTeacherId);
+      });
+    }
+    
+    return filtered;
+  }, [unplacedLessons, filterByClassId, filterByTeacherId, lessons]);
+  
+  // Paginate if enabled
+  const paginatedUnplacedLessons = React.useMemo(() => {
+    if (!showPagination) return filteredUnplacedLessons;
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredUnplacedLessons.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredUnplacedLessons, currentPage, showPagination]);
+  
+  const totalPages = Math.ceil(filteredUnplacedLessons.length / itemsPerPage);
+  
   // Debug logging
   console.log('📋 UnscheduledLessonsSidebar - Lessons:', lessons.length);
-  console.log('📋 UnscheduledLessonsSidebar - Slots:', slots.length);
+  console.log('📋 UnscheduledLessonsSidebar - Scheduled Slots:', slots.length);
+  console.log('📋 UnscheduledLessonsSidebar - Total Unplaced:', unplacedLessons.length);
+  console.log('📋 UnscheduledLessonsSidebar - Filtered Unplaced:', filteredUnplacedLessons.length);
+  
+  if (filterByClassId) console.log('🔍 Filtering by class:', filterByClassId);
+  if (filterByTeacherId) console.log('🔍 Filtering by teacher:', filterByTeacherId);
   
   // Detect conflicting slots (multiple lessons at same day/period/class)
+  // Only check scheduled slots (from TimetableSlot collection)
   const conflictingSlots = useMemo(() => {
     const slotMap = new Map<string, TimetableSlot[]>();
     
@@ -86,13 +173,14 @@ export default function UnscheduledLessonsSidebar({ lessons, slots }: Unschedule
   }, [slots]);
   
   // Calculate which lessons are unscheduled or partially scheduled
+  // Now using unplacedLessons from version document for accurate tracking
   const lessonScheduleStatus = useMemo(() => {
     const statusMap = new Map<string, { scheduled: number; needed: number; lesson: Lesson; isConflicting: boolean }>();
 
     lessons.forEach((lesson) => {
       const periodsNeeded = lesson.isDoubleScheduled ? 2 : (lesson.periodsPerWeek || 1);
       
-      // Count how many periods are scheduled for this lesson
+      // Count how many periods are ACTUALLY scheduled (in TimetableSlot collection)
       const scheduledSlots = slots.filter((slot) => {
         const lessonId = typeof slot.lessonId === 'string' ? slot.lessonId : slot.lessonId._id;
         return lessonId === lesson._id;
@@ -113,7 +201,7 @@ export default function UnscheduledLessonsSidebar({ lessons, slots }: Unschedule
   }, [lessons, slots, conflictingSlots]);
 
   // Split into Unplaced (no slots) and Conflicting (has slots but conflicts)
-  const { unplacedLessons, conflictingLessons } = useMemo(() => {
+  const { unplacedLessons: unplacedByScheduleStatus, conflictingLessons } = useMemo(() => {
     const unplaced: Array<{ lesson: Lesson; scheduled: number; needed: number }> = [];
     const conflicting: Array<{ lesson: Lesson; scheduled: number; needed: number }> = [];
 
@@ -169,7 +257,7 @@ export default function UnscheduledLessonsSidebar({ lessons, slots }: Unschedule
       }));
   };
 
-  const unplacedByClass = groupByClass(unplacedLessons);
+  const unplacedByClass = groupByClass(unplacedByScheduleStatus);
   const conflictingByClass = groupByClass(conflictingLessons);
 
   const totalUnplacedPeriods = unplacedByClass.reduce((sum, group) => sum + group.totalPeriodsMissing, 0);
@@ -195,6 +283,61 @@ export default function UnscheduledLessonsSidebar({ lessons, slots }: Unschedule
       </CardHeader>
       
       <CardContent className="flex-1 overflow-y-auto space-y-4 px-3">
+        {/* Unplaced from Solver Section - Direct from Version Document */}
+        {filteredUnplacedLessons.length > 0 && (
+          <div>
+            <div className="flex items-center justify-between mb-2 px-2">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 text-red-500" />
+                <h3 className="text-sm font-semibold text-red-700">
+                  Unplaced by Solver ({filteredUnplacedLessons.length})
+                </h3>
+              </div>
+              {showPagination && totalPages > 1 && (
+                <div className="text-[10px] text-gray-500">
+                  Page {currentPage} of {totalPages}
+                </div>
+              )}
+            </div>
+            <div className="space-y-1">
+              {paginatedUnplacedLessons.map((unplacedItem, index) => {
+                // Find the full lesson object to enable dragging
+                const fullLesson = lessons.find(l => l._id === unplacedItem.lessonId);
+                if (!fullLesson) return null;
+                
+                return (
+                  <DraggableUnplacedLesson
+                    key={`${unplacedItem.lessonId}-${unplacedItem.classId}-${index}`}
+                    lesson={fullLesson}
+                    unplacedItem={unplacedItem}
+                  />
+                );
+              })}
+            </div>
+            {showPagination && totalPages > 1 && (
+              <div className="flex items-center justify-center gap-2 mt-3 px-2">
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-2 py-1 text-xs border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
+                  Previous
+                </button>
+                <span className="text-xs text-gray-600">
+                  {currentPage} / {totalPages}
+                </span>
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-2 py-1 text-xs border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
+                  Next
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Unplaced Lessons Section */}
         {unplacedByClass.length > 0 && (
           <div>

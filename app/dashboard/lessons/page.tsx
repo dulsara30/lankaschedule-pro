@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { generateTimetableAction } from '@/app/actions/generateTimetable';
+import { updateLessonStatus } from '@/app/actions/updateLessonStatus';
 import { cn } from '@/lib/utils';
 
 interface Subject {
@@ -42,6 +43,7 @@ interface Lesson {
   classIds: Array<{ _id: string; name: string; grade: number }>;
   numberOfSingles: number;
   numberOfDoubles: number;
+  status: 'enabled' | 'disabled';
   color?: string;
   notes?: string;
 }
@@ -287,6 +289,29 @@ export default function LessonsPage() {
       }
     } catch {
       toast.error('Failed to delete lesson');
+    }
+  };
+
+  const handleToggleStatus = async (lessonId: string, currentStatus: 'enabled' | 'disabled') => {
+    const newStatus = currentStatus === 'enabled' ? 'disabled' : 'enabled';
+    
+    try {
+      const result = await updateLessonStatus(lessonId, newStatus);
+      
+      if (result.success) {
+        toast.success(
+          newStatus === 'enabled' 
+            ? '✅ Lesson enabled - will be sent to AI solver' 
+            : '⏸️ Lesson disabled - will appear in manual placement sidebar'
+        );
+        fetchData();
+        router.refresh();
+      } else {
+        toast.error(result.error || 'Failed to update lesson status');
+      }
+    } catch (error) {
+      console.error('Error toggling lesson status:', error);
+      toast.error('An error occurred while updating status');
     }
   };
 
@@ -547,15 +572,15 @@ export default function LessonsPage() {
               </div>
 
               <div className="flex flex-col gap-3 w-full">
-                {/* Step 1: Resource Mapping */}
+                {/* Step 1: Resource Mapping & Filtering */}
                 <div className={`flex items-center gap-3 p-4 rounded-lg transition-all ${generationStep >= 1 ? 'bg-white/20 text-white' : 'bg-white/5 text-white/50'}`}>
                   <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${generationStep >= 1 ? 'bg-purple-500' : 'bg-white/10'}`}>
                     {generationStep > 1 ? <Check className="h-5 w-5" /> : '1'}
                   </div>
                   <div className="flex-1">
-                    <span className="font-medium">📊 Resource Mapping: Indexing 914 potential slots...</span>
+                    <span className="font-medium">⚙️ Smart Filtering: Separating enabled/disabled lessons...</span>
                     {generationStep === 1 && (
-                      <p className="text-xs text-white/60 mt-1">Loading lessons, classes, teachers, and configuration</p>
+                      <p className="text-xs text-white/60 mt-1">Loading {lessons.length} lessons and applying strategic filters</p>
                     )}
                   </div>
                 </div>
@@ -592,9 +617,9 @@ export default function LessonsPage() {
                     {generationStep > 4 ? <Check className="h-5 w-5" /> : '4'}
                   </div>
                   <div className="flex-1">
-                    <span className="font-medium">💾 Data Persistence: Finalizing slots and unplaced items...</span>
+                    <span className="font-medium">💾 Data Persistence: Finalizing placed slots + disabled lessons...</span>
                     {generationStep === 4 && (
-                      <p className="text-xs text-white/60 mt-1">Saving to MongoDB (slots collection + version array)</p>
+                      <p className="text-xs text-white/60 mt-1">Saving enabled to slots collection, disabled to manual placement array</p>
                     )}
                   </div>
                 </div>
@@ -1165,13 +1190,14 @@ export default function LessonsPage() {
                   <TableHead>Classes</TableHead>
                   <TableHead>Teachers</TableHead>
                   <TableHead className="text-center">Periods/Week</TableHead>
+                  <TableHead className="text-center">Status</TableHead>
                   <TableHead className="w-16"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredAndPaginatedLessons.lessons.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-zinc-500 py-8">
+                    <TableCell colSpan={7} className="text-center text-zinc-500 py-8">
                       {hasActiveFilters ? 
                         "No lessons match your filters. Try adjusting your search criteria." :
                         "No lessons created yet. Click \"Create Lesson\" to get started."
@@ -1236,6 +1262,32 @@ export default function LessonsPage() {
                             <span className="text-xs text-zinc-500">
                               {lesson.numberOfSingles}S + {lesson.numberOfDoubles}D
                             </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <button
+                            onClick={() => handleToggleStatus(lesson._id, lesson.status || 'enabled')}
+                            className={cn(
+                              "relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2",
+                              (lesson.status || 'enabled') === 'enabled' 
+                                ? 'bg-green-600 focus:ring-green-500' 
+                                : 'bg-gray-300 dark:bg-gray-600 focus:ring-gray-400'
+                            )}
+                            title={(lesson.status || 'enabled') === 'enabled' ? 'Click to disable (manual placement)' : 'Click to enable (AI placement)'}
+                          >
+                            <span
+                              className={cn(
+                                "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                                (lesson.status || 'enabled') === 'enabled' ? 'translate-x-6' : 'translate-x-1'
+                              )}
+                            />
+                          </button>
+                          <div className="text-xs mt-1 font-medium">
+                            {(lesson.status || 'enabled') === 'enabled' ? (
+                              <span className="text-green-600 dark:text-green-400">✅ AI</span>
+                            ) : (
+                              <span className="text-gray-500 dark:text-gray-400">⏸️ Manual</span>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell>

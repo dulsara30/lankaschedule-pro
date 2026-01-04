@@ -29,6 +29,7 @@ export interface ILesson extends Document {
   classIds: mongoose.Types.ObjectId[]; // Can be one or multiple classes (parallel teaching)
   numberOfSingles: number; // Number of single periods per week
   numberOfDoubles: number; // Number of double periods per week
+  status: 'enabled' | 'disabled'; // Enable/Disable for strategic utilization management
   color?: string; // For UI visualization, e.g., "#3B82F6"
   notes?: string; // Additional information
   createdAt: Date;
@@ -92,6 +93,12 @@ const LessonSchema = new Schema<ILesson>(
       required: [true, 'Number of double periods is required'],
       min: [0, 'Number of doubles cannot be negative'],
       default: 0,
+    },
+    status: {
+      type: String,
+      enum: ['enabled', 'disabled'],
+      default: 'enabled',
+      index: true, // For efficient filtering
     },
     color: {
       type: String,

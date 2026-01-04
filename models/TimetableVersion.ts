@@ -7,6 +7,7 @@ export interface ITimetableVersion extends Document {
   isSaved: boolean;
   isPublished: boolean;
   adminNote?: string;
+  unplacedLessons?: any[]; // Array of lessons that couldn't be scheduled by the solver
   createdAt: Date;
   updatedAt: Date;
 }
@@ -38,6 +39,10 @@ const TimetableVersionSchema = new Schema<ITimetableVersion>(
       type: String,
       maxlength: [500, 'Admin note cannot exceed 500 characters'],
       trim: true,
+    },
+    unplacedLessons: {
+      type: [Schema.Types.Mixed],
+      default: [],
     },
   },
   {

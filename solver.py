@@ -487,7 +487,7 @@ class TimetableSolver:
             self.solver.parameters.num_search_workers = 8
             self.solver.parameters.log_search_progress = True
             self.solver.parameters.random_seed = 42
-            self.solver.parameters.relative_gap_limit = 0.05  # 5% gap acceptable
+            self.solver.parameters.relative_gap_limit = 0.02  # 5% gap acceptable
             
             status = self.solver.Solve(self.model)
             
@@ -525,7 +525,7 @@ class TimetableSolver:
             self.solver.parameters.num_search_workers = 8
             self.solver.parameters.log_search_progress = True
             self.solver.parameters.random_seed = 42
-            self.solver.parameters.relative_gap_limit = 0.05
+            self.solver.parameters.relative_gap_limit = 0.02
             
             status = self.solver.Solve(self.model)
         else:
@@ -538,11 +538,25 @@ class TimetableSolver:
             self.solver.parameters.num_search_workers = 8
             self.solver.parameters.log_search_progress = True
             self.solver.parameters.random_seed = 42
-            self.solver.parameters.relative_gap_limit = 0.05
+            self.solver.parameters.relative_gap_limit = 0.02
             
             status = self.solver.Solve(self.model)
         
         solving_time = time.time() - start_time
+        
+        # Handle UNKNOWN status (time limit with partial solution)
+        if status == cp_model.UNKNOWN:
+            print("\n⚠️  Time limit reached (UNKNOWN status)")
+            try:
+                slots, unplaced_tasks = self._extract_solution()
+                if len(slots) > 0:
+                    # Found partial solution
+                    return self._build_response(cp_model.FEASIBLE, solving_time, slots, unplaced_tasks)
+            except:
+                pass
+            # No solution at all
+            return self._build_response(cp_model.INFEASIBLE, solving_time, [], [])
+        
         return self._build_response(status, solving_time)
     
     def _build_response(self, status, solving_time, slots=None, unplaced_tasks=None) -> SolverResponse:
@@ -590,37 +604,10 @@ class TimetableSolver:
             stats=self.stats,
             message=message
         )
-        elif status == cp_model.UNKNOWN:
-            # Time limit reached but may have found some solution
-            print("\n⚠️  Time limit reached (UNKNOWN status)")
-            try:
-                slots, unplaced_tasks = self._extract_solution()
-                if len(slots) > 0:
-                    return self._build_response(cp_model.FEASIBLE, solving_time, slots, unplaced_tasks)
-            except:
-                pass
-            
-            # No solution found at all
-            return self._build_response(cp_model.INFEASIBLE, solving_time, [], [])
-        else:
-            print(f"\n❌ No solution found (status: {self.solver.StatusName(status)})")
-            print(f"⏱️  Solving time: {solving_time:.2f}s")
-            print("   Constraints may be too tight or problem is infeasible")
-            print("="*60)
-            
-            return SolverResponse(
-                success=False,
-                slots=[],
-                unplacedTasks=[],
-                conflicts=999999,
-                solvingTime=solving_time,
-                stats=self.stats,
-                message=error_msg
-            )
     
     def _diagnose_unplaced_tasks(self, unplaced_tasks: List[UnplacedTask], scheduled_slots: List[TimetableSlot]) -> List[UnplacedTask]:
-        \"\"\"Analyze why tasks couldn't be placed and add diagnostic information\"\"\"
-        print(f\"\\n🔍 Diagnosing {len(unplaced_tasks)} unplaced tasks...\")
+        """Analyze why tasks couldn't be placed and add diagnostic information"""
+        print(f"\n🔍 Diagnosing {len(unplaced_tasks)} unplaced tasks...")
         
         # Build teacher and class utilization maps from scheduled slots
         teacher_schedule = {}  # teacher_id -> {day -> [periods]}
@@ -656,7 +643,7 @@ class TimetableSolver:
             # Find the lesson for this task
             lesson = next((l for l in self.lessons if l.lesson_id == task.lessonId), None)
             if not lesson:
-                task.diagnostic = \"Lesson not found in system\"
+                task.diagnostic = "Lesson not found in system"
                 diagnosed_tasks.append(task)
                 continue
             
@@ -673,9 +660,9 @@ class TimetableSolver:
             
             # Determine diagnostic
             if teacher_utilization > 0.90:
-                task.diagnostic = f\"Teacher workload is too high ({teacher_utilization*100:.0f}% utilization)\"
+                task.diagnostic = f"Teacher workload is too high ({teacher_utilization*100:.0f}% utilization)"
             elif class_utilization > 0.90:
-                task.diagnostic = f\"Class schedule is nearly full ({class_utilization*100:.0f}% utilization)\"
+                task.diagnostic = f"Class schedule is nearly full ({class_utilization*100:.0f}% utilization)"
             elif teacher_utilization > 0.70 and class_utilization > 0.70:
                 # Check if teacher is free when class is busy (resource conflict)
                 teacher_free_slots = set()
@@ -694,17 +681,17 @@ class TimetableSolver:
                 # Check if there's overlap in free slots
                 overlap = teacher_free_slots & class_free_slots
                 if len(overlap) < (2 if task.taskType == 'double' else 1):
-                    task.diagnostic = \"Resource scheduling conflict: Teacher and class schedules don't align\"
+                    task.diagnostic = "Resource scheduling conflict: Teacher and class schedules don't align"
                 else:
-                    task.diagnostic = \"Constraints prevent scheduling despite available slots\"
+                    task.diagnostic = "Constraints prevent scheduling despite available slots"
             elif teacher_utilization < 0.30:
-                task.diagnostic = \"Insufficient demand or over-constrained problem\"
+                task.diagnostic = "Insufficient demand or over-constrained problem"
             else:
-                task.diagnostic = \"Unable to find valid slot due to constraints (intervals/conflicts)\"
+                task.diagnostic = "Unable to find valid slot due to constraints (intervals/conflicts)"
             
             diagnosed_tasks.append(task)
         
-        print(f\"   ✅ Diagnostics completed for {len(diagnosed_tasks)} tasks\")
+        print(f"   ✅ Diagnostics completed for {len(diagnosed_tasks)} tasks")
         return diagnosed_tasks
     
     def _extract_solution(self) -> tuple[List[TimetableSlot], List[UnplacedTask]]:

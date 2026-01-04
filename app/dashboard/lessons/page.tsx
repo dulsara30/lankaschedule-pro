@@ -560,6 +560,8 @@ export default function LessonsPage() {
               <SelectItem value="3">3 Minutes</SelectItem>
               <SelectItem value="4">4 Minutes</SelectItem>
               <SelectItem value="5">5 Minutes</SelectItem>
+              <SelectItem value="6">6 Minutes</SelectItem>
+              <SelectItem value="7">7 Minutes</SelectItem>
             </SelectContent>
           </Select>
           <div className="flex items-center space-x-2 border border-zinc-200 dark:border-zinc-700 rounded-md px-3 py-2 bg-white dark:bg-zinc-900">

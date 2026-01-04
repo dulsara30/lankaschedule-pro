@@ -12,8 +12,6 @@
 
 'use server';
 
-export const maxDuration = 600; // 10 minutes for solver + safety buffer
-
 import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/dbConnect';
 import School from '@/models/School';
@@ -23,6 +21,8 @@ import Lesson from '@/models/Lesson';
 import Class from '@/models/Class';
 import TimetableSlot from '@/models/TimetableSlot';
 import TimetableVersion from '@/models/TimetableVersion';
+
+export const maxDuration = 600; // 10 minutes for solver + safety buffer
 
 interface SolverResponse {
   success: boolean;

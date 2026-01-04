@@ -63,7 +63,7 @@ export default function LessonsPage() {
   const [generationStep, setGenerationStep] = useState(0);
   const [generationVersionName, setGenerationVersionName] = useState('');
   const [strictBalancing, setStrictBalancing] = useState(true);  // Default: strict mode
-  const [maxSearchTime, setMaxSearchTime] = useState(3);  // Default: 3 minutes
+  const [maxSearchTime, setMaxSearchTime] = useState(5);  // Default: 5 minutes (recommended)
   const [generationProgress, setGenerationProgress] = useState('');
   const [pollCount, setPollCount] = useState(0);
   const [estimatedTime, setEstimatedTime] = useState(0);
@@ -564,13 +564,12 @@ export default function LessonsPage() {
               <SelectValue placeholder="Search time" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="1">1 Minute</SelectItem>
-              <SelectItem value="2">2 Minutes</SelectItem>
               <SelectItem value="3">3 Minutes</SelectItem>
-              <SelectItem value="4">4 Minutes</SelectItem>
-              <SelectItem value="5">5 Minutes</SelectItem>
-              <SelectItem value="6">6 Minutes</SelectItem>
-              <SelectItem value="7">7 Minutes</SelectItem>
+              <SelectItem value="5">5 Minutes ⭐</SelectItem>
+              <SelectItem value="7">7 Minutes (7+3 Rule)</SelectItem>
+              <SelectItem value="10">10 Minutes</SelectItem>
+              <SelectItem value="15">15 Minutes</SelectItem>
+              <SelectItem value="20">20 Minutes</SelectItem>
             </SelectContent>
           </Select>
           <div className="flex items-center space-x-2 border border-zinc-200 dark:border-zinc-700 rounded-md px-3 py-2 bg-white dark:bg-zinc-900">

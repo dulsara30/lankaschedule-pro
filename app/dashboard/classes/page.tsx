@@ -240,12 +240,23 @@ export default function ClassesPage() {
 
   const handleEdit = (classItem: Class) => {
     setEditingClass(classItem);
+    
+    // Extract classTeacher ID safely - handle both populated object and string ID
+    let teacherId = '';
+    if (classItem.classTeacher) {
+      if (typeof classItem.classTeacher === 'object' && classItem.classTeacher._id) {
+        teacherId = classItem.classTeacher._id;
+      } else if (typeof classItem.classTeacher === 'string') {
+        teacherId = classItem.classTeacher;
+      }
+    }
+    
     setFormData({
       grade: classItem.grade,
       stream: classItem.stream || '',
       numberOfParallelClasses: 1,
       customPrefix: classItem.name.split('-')[0] + '-' + (classItem.stream || ''),
-      classTeacher: classItem.classTeacher?._id || '',
+      classTeacher: teacherId,
     });
     setDialogOpen(true);
   };
@@ -639,7 +650,7 @@ export default function ClassesPage() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {classItem.classTeacher?.name ? (
+                        {classItem.classTeacher && typeof classItem.classTeacher === 'object' && classItem.classTeacher.name ? (
                           <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-200">
                             👤 {classItem.classTeacher.name}
                           </span>

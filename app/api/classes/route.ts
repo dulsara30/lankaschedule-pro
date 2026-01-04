@@ -102,12 +102,17 @@ export async function POST(request: NextRequest) {
       classTeacher: classTeacher || null,
     });
 
+    // CRITICAL: Populate classTeacher before returning
+    const populatedClass = await Class.findById(classData._id)
+      .populate({ path: 'classTeacher', strictPopulate: false })
+      .lean();
+
     revalidatePath('/dashboard/classes');
     revalidatePath('/dashboard/lessons');
 
     return NextResponse.json({
       success: true,
-      data: classData,
+      data: populatedClass,
       message: 'Class created successfully',
     });
   } catch (error: unknown) {
@@ -167,12 +172,17 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    // CRITICAL: Populate classTeacher before returning
+    const populatedClass = await Class.findById(classData._id)
+      .populate({ path: 'classTeacher', strictPopulate: false })
+      .lean();
+
     revalidatePath('/dashboard/classes');
     revalidatePath('/dashboard/lessons');
 
     return NextResponse.json({
       success: true,
-      data: classData,
+      data: populatedClass,
       message: 'Class updated successfully',
     });
   } catch (error: unknown) {

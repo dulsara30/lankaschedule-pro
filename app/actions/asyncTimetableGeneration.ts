@@ -225,25 +225,29 @@ export async function saveTimetableResults(jobId: string, versionName: string) {
       { upsert: true, new: true }
     );
 
-    // Delete existing slots for this version
-    await TimetableSlot.deleteMany({
+    // ATOMIC OPERATION: Delete ALL existing slots for this version before inserting new ones
+    console.log(`🗑️  Deleting existing slots for version: ${draftVersion._id}`);
+    const deleteResult = await TimetableSlot.deleteMany({
       schoolId: school._id,
       versionId: draftVersion._id,
     });
+    console.log(`   ✅ Deleted ${deleteResult.deletedCount} old slots`);
 
-    // Save new slots
+    // Save new slots (fresh 100% placement data)
     const slots = result.slots.map((slot: any) => ({
       schoolId: school._id,
       versionId: draftVersion._id,
-      classId: slot.classId,
-      lessonId: slot.lessonId,
+      classId: slot.classId,  // Store as String ID only (not nested object)
+      lessonId: slot.lessonId,  // Store as String ID only (not nested object)
       day: slot.day,
       periodNumber: slot.periodNumber,
       isDoubleStart: slot.isDoubleStart,
       isDoubleEnd: slot.isDoubleEnd,
     }));
 
+    console.log(`💾 Inserting ${slots.length} new slots for 100% placement`);
     await TimetableSlot.insertMany(slots);
+    console.log(`   ✅ Successfully saved ${slots.length} slots to database`);
 
     // Revalidate paths
     revalidatePath('/dashboard/timetable');

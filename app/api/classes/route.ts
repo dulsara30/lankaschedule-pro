@@ -84,6 +84,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { name, grade, stream, classTeacher } = body;
 
+    console.log('📦 Received POST request body:', { name, grade, stream, classTeacher });
+
     if (!name || !grade) {
       return NextResponse.json(
         {
@@ -97,6 +99,8 @@ export async function POST(request: NextRequest) {
     // Convert empty string to null for proper MongoDB reference
     const teacherRef = classTeacher && classTeacher.trim() !== '' ? classTeacher : null;
 
+    console.log('📝 Creating class with:', { schoolId: school._id, name, grade, stream: stream || '', classTeacher: teacherRef });
+
     const classData = await Class.create({
       schoolId: school._id,
       name,
@@ -105,10 +109,14 @@ export async function POST(request: NextRequest) {
       classTeacher: teacherRef,
     });
 
+    console.log('✅ Class created in DB:', classData);
+
     // CRITICAL: Populate classTeacher before returning
     const populatedClass = await Class.findById(classData._id)
       .populate({ path: 'classTeacher', strictPopulate: false })
       .lean();
+
+    console.log('🔄 Populated class before returning:', populatedClass);
 
     revalidatePath('/dashboard/classes');
     revalidatePath('/dashboard/lessons');
@@ -149,6 +157,8 @@ export async function PUT(request: NextRequest) {
     const body = await request.json();
     const { id, name, grade, stream, classTeacher } = body;
 
+    console.log('📦 Received PUT request body:', { id, name, grade, stream, classTeacher });
+
     if (!id || !name || !grade) {
       return NextResponse.json(
         {
@@ -162,11 +172,15 @@ export async function PUT(request: NextRequest) {
     // Convert empty string to null for proper MongoDB reference
     const teacherRef = classTeacher && classTeacher.trim() !== '' ? classTeacher : null;
 
+    console.log('📝 Updating class with:', { id, name, grade, stream: stream || '', classTeacher: teacherRef });
+
     const classData = await Class.findByIdAndUpdate(
       id,
       { name, grade, stream: stream || '', classTeacher: teacherRef },
       { new: true, runValidators: true }
     );
+
+    console.log('✅ Class updated in DB:', classData);
 
     if (!classData) {
       return NextResponse.json(
@@ -182,6 +196,8 @@ export async function PUT(request: NextRequest) {
     const populatedClass = await Class.findById(classData._id)
       .populate({ path: 'classTeacher', strictPopulate: false })
       .lean();
+
+    console.log('🔄 Populated class before returning:', populatedClass);
 
     revalidatePath('/dashboard/classes');
     revalidatePath('/dashboard/lessons');

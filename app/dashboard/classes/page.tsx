@@ -176,30 +176,39 @@ export default function ClassesPage() {
       
       // When editing, update single class
       if (editingClass) {
+        const updatePayload = {
+          id: editingClass._id,
+          name: generatedClassNames[0], // Use first generated name for single edit
+          grade: formData.grade,
+          stream: formData.stream || '',
+          classTeacher: formData.classTeacher && formData.classTeacher.trim() !== '' ? formData.classTeacher : null,
+        };
+
+        console.log('📤 Sending UPDATE to API:', updatePayload);
+        console.log('📋 Current formData:', formData);
+
         const response = await fetch(url, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id: editingClass._id,
-            name: generatedClassNames[0], // Use first generated name for single edit
-            grade: formData.grade,
-            stream: formData.stream || '',
-            classTeacher: formData.classTeacher && formData.classTeacher.trim() !== '' ? formData.classTeacher : null,
-          }),
+          body: JSON.stringify(updatePayload),
         });
 
         const data = await response.json();
+
+        console.log('📥 Received response from API:', data);
 
         if (data.success) {
           toast.success(data.message);
           // Update local state with populated class from API
           if (data.data) {
+            console.log('✅ Updating local state with:', data.data);
             setClasses(prev => prev.map(c => c._id === data.data._id ? data.data : c));
           }
           setDialogOpen(false);
           resetForm();
           fetchClasses();
         } else {
+          console.error('❌ API Error:', data.error);
           toast.error(data.error);
         }
         return;
@@ -213,6 +222,8 @@ export default function ClassesPage() {
         classTeacher: formData.classTeacher && formData.classTeacher.trim() !== '' ? formData.classTeacher : null,
       }));
 
+      console.log('📤 Creating classes:', classesToCreate);
+
       // Create all classes
       const results = await Promise.all(
         classesToCreate.map(classData =>
@@ -223,6 +234,8 @@ export default function ClassesPage() {
           }).then(res => res.json())
         )
       );
+
+      console.log('📥 Create results:', results);
 
       const failed = results.filter(r => !r.success);
       const succeeded = results.filter(r => r.success);
@@ -243,6 +256,7 @@ export default function ClassesPage() {
   };
 
   const handleEdit = (classItem: Class) => {
+    console.log('✏️ Editing class:', classItem);
     setEditingClass(classItem);
     
     // Extract classTeacher ID safely - handle both populated object and string ID
@@ -250,18 +264,25 @@ export default function ClassesPage() {
     if (classItem.classTeacher) {
       if (typeof classItem.classTeacher === 'object' && classItem.classTeacher._id) {
         teacherId = classItem.classTeacher._id;
+        console.log('📋 Extracted teacher ID from object:', teacherId);
       } else if (typeof classItem.classTeacher === 'string') {
         teacherId = classItem.classTeacher;
+        console.log('📋 Using teacher ID string:', teacherId);
       }
+    } else {
+      console.log('📋 No teacher assigned to this class');
     }
     
-    setFormData({
+    const newFormData = {
       grade: classItem.grade,
       stream: classItem.stream || '',
       numberOfParallelClasses: 1,
       customPrefix: classItem.name.split('-')[0] + '-' + (classItem.stream || ''),
       classTeacher: teacherId,
-    });
+    };
+    
+    console.log('📝 Setting form data:', newFormData);
+    setFormData(newFormData);
     setDialogOpen(true);
   };
 

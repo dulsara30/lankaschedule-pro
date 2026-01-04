@@ -354,23 +354,23 @@ class TimetableSolver:
         """Maximize number of placed lessons with priority weights and subject distribution
         
         Args:
-            penalty_multiplier: Multiplier for distribution penalties (1.0 = -400, 0.125 = -50)
+            penalty_multiplier: Multiplier for distribution penalties (1.0 = -10000, 0.125 = -1250)
         """
-        # ELITE OPTIMIZATION MODE: Place as many lessons as possible with strict quality
-        # Priority: Double periods (1000 points) > Single periods (500 points)
-        # Extreme Penalty: Same subject multiple times per day for a class (-400 points default)
-        # Strategy: High rewards + penalties = AI forced to balance
+        # HIERARCHICAL OPTIMIZATION: Lexicographical priority system
+        # Tier 1 (Placement): Singles = 1,000,000 pts | Doubles = 2,000,000 pts
+        # Tier 2 (Quality): Clumping penalty = -10,000 pts
+        # Logic: AI only accepts penalty if mathematically impossible to place without one
         
-        base_penalty = int(-400 * penalty_multiplier)  # -400 for strict, -50 for relaxed
+        base_penalty = int(-10000 * penalty_multiplier)  # -10,000 for strict, -1,250 for relaxed
         
         objective_terms = []
         for task in self.task_info:
             task_idx = task['task_idx']
             presence_var = self.presence_vars[task_idx]
             
-            # ELITE WEIGHTS: 10x boost for maximum placement motivation
+            # HIERARCHICAL WEIGHTS: Placement >> Quality (100:1 ratio)
             # Multiply by number of classes to fairly weight parallel lessons
-            weight = 1000 if task['type'] == 'double' else 500
+            weight = 2000000 if task['type'] == 'double' else 1000000
             weight *= len(task['classIds'])  # Fair weighting for parallel classes
             objective_terms.append(weight * presence_var)
         
@@ -440,14 +440,14 @@ class TimetableSolver:
         
         mode_str = "STRICT" if penalty_multiplier >= 1.0 else "RELAXED"
         print(f"   ✅ Added {penalty_count} subject distribution penalties ({mode_str} mode: {base_penalty}pts)")
-        print(f"   📈 Strategy: High rewards ({1000}/{500}pts) + penalties ({base_penalty}pts) = balanced placement")
+        print(f"   📈 Strategy: HIERARCHICAL rewards (2M/1M pts) + penalties ({base_penalty}pts) = quality-first placement")
         
         # Maximize total weighted placements with penalties
         self.model.Maximize(sum(objective_terms))
         
-        print(f"\n🎯 OBJECTIVE: Maximum placement + subject distribution")
-        print(f"   Base weights: Doubles=1000pts, Singles=500pts (× class count for parallel)")
-        print(f"   Penalty: Same subject >1/day = {base_penalty}pts per extra occurrence")
+        print(f"\n🎯 OBJECTIVE: Hierarchical placement (Tier 1) + quality (Tier 2)")
+        print(f"   Tier 1 Weights: Doubles=2,000,000pts, Singles=1,000,000pts (× class count for parallel)")
+        print(f"   Tier 2 Penalty: Same subject >1/day = {base_penalty}pts per extra occurrence")
     
     def solve(self, time_limit_seconds: int = 180, allow_relaxation: bool = True, stage_callback=None) -> SolverResponse:
         """Run the CP-SAT solver with optional two-stage relaxation"""
@@ -494,45 +494,48 @@ class TimetableSolver:
             
             status = self.solver.Solve(self.model)
             
-            # Check if Stage 1 produced good solution
-            stage1_success = status in [cp_model.OPTIMAL, cp_model.FEASIBLE]
-            if stage1_success:
-                slots, unplaced = self._extract_solution()
-                placement_rate = len(slots) / self.stats['totalTasks'] if self.stats['totalTasks'] > 0 else 0
+            # STAGE 2: Relaxed penalties if stage 1 didn't place everything
+            slots_stage1, unplaced_stage1 = self._extract_solution()
+            if len(unplaced_stage1) > 0:
+                stage2_time = 60  # Additional 60 seconds for relaxed solving
+                print(f"\n🎯 STAGE 2 (Relaxed): {stage2_time}s with reduced penalties (-1,250pts)")
+                print(f"   Stage 1 placed {len(slots_stage1)} slots. Attempting {len(unplaced_stage1)} remaining with relaxed constraints...")
+                print("="*60)
                 
-                if placement_rate >= 0.95:  # 95%+ placement
-                    print(f"✅ Stage 1 SUCCESS: {placement_rate*100:.1f}% placement with strict balance")
-                    # Return Stage 1 solution
-                    solving_time = time.time() - start_time
-                    return self._build_response(status, solving_time, slots, unplaced)
-                else:
-                    print(f"⚠️  Stage 1: Only {placement_rate*100:.1f}% placed. Proceeding to Stage 2...")
-            else:
-                print(f"⚠️  Stage 1: No solution (status: {self.solver.StatusName(status)}). Trying Stage 2...")
-            
-            # STAGE 2: Relaxed penalties for maximum placement
-            print(f"\n📍 STAGE 2: Relaxing Rules for Maximum Placement...")
-            if stage_callback:
-                stage_callback("stage2")
-            
-            # Create new solver with relaxed penalties
-            self.model = cp_model.CpModel()
-            self.solver = cp_model.CpSolver()
-            
-            # Recreate everything with relaxed penalties
-            self._create_variables()
-            self._add_constraints()
-            self._set_objective(penalty_multiplier=0.125)  # -50 instead of -400
-            
-            self.solver.parameters.max_time_in_seconds = stage2_time
-            self.solver.parameters.num_search_workers = 8  # Maximum CPU power
-            self.solver.parameters.log_search_progress = True
-            self.solver.parameters.random_seed = 42
-            self.solver.parameters.relative_gap_limit = 0.0  # ELITE: Absolute best solution only
-            self.solver.parameters.search_branching = cp_model.PORTFOLIO_SEARCH  # Multi-strategy
-            self.solver.parameters.interleave_search = True  # Parallel path exploration
-            
-            status = self.solver.Solve(self.model)
+                # Capture Stage 1 solution for hinting
+                stage1_assignments = {}  # (lesson_idx, task_type, task_idx, day, period) -> value
+                for key, var in self.task_vars.items():
+                    if self.solver.Value(var) == 1:
+                        stage1_assignments[key] = 1
+                
+                # Reset and rebuild model with relaxed penalties
+                self.model = cp_model.CpModel()
+                self.solver = cp_model.CpSolver()
+                
+                # Recreate everything with relaxed penalties
+                self._create_variables()
+                self._add_constraints()
+                self._set_objective(penalty_multiplier=0.125)  # -1,250 instead of -10,000
+                
+                # Apply Stage 1 solution as hints to Stage 2
+                hint_count = 0
+                for key, value in stage1_assignments.items():
+                    if key in self.task_vars:
+                        self.model.AddHint(self.task_vars[key], value)
+                        hint_count += 1
+                
+                print(f"   🔍 SOLUTION HINTING: Applied {hint_count} assignments from Stage 1 to prevent reset")
+                print(f"   📈 Strategy: Build upon existing {len(slots_stage1)} placements, explore penalized slots for remaining tasks")
+                
+                self.solver.parameters.max_time_in_seconds = stage2_time
+                self.solver.parameters.num_search_workers = 8  # Maximum CPU power
+                self.solver.parameters.log_search_progress = True
+                self.solver.parameters.random_seed = 42
+                self.solver.parameters.relative_gap_limit = 0.0  # ELITE: Absolute best solution only
+                self.solver.parameters.search_branching = cp_model.PORTFOLIO_SEARCH  # Multi-strategy
+                self.solver.parameters.interleave_search = True  # Parallel path exploration
+                
+                status = self.solver.Solve(self.model)
         else:
             # SINGLE-STAGE SOLVING: Traditional strict mode
             print(f"\n🔍 SINGLE-STAGE MODE: {time_limit_seconds}s with strict penalties")
@@ -570,7 +573,34 @@ class TimetableSolver:
                 print(f"\n🔍 DEEP SEARCH ACTIVATED: {unplaced_count} tasks remaining (Threshold: 50). Polishing for 180s...")
                 print(f"   🚀 FINAL PUSH: Extending time by +180s (3 minutes) for 100% placement!")
                 print(f"   Placement rate: {placement_rate*100:.1f}% - Targeting 100%")
-                print("   Ultra-aggressive multi-strategy portfolio search with 8 workers")
+                print("   🔍 DEEP SEARCH: Enhancing quality and filling remaining gaps using solution hints...")
+                
+                # Capture current solution for hinting
+                current_assignments = {}  # Store current state to build upon
+                for key, var in self.task_vars.items():
+                    if self.solver.Value(var) == 1:
+                        current_assignments[key] = 1
+                
+                # Rebuild model while preserving constraints
+                old_model = self.model
+                self.model = cp_model.CpModel()
+                old_solver = self.solver
+                self.solver = cp_model.CpSolver()
+                
+                # Recreate with same objective (keep strict penalties to maintain quality)
+                self._create_variables()
+                self._add_constraints()
+                self._set_objective(penalty_multiplier=1.0)  # Keep -10,000 penalty for quality
+                
+                # Apply current solution as hints - prevents reset, builds incrementally
+                hint_count = 0
+                for key, value in current_assignments.items():
+                    if key in self.task_vars:
+                        self.model.AddHint(self.task_vars[key], value)
+                        hint_count += 1
+                
+                print(f"   💡 SOLUTION PERSISTENCE: Applied {hint_count} hints from base solution (no reset)")
+                print(f"   📈 Strategy: Keep quality high, explore penalized slots only if mathematically required")
                 
                 # Extend the time limit to 180 seconds (3 minutes)
                 extended_time = 180

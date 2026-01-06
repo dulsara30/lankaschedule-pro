@@ -15,7 +15,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { generateTimetableAction } from '@/app/actions/generateTimetable';
-import { startTimetableGeneration } from '@/app/actions/asyncTimetableGeneration';
+import { startTimetableGeneration, checkJobStatus, saveTimetableResults } from '@/app/actions/asyncTimetableGeneration';
 import { updateLessonStatus } from '@/app/actions/updateLessonStatus';
 import { cn } from '@/lib/utils';
 
@@ -67,6 +67,7 @@ export default function LessonsPage() {
   const [generationProgress, setGenerationProgress] = useState('');
   const [pollCount, setPollCount] = useState(0);
   const [estimatedTime, setEstimatedTime] = useState(0);
+  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
 
   const [formData, setFormData] = useState({
     lessonName: '',
@@ -110,6 +111,134 @@ export default function LessonsPage() {
       setFormData(prev => ({ ...prev, lessonName: '' }));
     }
   }, [selectedSubjects, subjects, editingLesson, formData.lessonName]);
+
+  // 🔄 ROBUST POLLING EFFECT: Monitor active generation job
+  useEffect(() => {
+    const checkActiveJob = async () => {
+      // Check localStorage for active job
+      const activeJobId = localStorage.getItem('activeGenerationJobId');
+      const activeVersionName = localStorage.getItem('activeGenerationVersionName');
+      
+      if (!activeJobId) {
+        // No active job, clear any existing interval
+        if (pollingInterval) {
+          clearInterval(pollingInterval);
+          setPollingInterval(null);
+        }
+        return;
+      }
+
+      console.log(`🔍 Polling job status: ${activeJobId}`);
+      
+      // Check job status
+      const statusResult = await checkJobStatus(activeJobId);
+      
+      if (!statusResult.success) {
+        console.error('❌ Failed to check job status:', statusResult.message);
+        toast.error('Failed to check generation status');
+        return;
+      }
+
+      const { status, progress } = statusResult.status;
+      
+      console.log(`📊 Job Status: ${status}, Progress: ${progress}`);
+      
+      // Update UI based on status
+      if (status === 'processing' || status === 'starting') {
+        setIsGenerating(true);
+        setGenerationProgress(progress || 'Processing...');
+        
+        // Determine phase from progress message
+        if (progress?.includes('PHASE 1') || progress?.includes('STRICT PERFECTION')) {
+          setGenerationStep(3);
+        } else if (progress?.includes('PHASE 2') || progress?.includes('HEAVY PENALTY')) {
+          setGenerationStep(4);
+        } else if (progress?.includes('PHASE 3') || progress?.includes('FINAL FORCE')) {
+          setGenerationStep(5);
+        }
+        
+        setPollCount(prev => prev + 1);
+      } else if (status === 'completed') {
+        // 🎉 JOB COMPLETED!
+        console.log('✅ Job completed! Saving results...');
+        setGenerationProgress('✅ Solver completed! Saving to database...');
+        setGenerationStep(6);
+        
+        // Clear polling interval
+        if (pollingInterval) {
+          clearInterval(pollingInterval);
+          setPollingInterval(null);
+        }
+        
+        // Save results to database
+        try {
+          const saveResult = await saveTimetableResults(
+            activeJobId,
+            activeVersionName || `Draft v${new Date().getTime()}`
+          );
+          
+          if (saveResult.success) {
+            toast.success(`🎉 Timetable generated successfully! ${saveResult.slotsPlaced} slots placed.`);
+            setGenerationProgress('✅ Complete!');
+            
+            // Clear localStorage
+            localStorage.removeItem('activeGenerationJobId');
+            localStorage.removeItem('activeGenerationVersionName');
+            
+            // Reset UI
+            setTimeout(() => {
+              setIsGenerating(false);
+              setGenerationStep(0);
+              setGenerationProgress('');
+              router.push('/dashboard/timetable');
+            }, 2000);
+          } else {
+            toast.error(`Failed to save results: ${saveResult.message}`);
+            setIsGenerating(false);
+            localStorage.removeItem('activeGenerationJobId');
+            localStorage.removeItem('activeGenerationVersionName');
+          }
+        } catch (error: any) {
+          console.error('Error saving results:', error);
+          toast.error(`Failed to save: ${error.message}`);
+          setIsGenerating(false);
+          localStorage.removeItem('activeGenerationJobId');
+          localStorage.removeItem('activeGenerationVersionName');
+        }
+      } else if (status === 'failed') {
+        // ❌ JOB FAILED
+        console.error('❌ Job failed:', statusResult.status.error);
+        toast.error(`Generation failed: ${statusResult.status.error || 'Unknown error'}`);
+        
+        // Clear polling interval
+        if (pollingInterval) {
+          clearInterval(pollingInterval);
+          setPollingInterval(null);
+        }
+        
+        // Clear localStorage and reset UI
+        localStorage.removeItem('activeGenerationJobId');
+        localStorage.removeItem('activeGenerationVersionName');
+        setIsGenerating(false);
+        setGenerationStep(0);
+        setGenerationProgress('');
+      }
+    };
+
+    // Check immediately on mount
+    checkActiveJob();
+    
+    // Set up polling interval (every 5 seconds)
+    const interval = setInterval(checkActiveJob, 5000);
+    setPollingInterval(interval);
+    
+    // Cleanup on unmount
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, []); // Run once on mount, polling continues until job completes
 
   // Smart Teacher Suggestion: Sort teachers based on selected subjects
   const sortedTeachers = useMemo(() => {
@@ -410,24 +539,20 @@ export default function LessonsPage() {
         throw new Error(startResult.message || 'Failed to start generation');
       }
 
-      // Store job ID in localStorage for persistent tracking
+      // Store job ID and version name in localStorage for persistent tracking
       localStorage.setItem('activeGenerationJobId', startResult.jobId);
+      localStorage.setItem('activeGenerationVersionName', versionToUse);
       
       setGenerationStep(3);
-      setGenerationProgress('✅ Generation started! You can navigate away - check the floating status bar');
+      setGenerationProgress('🔄 Solver started! Monitoring progress...');
 
       // Show success toast
-      toast.success('🚀 Timetable generation started in background!', { 
+      toast.success('🚀 90-Minute solver started! Polling every 5 seconds.', { 
         duration: 5000,
-        description: 'Check the floating status bar at bottom-right for progress. You can navigate away.'
+        description: 'The polling effect will monitor progress automatically.'
       });
 
-      // Close the modal after 2 seconds
-      setTimeout(() => {
-        setIsGenerating(false);
-        setGenerationStep(0);
-        setGenerationProgress('');
-      }, 2000);
+      // Note: Keep isGenerating=true, let the polling effect handle completion
 
     } catch (error: unknown) {
       console.error('Timetable generation error:', error);

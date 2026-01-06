@@ -503,6 +503,10 @@ class TimetableSolver:
         print(f"   Constraint Level: Teacher/Class conflicts + Distribution = HARD")
         print("="*80)
         
+        # Update progress if callback provided
+        if stage_callback:
+            stage_callback("PHASE 1: STRICT PERFECTION (60m) - Hard constraints enforced")
+        
         self.solver.parameters.max_time_in_seconds = phase1_time
         self.solver.parameters.num_search_workers = 8  # Maximum CPU power
         self.solver.parameters.log_search_progress = True
@@ -554,6 +558,10 @@ class TimetableSolver:
             print(f"   Time: 1200s (20 minutes)")
             print("="*80)
             
+            # Update progress if callback provided
+            if stage_callback:
+                stage_callback(f"PHASE 2: HEAVY PENALTY FALLBACK (20m) - {unplaced_count} slots remaining")
+            
             # Rebuild model with soft constraints
             gc.collect()
             self.model = cp_model.CpModel()
@@ -602,6 +610,10 @@ class TimetableSolver:
             print(f"   Goal: Force all slots in with minimal quality trade-off")
             print(f"   Time: 600s (10 minutes)")
             print("="*80)
+            
+            # Update progress if callback provided
+            if stage_callback:
+                stage_callback(f"PHASE 3: FINAL FORCE (10m) - Forcing {unplaced_count} remaining slots")
             
             # Rebuild model with very light penalties
             gc.collect()
@@ -932,10 +944,16 @@ def run_solver_background(job_id: str, request: SolverRequest):
         active_jobs[job_id]['status'] = 'processing'
         active_jobs[job_id]['progress'] = 'Initializing AI solver...'
         
+        # Define progress callback to update active_jobs
+        def update_progress(message: str):
+            active_jobs[job_id]['progress'] = message
+            print(f"📊 Progress Update: {message}")
+        
         solver = TimetableSolver(request)
         result = solver.solve(
             time_limit_seconds=request.maxTimeLimit,
-            allow_relaxation=request.allowRelaxation
+            allow_relaxation=request.allowRelaxation,
+            stage_callback=update_progress
         )
         
         active_jobs[job_id]['status'] = 'completed'

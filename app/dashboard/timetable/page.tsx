@@ -1809,19 +1809,100 @@ export default function TimetablePage() {
           })()}
         </>
       ) : relevantSlots.length === 0 && viewMode !== 'master-matrix' ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Calendar className="h-16 w-16 text-zinc-400 mb-4" />
-            <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50 mb-2">
-              No Slots Found for {selectedName}
-            </h3>
-            <p className="text-zinc-600 dark:text-zinc-400 text-center mb-4">
-              {slots.length} total slots exist in the database, but none match this {viewMode}.
-              <br />
-              Try selecting a different {viewMode} or regenerate the timetable.
-            </p>
-          </CardContent>
-        </Card>
+        <>
+          {/* Class and Teacher View with No Slots - Still show selector */}
+          <div className="flex gap-4">
+            {/* Unscheduled Lessons Sidebar - Fixed on Left */}
+            <div className="w-80 flex-shrink-0">
+              <div className="h-full overflow-y-auto border rounded-lg bg-white sticky top-0">
+                <UnscheduledLessonsSidebar 
+                  lessons={lessons} 
+                  slots={slots.map(s => ({
+                    ...s,
+                    day: DAYS.indexOf(s.day) + 1
+                  })) as any}
+                  unplacedLessons={unplacedLessons}
+                  filterByClassId={viewMode === 'class' ? selectedEntity : undefined}
+                  filterByTeacherId={viewMode === 'teacher' ? selectedEntity : undefined}
+                />
+              </div>
+            </div>
+
+            {/* Main Content - Show selector and message */}
+            <div className="flex-1 space-y-4">
+              {/* Entity Selector - Searchable Combobox */}
+              <div className="flex items-center gap-3">
+                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  {viewMode === 'class' ? 'Select Class:' : 'Select Teacher:'}
+                </label>
+                <Popover open={entityComboOpen} onOpenChange={setEntityComboOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={entityComboOpen}
+                      className="w-[300px] justify-between"
+                    >
+                      {selectedEntity
+                        ? entityList.find((entity) => entity._id === selectedEntity)?.name
+                        : `Search ${viewMode === 'class' ? 'classes' : 'teachers'}...`}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[300px] p-0">
+                    <Command>
+                      <CommandInput placeholder={`Search ${viewMode === 'class' ? 'class' : 'teacher'}...`} />
+                      <CommandList>
+                        <CommandEmpty>No {viewMode === 'class' ? 'class' : 'teacher'} found.</CommandEmpty>
+                        <CommandGroup>
+                          {entityList.map((entity) => {
+                            const entityAsClass = entity as Class;
+                            return (
+                          <CommandItem
+                            key={entity._id}
+                            value={entity.name}
+                            onSelect={() => {
+                              setSelectedEntity(entity._id);
+                              setEntityComboOpen(false);
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                selectedEntity === entity._id ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            {entity.name}
+                            {viewMode === 'class' && entityAsClass.grade && (
+                              <span className="ml-auto text-xs text-zinc-500">Grade {entityAsClass.grade}</span>
+                            )}
+                          </CommandItem>
+                        );
+                      })}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          {/* No Slots Message */}
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <Calendar className="h-16 w-16 text-zinc-400 mb-4" />
+              <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50 mb-2">
+                No Slots Found for {selectedName}
+              </h3>
+              <p className="text-zinc-600 dark:text-zinc-400 text-center mb-4">
+                {slots.length} total slots exist in the database, but none match this {viewMode}.
+                <br />
+                Try selecting a different {viewMode} or regenerate the timetable.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+        </>
       ) : viewMode === 'master-matrix' ? (
         <>
           {/* Master Matrix View with Unscheduled Sidebar */}

@@ -23,15 +23,24 @@ interface SolverPayload {
 
 /**
  * Start async timetable generation - returns job ID immediately
+ * MANDATORY 90-MINUTE RUNTIME for advanced multi-phase solving
  */
 export async function startTimetableGeneration(
   versionName: string,
   strictBalancing: boolean = true,
-  maxTimeLimit: number = 300
+  _maxTimeLimit: number = 5400  // Ignored - always 90 minutes (5400 seconds)
 ): Promise<{ success: boolean; jobId?: string; message?: string }> {
   try {
+    // HARDCODED: Advanced multi-phase solver requires 90 minutes
+    const maxTimeLimit = 5400;  // Phase 1 (60m) + Phase 2 (20m) + Phase 3 (10m)
+    
     console.log('\n' + '='.repeat(60));
-    console.log('🚀 STARTING ASYNC TIMETABLE GENERATION');
+    console.log('🚀 ADVANCED MULTI-PHASE SOLVER - 90 MINUTE ENGINE');
+    console.log('='.repeat(60));
+    console.log(`📊 Runtime: ${maxTimeLimit}s (${maxTimeLimit/60} minutes)`);
+    console.log('🎯 Phase 1: 60m strict HARD constraints');
+    console.log('🎯 Phase 2: 20m heavy penalty fallback (-100,000pt)');
+    console.log('🎯 Phase 3: 10m light penalty force (-10pt)');
     console.log('='.repeat(60));
 
     // Step 1: Connect to database

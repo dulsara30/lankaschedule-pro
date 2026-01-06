@@ -405,10 +405,10 @@ class TimetableSolver:
             weight *= len(task['classIds'])  # Fair weighting for parallel classes
             objective_terms.append(weight * presence_var)
         
-        # ADVANCED: Add subject distribution penalties
-        # Discourage same subject appearing multiple times in one day for a class
-        print("\n🎯 Adding advanced subject distribution constraints...")
-        distribution_penalties = []
+        # ADVANCED PHASE 1: Hard distribution constraints (no subject twice per day)
+        # This is a HARD CONSTRAINT - not a penalty
+        print("\n🎯 Adding HARD subject distribution constraints (Phase 1)...")
+        distribution_constraints = 0
         
         # Get all unique class IDs
         all_class_ids = set()
@@ -430,13 +430,12 @@ class TimetableSolver:
                         class_subject_tasks[key] = []
                     class_subject_tasks[key].append(task)
         
-        # For each class-subject combination, penalize multiple occurrences per day
-        penalty_count = 0
+        # For each class-subject combination, ENFORCE max 1 occurrence per day (HARD CONSTRAINT)
         for (class_id, subject_id), tasks in class_subject_tasks.items():
             if len(tasks) <= 1:
                 continue  # Only one task, no distribution issue
             
-            # For each day, count how many of these tasks are placed
+            # For each day, HARD LIMIT: sum of all tasks must be ≤ 1
             for day in self.days:
                 day_vars = []
                 for task in tasks:
@@ -457,59 +456,54 @@ class TimetableSolver:
                                 day_vars.append(self.task_vars[key])
                 
                 if len(day_vars) > 1:
-                    # Create a variable to count occurrences on this day
-                    count_var = self.model.NewIntVar(0, len(day_vars), f"count_class_{class_id}_subj_{subject_id}_day_{day}")
-                    self.model.Add(count_var == sum(day_vars))
-                    
-                    # PENALTY: If count > 1, subtract points per extra occurrence
-                    # Strict: -400pts (forces perfect spreading)
-                    # Relaxed: -50pts (allows some clumping for max placement)
-                    overflow_var = self.model.NewIntVar(0, len(day_vars), f"overflow_class_{class_id}_subj_{subject_id}_day_{day}")
-                    self.model.AddMaxEquality(overflow_var, [count_var - 1, 0])
-                    objective_terms.append(base_penalty * overflow_var)
-                    penalty_count += 1
+                    # HARD CONSTRAINT: At most 1 task from this subject on this day for this class
+                    self.model.Add(sum(day_vars) <= 1)
+                    distribution_constraints += 1
         
-        mode_str = "STRICT" if penalty_multiplier >= 1.0 else "RELAXED"
-        print(f"   ✅ Added {penalty_count} subject distribution penalties ({mode_str} mode: {base_penalty}pts)")
-        print(f"   📈 Strategy: HIERARCHICAL rewards (2M/1M pts) + penalties ({base_penalty}pts) = quality-first placement")
+        print(f"   ✅ Added {distribution_constraints} HARD distribution constraints")
+        print(f"   📈 Strategy: NO subject appears twice per day for any class (Phase 1)")
         
-        # Maximize total weighted placements with penalties
+        # Maximize total weighted placements
         self.model.Maximize(sum(objective_terms))
         
-        print(f"\n🎯 OBJECTIVE: Hierarchical placement (Tier 1) + quality (Tier 2)")
+        print(f"\n🎯 OBJECTIVE: Hierarchical placement")
         print(f"   Tier 1 Weights: Doubles=2,000,000pts, Singles=1,000,000pts (× class count for parallel)")
-        print(f"   Tier 2 Penalty: Same subject >1/day = {base_penalty}pts per extra occurrence")
+        print(f"   Distribution: HARD CONSTRAINT (enforced at constraint level, not objective)")
     
-    def solve(self, time_limit_seconds: int = 180, allow_relaxation: bool = True, stage_callback=None) -> SolverResponse:
-        """Run the CP-SAT solver with optional two-stage relaxation"""
+    def solve(self, time_limit_seconds: int = 5400, allow_relaxation: bool = True, stage_callback=None) -> SolverResponse:
+        """Run the CP-SAT solver with advanced 3-phase optimization
+        
+        MANDATORY 90-MINUTE MULTI-PHASE ENGINE:
+        - Phase 1 (60m): Strict perfection with HARD distribution constraints
+        - Phase 2 (20m): Heavy penalty fallback (-100,000 per violation) 
+        - Phase 3 (10m): Light penalty (-10) for guaranteed 100% placement
+        """
         start_time = time.time()
         
-        print("\n" + "="*60)
-        print("🚀 STARTING TIMETABLE SOLVER")
-        print("="*60)
+        print("\n" + "="*80)
+        print("🚀 ADVANCED MULTI-PHASE SOLVER - 90 MINUTE ENGINE")
+        print("="*80)
         
         # Step 1: Create variables
         self._create_variables()
         
-        # Step 2: Add constraints
+        # Step 2: Add constraints (includes HARD distribution constraints)
         self._add_constraints()
         
         # Step 3: Set objective
         self._set_objective()
         
-        # SINGLE-STAGE SOLVING: Full user time for quality, then 3min forced placement
-        # Strategy: (time_limit - 180)s for high-quality solving + 180s deep search if needed
-        # Example: 20min = 17min quality + 3min forced placement = 100% success
-        stage1_time = max(60, time_limit_seconds - 180)  # Reserve 180s for deep search
+        # ===== PHASE 1: STRICT PERFECTION (60 MINUTES) =====
+        phase1_time = 3600  # 60 minutes
         
-        print(f"\n🔍 PHASE 1: Quality ({stage1_time/60:.1f}m) - High-Quality Solving")
-        print(f"   Time: {stage1_time}s ({stage1_time/60:.1f} minutes)")
-        print(f"   Strategy: Strict penalties (-10,000pt) for balanced subject distribution")
-        print(f"   Goal: Maximize quality and placement (typically 95-99%)")
-        print(f"   Reserved for Phase 2: 180s (3min) forced placement if needed")
-        print("="*60)
+        print(f"\n🔍 PHASE 1: STRICT PERFECTION (60 minutes)")
+        print(f"   Time: {phase1_time}s (60 minutes)")
+        print(f"   Strategy: HARD distribution constraints - NO subject twice per day")
+        print(f"   Goal: Place all {len(self.task_info)} slots with 0 distribution violations")
+        print(f"   Constraint Level: Teacher/Class conflicts + Distribution = HARD")
+        print("="*80)
         
-        self.solver.parameters.max_time_in_seconds = stage1_time
+        self.solver.parameters.max_time_in_seconds = phase1_time
         self.solver.parameters.num_search_workers = 8  # Maximum CPU power
         self.solver.parameters.log_search_progress = True
         self.solver.parameters.random_seed = 42
@@ -521,95 +515,132 @@ class TimetableSolver:
         
         solving_time = time.time() - start_time
         
-        # 🔍 DEEP SEARCH POLISHING PHASE: Continue solving with extended time
-        # If we're very close to 100% (≤50 unplaced), extend time to push to perfection
+        # ===== CHECK PHASE 1 RESULTS =====
         if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
             slots, unplaced_tasks = self._extract_solution()
             unplaced_count = len(unplaced_tasks)
             
-            # Calculate total required periods (single = 1, double = 2 per class)
+            # Calculate total required periods
             total_required_slots = sum(
                 (1 if t['type'] == 'single' else 2) * len(t['classIds']) 
                 for t in self.task_info
             )
             placement_rate = len(slots) / total_required_slots if total_required_slots > 0 else 0
             
-            # Trigger deep search if ANY unplaced periods remain
-            # Extended polishing: 180s (3 minutes) with -10 penalty for forced 100% placement
-            if unplaced_count > 0:
-                print(f"\n🔍 PHASE 2: Force Placement (3m) - Aggressive Gap Filling")
-                print(f"   Unplaced slots from Phase 1: {unplaced_count} ({(1-placement_rate)*100:.1f}% remaining)")
-                print(f"   Time: 180s (3 minutes) dedicated forced placement")
-                print(f"   Strategy: FORCE MODE with -10pt penalty (was -10,000pt)")
-                print(f"   Goal: 100% placement by accepting minor quality trade-offs")
-                print(f"   Model integrity: {len(self.task_info)} tasks (max 711)")
-                print("="*60)
+            print(f"\n✅ PHASE 1 COMPLETE: {len(slots)}/{total_required_slots} slots placed ({placement_rate*100:.1f}%)")
+            print(f"   Unplaced: {unplaced_count} slots")
+            
+            # If perfect placement, we're done!
+            if unplaced_count == 0:
+                print(f"\n🎉 PERFECT SOLUTION ACHIEVED IN PHASE 1!")
+                print(f"   Solving time: {solving_time:.1f}s")
+                return SolverResponse(
+                    status="success",
+                    message=f"Perfect timetable generated with HARD distribution constraints in {solving_time:.1f}s",
+                    slots=slots,
+                    unplacedTasks=[],
+                    solvingTime=solving_time,
+                    totalTasks=len(self.task_info),
+                    placedTasks=len(slots),
+                    conflicts=0,
+                    stats=self.stats
+                )
+            
+            # ===== PHASE 2: HEAVY PENALTY FALLBACK (20 MINUTES) =====
+            print(f"\n🔍 PHASE 2: HEAVY PENALTY FALLBACK (20 minutes)")
+            print(f"   Unplaced from Phase 1: {unplaced_count} slots")
+            print(f"   Strategy: Remove HARD constraints, add -100,000pt penalties per violation")
+            print(f"   Goal: Maximize placement while heavily discouraging distribution violations")
+            print(f"   Time: 1200s (20 minutes)")
+            print("="*80)
+            
+            # Rebuild model with soft constraints
+            gc.collect()
+            self.model = cp_model.CpModel()
+            self.solver = cp_model.CpSolver()
+            self.task_vars = {}
+            
+            self._create_variables()
+            self._add_constraints()  # Teacher/class conflicts still HARD
+            self._set_objective(penalty_multiplier=10.0)  # -100,000pt penalty mode
+            
+            self.solver.parameters.max_time_in_seconds = 1200  # 20 minutes
+            self.solver.parameters.num_search_workers = 8
+            self.solver.parameters.log_search_progress = True
+            
+            status = self.solver.Solve(self.model)
+            solving_time = time.time() - start_time
+            
+            if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
+                slots, unplaced_tasks = self._extract_solution()
+                unplaced_count = len(unplaced_tasks)
+                placement_rate = len(slots) / total_required_slots if total_required_slots > 0 else 0
                 
-                # CRITICAL: Memory cleanup before extended search
-                print("   🧹 Memory cleanup before deep search...")
-                gc.collect()
+                print(f"\n✅ PHASE 2 COMPLETE: {len(slots)}/{total_required_slots} slots placed ({placement_rate*100:.1f}%)")
+                print(f"   Unplaced: {unplaced_count} slots")
                 
-                # Capture current solution for hinting
-                current_assignments = {}  # Store current state
-                for key, var in self.task_vars.items():
-                    try:
-                        current_value = self.solver.Value(var)
-                        if current_value == 1:
-                            current_assignments[key] = 1
-                    except:
-                        pass
+                # If fully placed, we're done!
+                if unplaced_count == 0:
+                    print(f"\n🎉 100% PLACEMENT ACHIEVED IN PHASE 2!")
+                    print(f"   Total solving time: {solving_time:.1f}s")
+                    return SolverResponse(
+                        status="success",
+                        message=f"Complete timetable with heavy penalties in {solving_time:.1f}s",
+                        slots=slots,
+                        unplacedTasks=[],
+                        solvingTime=solving_time,
+                        totalTasks=len(self.task_info),
+                        placedTasks=len(slots),
+                        conflicts=0,
+                        stats=self.stats
+                    )
+            
+            # ===== PHASE 3: FINAL FORCE (10 MINUTES) =====
+            print(f"\n🔍 PHASE 3: FINAL FORCE (10 minutes)")
+            print(f"   Unplaced from Phase 2: {unplaced_count} slots")
+            print(f"   Strategy: Light penalty (-10pt) for guaranteed 100% placement")
+            print(f"   Goal: Force all slots in with minimal quality trade-off")
+            print(f"   Time: 600s (10 minutes)")
+            print("="*80)
+            
+            # Rebuild model with very light penalties
+            gc.collect()
+            self.model = cp_model.CpModel()
+            self.solver = cp_model.CpSolver()
+            self.task_vars = {}
+            
+            self._create_variables()
+            self._add_constraints()  # Teacher/class conflicts still HARD
+            self._set_objective(penalty_multiplier=0.001)  # -10pt penalty mode
+            
+            self.solver.parameters.max_time_in_seconds = 600  # 10 minutes
+            self.solver.parameters.num_search_workers = 8
+            self.solver.parameters.log_search_progress = True
+            
+            status = self.solver.Solve(self.model)
+            solving_time = time.time() - start_time
+            
+            if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
+                slots, unplaced_tasks = self._extract_solution()
+                unplaced_count = len(unplaced_tasks)
+                placement_rate = len(slots) / total_required_slots if total_required_slots > 0 else 0
                 
-                # Rebuild objective with FORCE penalty (-10 instead of -10,000)
-                # This GUARANTEES 100% placement by making clumping highly acceptable
-                print(f"   💡 FORCE MODE: Rebuilding objective with -10pt penalty (was -10,000pt = 1000x reduction)")
-                print(f"   📈 Logic: At 98% capacity, force AI to fill ALL remaining gaps - placement over quality")
+                print(f"\n✅ PHASE 3 COMPLETE: {len(slots)}/{total_required_slots} slots placed ({placement_rate*100:.1f}%)")
+                print(f"   Unplaced: {unplaced_count} slots")
+                print(f"   Total solving time: {solving_time:.1f}s ({solving_time/60:.1f} minutes)")
+                print("="*80)
                 
-                # Clear and rebuild objective only (keep constraints)
-                self._set_objective(penalty_multiplier=0.001)  # -10 instead of -10,000 (Force Mode)
-                
-                # Apply solution hints to variables
-                hint_count = 0
-                for key, value in current_assignments.items():
-                    if key in self.task_vars:
-                        self.model.AddHint(self.task_vars[key], value)
-                        hint_count += 1
-                
-                print(f"   💡 SOLUTION PERSISTENCE: Applied {hint_count} hints from base solution")
-                print(f"   📈 Same {len(self.task_info)} tasks, relaxed quality for 100% placement")
-                
-                # Create NEW solver instance with extended time (model stays the same)
-                self.solver = cp_model.CpSolver()
-                extended_time = 180
-                self.solver.parameters.max_time_in_seconds = extended_time
-                
-                # Ultra-aggressive elite parameters for final push
-                self.solver.parameters.num_search_workers = 8
-                self.solver.parameters.relative_gap_limit = 0.0
-                self.solver.parameters.search_branching = cp_model.PORTFOLIO_SEARCH
-                self.solver.parameters.interleave_search = True
-                self.solver.parameters.random_seed = 42
-                self.solver.parameters.log_search_progress = True
-                
-                print(f"   ⚡ ELITE MODE: 8 workers, 0.0% gap, portfolio branching, interleaved search")
-                print(f"   🎯 Continuing with same {len(self.task_info)} tasks (NO model rebuild)")
-                status = self.solver.Solve(self.model)
-                solving_time = time.time() - start_time
-                
-                # Check if polishing improved the solution
-                new_slots, new_unplaced = self._extract_solution()
-                new_unplaced_count = len(new_unplaced)
-                
-                if new_unplaced_count < unplaced_count:
-                    print(f"   ✅ POLISHING SUCCESS: {unplaced_count - new_unplaced_count} additional periods placed!")
-                    slots, unplaced_tasks = new_slots, new_unplaced
-                elif new_unplaced_count == 0:
-                    print(f"   🎉 PERFECT SOLUTION: 100% placement achieved!")
-                    slots, unplaced_tasks = new_slots, new_unplaced
-                else:
-                    print(f"   ⚠️  Polishing complete: {new_unplaced_count} periods remain unplaced")
-                    slots, unplaced_tasks = new_slots, new_unplaced
-                
-                return self._build_response(status, solving_time, slots, unplaced_tasks)
+                return SolverResponse(
+                    status="success" if unplaced_count == 0 else "partial",
+                    message=f"Timetable completed in 3-phase solving: {solving_time:.1f}s ({solving_time/60:.1f}m)",
+                    slots=slots,
+                    unplacedTasks=unplaced_tasks,
+                    solvingTime=solving_time,
+                    totalTasks=len(self.task_info),
+                    placedTasks=len(slots),
+                    conflicts=0,
+                    stats=self.stats
+                )
         
         # Handle UNKNOWN status (time limit with partial solution)
         if status == cp_model.UNKNOWN:

@@ -63,7 +63,7 @@ export default function LessonsPage() {
   const [generationStep, setGenerationStep] = useState(0);
   const [generationVersionName, setGenerationVersionName] = useState('');
   const [strictBalancing, setStrictBalancing] = useState(true);  // Default: strict mode
-  const [maxSearchTime, setMaxSearchTime] = useState(5);  // Default: 5 minutes (recommended)
+  const MANDATORY_RUNTIME = 90;  // Fixed 90-minute multi-phase solving
   const [generationProgress, setGenerationProgress] = useState('');
   const [pollCount, setPollCount] = useState(0);
   const [estimatedTime, setEstimatedTime] = useState(0);
@@ -393,7 +393,7 @@ export default function LessonsPage() {
     setGenerationStep(1);
     setGenerationProgress('Preparing to generate timetable...');
     setPollCount(0);
-    setEstimatedTime(maxSearchTime * 60); // in seconds
+    setEstimatedTime(MANDATORY_RUNTIME * 60); // 90 minutes in seconds
 
     try {
       // Step 1: Analyzing capacity (1s)
@@ -402,8 +402,8 @@ export default function LessonsPage() {
       setGenerationStep(2);
       
       // Step 2: Starting async job
-      setGenerationProgress('🚀 Starting AI solver in background...');
-      const timeInSeconds = maxSearchTime * 60;  // Convert minutes to seconds
+      setGenerationProgress('🚀 Starting advanced 90-minute multi-phase solver...');
+      const timeInSeconds = MANDATORY_RUNTIME * 60;  // 5400 seconds (90 minutes)
       const startResult = await startTimetableGeneration(versionToUse, strictBalancing, timeInSeconds);
 
       if (!startResult.success || !startResult.jobId) {
@@ -555,23 +555,6 @@ export default function LessonsPage() {
             className="w-48"
             disabled={isGenerating}
           />
-          <Select
-            value={maxSearchTime.toString()}
-            onValueChange={(value) => setMaxSearchTime(parseInt(value))}
-            disabled={isGenerating}
-          >
-            <SelectTrigger className="w-40">
-              <SelectValue placeholder="Search time" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="3">3 Minutes</SelectItem>
-              <SelectItem value="5">5 Minutes ⭐</SelectItem>
-              <SelectItem value="7">7 Minutes (7+3 Rule)</SelectItem>
-              <SelectItem value="10">10 Minutes</SelectItem>
-              <SelectItem value="15">15 Minutes</SelectItem>
-              <SelectItem value="20">20 Minutes</SelectItem>
-            </SelectContent>
-          </Select>
           <div className="flex items-center space-x-2 border border-zinc-200 dark:border-zinc-700 rounded-md px-3 py-2 bg-white dark:bg-zinc-900">
             <Checkbox
               id="strictBalancing"
@@ -600,7 +583,7 @@ export default function LessonsPage() {
             ) : (
               <>
                 <Sparkles className="mr-2 h-4 w-4" />
-                Generate Timetable
+                Generate Timetable (90min)
               </>
             )}
           </Button>

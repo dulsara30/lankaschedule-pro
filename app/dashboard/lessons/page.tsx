@@ -134,16 +134,33 @@ export default function LessonsPage() {
 
       console.log(`🔍 Polling job status: ${activeJobId}`);
       
-      // Check job status
-      const statusResult = await checkJobStatus(activeJobId);
-      
-      if (!statusResult.success) {
-        console.error('❌ Failed to check job status:', statusResult.message);
-        toast.error('Failed to check generation status');
-        return;
-      }
+      // Check job status with error handling for validation errors
+      try {
+        const statusResult = await checkJobStatus(activeJobId);
+        
+        if (!statusResult.success) {
+          console.error('❌ Failed to check job status:', statusResult.message);
+          
+          // If it's a validation error, clear the cached job
+          if (statusResult.message?.includes('validation error') || statusResult.message?.includes('Field required')) {
+            console.warn('⚠️ Validation error detected - clearing cached job');
+            toast.error('Cached job data is invalid. Please restart the generation.');
+            localStorage.removeItem('activeGenerationJobId');
+            localStorage.removeItem('activeGenerationVersionName');
+            if (pollingInterval) {
+              clearInterval(pollingInterval);
+              setPollingInterval(null);
+            }
+            setIsGenerating(false);
+            setGenerationStep(0);
+            setGenerationProgress('');
+          } else {
+            toast.error('Failed to check generation status');
+          }
+          return;
+        }
 
-      const { status, progress } = statusResult.status;
+        const { status, progress } = statusResult.status;
       
       console.log(`📊 Job Status: ${status}, Progress: ${progress}`);
       
@@ -227,6 +244,23 @@ export default function LessonsPage() {
         setGenerationStep(0);
         setGenerationProgress('');
       }
+    } catch (error: any) {
+      console.error('❌ Error in checkActiveJob:', error);
+      // Clear invalid cached data
+      if (error.message?.includes('validation') || error.message?.includes('Field required')) {
+        console.warn('⚠️ Validation error in polling - clearing cached job');
+        toast.error('Invalid cached data detected. Clearing and resetting.');
+        localStorage.removeItem('activeGenerationJobId');
+        localStorage.removeItem('activeGenerationVersionName');
+        if (pollingInterval) {
+          clearInterval(pollingInterval);
+          setPollingInterval(null);
+        }
+        setIsGenerating(false);
+        setGenerationStep(0);
+        setGenerationProgress('');
+      }
+    }
     };
 
     // Check immediately on mount

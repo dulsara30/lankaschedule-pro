@@ -945,6 +945,17 @@ async def root():
 async def health():
     return {"status": "healthy"}
 
+@app.post("/clear-jobs")
+async def clear_jobs():
+    """Clear all active jobs (useful after solver restart or model updates)"""
+    cleared_count = len(active_jobs)
+    active_jobs.clear()
+    return {
+        "status": "success",
+        "message": f"Cleared {cleared_count} job(s)",
+        "clearedCount": cleared_count
+    }
+
 # ==================== ASYNC JOB SYSTEM (NO TIMEOUT RISK!) ====================
 
 def run_solver_background(job_id: str, request: SolverRequest):
@@ -1021,13 +1032,19 @@ async def get_job_status(job_id: str):
     
     job = active_jobs[job_id]
     
+    # Add backward compatibility: ensure result has 'success' field
+    result = job.get('result')
+    if result and isinstance(result, dict) and 'success' not in result:
+        # Old result format - add success based on status
+        result['success'] = result.get('status') == 'success'
+    
     return {
         "jobId": job_id,
         "status": job['status'],
         "progress": job['progress'],
         "createdAt": job['createdAt'],
         "completedAt": job.get('completedAt'),
-        "result": job.get('result'),
+        "result": result,
         "error": job.get('error')
     }
 

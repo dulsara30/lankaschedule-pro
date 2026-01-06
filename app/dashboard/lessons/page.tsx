@@ -16,7 +16,7 @@ import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { generateTimetableAction } from '@/app/actions/generateTimetable';
 import { startTimetableGeneration, checkJobStatus, saveTimetableResults } from '@/app/actions/asyncTimetableGeneration';
-import { updateLessonStatus } from '@/app/actions/updateLessonStatus';
+import { updateLessonStatus, bulkUpdateLessonStatus } from '@/app/actions/updateLessonStatus';
 import { cn } from '@/lib/utils';
 
 interface Subject {
@@ -94,6 +94,10 @@ export default function LessonsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [subjectComboOpen, setSubjectComboOpen] = useState(false);
   const [teacherComboOpen, setTeacherComboOpen] = useState(false);
+  
+  // Bulk selection state
+  const [selectedLessonIds, setSelectedLessonIds] = useState<Set<string>>(new Set());
+  const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   
   const ITEMS_PER_PAGE = 10;
   const GRADES = [6, 7, 8, 9, 10, 11, 12, 13];
@@ -464,6 +468,91 @@ export default function LessonsPage() {
     }
   };
 
+  const handleBulkUpdate = async (status: 'enabled' | 'disabled') => {
+    if (selectedLessonIds.size === 0) {
+      toast.error('No lessons selected');
+      return;
+    }
+
+    setIsBulkUpdating(true);
+    const lessonIds = Array.from(selectedLessonIds);
+    const count = lessonIds.length;
+
+    toast.loading(`Updating ${count} lesson${count > 1 ? 's' : ''}...`, { id: 'bulk-update' });
+
+    try {
+      const result = await bulkUpdateLessonStatus(lessonIds, status);
+
+      if (result.success) {
+        toast.success(
+          status === 'enabled'
+            ? `✅ ${result.updatedCount} lesson${result.updatedCount > 1 ? 's' : ''} enabled - will be sent to AI solver`
+            : `⏸️ ${result.updatedCount} lesson${result.updatedCount > 1 ? 's' : ''} disabled - will appear in manual placement sidebar`,
+          { id: 'bulk-update' }
+        );
+        
+        // Clear selection
+        setSelectedLessonIds(new Set());
+        
+        // Refresh data
+        fetchData();
+        router.refresh();
+      } else {
+        toast.error(result.error || 'Failed to update lessons', { id: 'bulk-update' });
+      }
+    } catch (error) {
+      console.error('Error bulk updating lessons:', error);
+      toast.error('An error occurred while updating lessons', { id: 'bulk-update' });
+    } finally {
+      setIsBulkUpdating(false);
+    }
+  };
+
+  const toggleLessonSelection = (lessonId: string) => {
+    setSelectedLessonIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(lessonId)) {
+        newSet.delete(lessonId);
+      } else {
+        newSet.add(lessonId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    // Get all lesson IDs from the currently filtered lessons on this page
+    const visibleLessonIds = filteredAndPaginatedLessons.lessons.map(l => l._id);
+    
+    if (visibleLessonIds.every(id => selectedLessonIds.has(id))) {
+      // All visible lessons are selected, so deselect all
+      setSelectedLessonIds(prev => {
+        const newSet = new Set(prev);
+        visibleLessonIds.forEach(id => newSet.delete(id));
+        return newSet;
+      });
+    } else {
+      // Select all visible lessons
+      setSelectedLessonIds(prev => {
+        const newSet = new Set(prev);
+        visibleLessonIds.forEach(id => newSet.add(id));
+        return newSet;
+      });
+    }
+  };
+
+  // Check if all visible lessons are selected
+  const areAllVisibleSelected = () => {
+    const visibleLessonIds = filteredAndPaginatedLessons.lessons.map(l => l._id);
+    return visibleLessonIds.length > 0 && visibleLessonIds.every(id => selectedLessonIds.has(id));
+  };
+
+  // Check if some (but not all) visible lessons are selected
+  const areSomeVisibleSelected = () => {
+    const visibleLessonIds = filteredAndPaginatedLessons.lessons.map(l => l._id);
+    return visibleLessonIds.some(id => selectedLessonIds.has(id)) && !areAllVisibleSelected();
+  };
+
   const toggleClass = (classId: string) => {
     setSelectedClasses(prev =>
       prev.includes(classId)
@@ -659,6 +748,11 @@ export default function LessonsPage() {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, filterGrade, filterStream, filterSubjectId, filterTeacherId, filterStatus]);
+
+  // Clear selection when page changes or filters change
+  useEffect(() => {
+    setSelectedLessonIds(new Set());
+  }, [currentPage, searchQuery, filterGrade, filterStream, filterSubjectId, filterTeacherId, filterStatus]);
 
   return (
     <div className="space-y-6">
@@ -1421,10 +1515,67 @@ export default function LessonsPage() {
           </div>
         </CardHeader>
         <CardContent>
+          {/* Bulk Action Bar */}
+          {selectedLessonIds.size > 0 && (
+            <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                    {selectedLessonIds.size} lesson{selectedLessonIds.size > 1 ? 's' : ''} selected
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedLessonIds(new Set())}
+                    className="h-7 text-xs text-blue-700 hover:text-blue-900 dark:text-blue-300 dark:hover:text-blue-100"
+                  >
+                    Clear Selection
+                  </Button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={() => handleBulkUpdate('enabled')}
+                    disabled={isBulkUpdating}
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                    size="sm"
+                  >
+                    {isBulkUpdating ? (
+                      <>Updating...</>
+                    ) : (
+                      <>🚀 Enable Selected</>
+                    )}
+                  </Button>
+                  <Button
+                    onClick={() => handleBulkUpdate('disabled')}
+                    disabled={isBulkUpdating}
+                    variant="outline"
+                    size="sm"
+                  >
+                    {isBulkUpdating ? (
+                      <>Updating...</>
+                    ) : (
+                      <>⏸️ Disable Selected</>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-12">
+                    <Checkbox
+                      checked={areAllVisibleSelected()}
+                      onCheckedChange={toggleSelectAll}
+                      aria-label="Select all lessons"
+                      className={cn(
+                        areSomeVisibleSelected() && "data-[state=checked]:bg-blue-600"
+                      )}
+                    />
+                  </TableHead>
                   <TableHead className="w-12"></TableHead>
                   <TableHead>Lesson Name</TableHead>
                   <TableHead>Classes</TableHead>
@@ -1437,7 +1588,7 @@ export default function LessonsPage() {
               <TableBody>
                 {filteredAndPaginatedLessons.lessons.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-zinc-500 py-8">
+                    <TableCell colSpan={8} className="text-center text-zinc-500 py-8">
                       {hasActiveFilters ? 
                         "No lessons match your filters. Try adjusting your search criteria." :
                         "No lessons created yet. Click \"Create Lesson\" to get started."
@@ -1447,8 +1598,22 @@ export default function LessonsPage() {
                 ) : (
                   filteredAndPaginatedLessons.lessons.map((lesson) => {
                     const totalPeriods = lesson.numberOfSingles + (lesson.numberOfDoubles * 2);
+                    const isSelected = selectedLessonIds.has(lesson._id);
                     return (
-                      <TableRow key={lesson._id} className="hover:bg-zinc-50 dark:hover:bg-zinc-900">
+                      <TableRow 
+                        key={lesson._id} 
+                        className={cn(
+                          "hover:bg-zinc-50 dark:hover:bg-zinc-900",
+                          isSelected && "bg-blue-50 dark:bg-blue-950/20"
+                        )}
+                      >
+                        <TableCell>
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => toggleLessonSelection(lesson._id)}
+                            aria-label={`Select ${lesson.lessonName}`}
+                          />
+                        </TableCell>
                         <TableCell>
                           {/* Rainbow Stripe */}
                           <div className="flex gap-0.5">

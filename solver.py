@@ -99,6 +99,7 @@ class UnplacedTask(BaseModel):
 
 class SolverResponse(BaseModel):
     success: bool
+    status: str
     slots: List[TimetableSlot]
     unplacedTasks: List[UnplacedTask]
     conflicts: int
@@ -508,7 +509,7 @@ class TimetableSolver:
             stage_callback("PHASE 1: STRICT PERFECTION (60m) - Hard constraints enforced")
         
         self.solver.parameters.max_time_in_seconds = phase1_time
-        self.solver.parameters.num_search_workers = 8  # Maximum CPU power
+        self.solver.parameters.num_search_workers = 4  # Optimized for memory management
         self.solver.parameters.log_search_progress = True
         self.solver.parameters.random_seed = 42
         self.solver.parameters.relative_gap_limit = 0.0  # ELITE: Absolute best solution only
@@ -539,13 +540,12 @@ class TimetableSolver:
                 print(f"\n🎉 PERFECT SOLUTION ACHIEVED IN PHASE 1!")
                 print(f"   Solving time: {solving_time:.1f}s")
                 return SolverResponse(
+                    success=True,
                     status="success",
                     message=f"Perfect timetable generated with HARD distribution constraints in {solving_time:.1f}s",
                     slots=slots,
                     unplacedTasks=[],
                     solvingTime=solving_time,
-                    totalTasks=len(self.task_info),
-                    placedTasks=len(slots),
                     conflicts=0,
                     stats=self.stats
                 )
@@ -573,7 +573,7 @@ class TimetableSolver:
             self._set_objective(penalty_multiplier=10.0)  # -100,000pt penalty mode
             
             self.solver.parameters.max_time_in_seconds = 1200  # 20 minutes
-            self.solver.parameters.num_search_workers = 8
+            self.solver.parameters.num_search_workers = 4
             self.solver.parameters.log_search_progress = True
             
             status = self.solver.Solve(self.model)
@@ -592,13 +592,12 @@ class TimetableSolver:
                     print(f"\n🎉 100% PLACEMENT ACHIEVED IN PHASE 2!")
                     print(f"   Total solving time: {solving_time:.1f}s")
                     return SolverResponse(
+                        success=True,
                         status="success",
                         message=f"Complete timetable with heavy penalties in {solving_time:.1f}s",
                         slots=slots,
                         unplacedTasks=[],
                         solvingTime=solving_time,
-                        totalTasks=len(self.task_info),
-                        placedTasks=len(slots),
                         conflicts=0,
                         stats=self.stats
                     )
@@ -626,7 +625,7 @@ class TimetableSolver:
             self._set_objective(penalty_multiplier=0.001)  # -10pt penalty mode
             
             self.solver.parameters.max_time_in_seconds = 600  # 10 minutes
-            self.solver.parameters.num_search_workers = 8
+            self.solver.parameters.num_search_workers = 4
             self.solver.parameters.log_search_progress = True
             
             status = self.solver.Solve(self.model)
@@ -643,13 +642,12 @@ class TimetableSolver:
                 print("="*80)
                 
                 return SolverResponse(
+                    success=unplaced_count == 0,
                     status="success" if unplaced_count == 0 else "partial",
                     message=f"Timetable completed in 3-phase solving: {solving_time:.1f}s ({solving_time/60:.1f}m)",
                     slots=slots,
                     unplacedTasks=unplaced_tasks,
                     solvingTime=solving_time,
-                    totalTasks=len(self.task_info),
-                    placedTasks=len(slots),
                     conflicts=0,
                     stats=self.stats
                 )
@@ -714,6 +712,7 @@ class TimetableSolver:
         
         return SolverResponse(
             success=success,
+            status="success" if success else "failed",
             slots=slots,
             unplacedTasks=unplaced_tasks,
             conflicts=conflicts,

@@ -53,3 +53,56 @@ export async function updateLessonStatus(
     };
   }
 }
+
+/**
+ * Bulk Update Lesson Status
+ * 
+ * Updates multiple lessons at once in a single database operation
+ * for improved performance and user experience.
+ */
+export async function bulkUpdateLessonStatus(
+  lessonIds: string[],
+  status: 'enabled' | 'disabled'
+) {
+  try {
+    await dbConnect();
+
+    // Validate input
+    if (!lessonIds || lessonIds.length === 0) {
+      return {
+        success: false,
+        error: 'No lessons selected',
+      };
+    }
+
+    // Update all lessons in a single operation
+    const result = await Lesson.updateMany(
+      { _id: { $in: lessonIds } },
+      { status },
+      { runValidators: true }
+    );
+
+    if (result.matchedCount === 0) {
+      return {
+        success: false,
+        error: 'No lessons found',
+      };
+    }
+
+    // Revalidate pages that display lessons
+    revalidatePath('/dashboard/lessons');
+    revalidatePath('/dashboard/timetable');
+
+    return {
+      success: true,
+      updatedCount: result.modifiedCount,
+      matchedCount: result.matchedCount,
+    };
+  } catch (error: any) {
+    console.error('❌ Error bulk updating lesson status:', error);
+    return {
+      success: false,
+      error: error.message || 'Failed to bulk update lesson status',
+    };
+  }
+}

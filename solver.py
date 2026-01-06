@@ -106,6 +106,8 @@ class SolverResponse(BaseModel):
     solvingTime: float
     stats: Dict[str, int]
     message: str
+    totalTasks: Optional[int] = 0
+    placedTasks: Optional[int] = 0
 
 # ==================== CP-SAT SOLVER ====================
 
@@ -547,7 +549,9 @@ class TimetableSolver:
                     unplacedTasks=[],
                     solvingTime=solving_time,
                     conflicts=0,
-                    stats=self.stats
+                    stats=self.stats,
+                    totalTasks=len(self.task_info),
+                    placedTasks=len(slots)
                 )
             
             # ===== PHASE 2: HEAVY PENALTY FALLBACK (20 MINUTES) =====
@@ -599,7 +603,9 @@ class TimetableSolver:
                         unplacedTasks=[],
                         solvingTime=solving_time,
                         conflicts=0,
-                        stats=self.stats
+                        stats=self.stats,
+                        totalTasks=len(self.task_info),
+                        placedTasks=len(slots)
                     )
             
             # ===== PHASE 3: FINAL FORCE (10 MINUTES) =====
@@ -649,7 +655,9 @@ class TimetableSolver:
                     unplacedTasks=unplaced_tasks,
                     solvingTime=solving_time,
                     conflicts=0,
-                    stats=self.stats
+                    stats=self.stats,
+                    totalTasks=len(self.task_info),
+                    placedTasks=len(slots)
                 )
         
         # Handle UNKNOWN status (time limit with partial solution)
@@ -718,7 +726,9 @@ class TimetableSolver:
             conflicts=conflicts,
             solvingTime=solving_time,
             stats=self.stats,
-            message=message
+            message=message,
+            totalTasks=total_required_slots,
+            placedTasks=placed_count
         )
     
     def _diagnose_unplaced_tasks(self, unplaced_tasks: List[UnplacedTask], scheduled_slots: List[TimetableSlot]) -> List[UnplacedTask]:

@@ -105,8 +105,19 @@ export default function FloatingSolverStatus() {
             duration: 8000
           });
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('Failed to fetch job status:', error);
+        
+        // Handle connection refused (solver not running)
+        if (error.message?.includes('Failed to fetch') || error.code === 'ECONNREFUSED') {
+          // Keep the status bar visible with connection lost message
+          if (jobStatus) {
+            setJobStatus({
+              ...jobStatus,
+              progress: '⏳ Connection lost. Retrying...'
+            });
+          }
+        }
       }
     };
 

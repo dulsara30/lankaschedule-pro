@@ -522,16 +522,16 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
         )}
 
         {/* Footer with Logo */}
-        <View style={styles.footer} fixed>
+        {/* <View style={styles.footer} fixed> */}
           {/* eslint-disable-next-line jsx-a11y/alt-text */}
-          <Image
+          {/* <Image
             src="/logo.png"
             style={styles.footerLogo}
-          />
-          <Text style={styles.footerText}>
+          /> */}
+          {/* <Text style={styles.footerText}>
             Powered by EduFlow AI — Intelligent School Scheduling — {currentDate}
-          </Text>
-        </View>
+          </Text> */}
+        {/* </View> */}
       </Page>
     );
   };
